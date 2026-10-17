@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C6CFF"/>
+      <stop offset="1" stop-color="#E25CC4"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#g)"/>
+  <!-- Una "M" estilizada formada por dos picos, con un triángulo de reproducción en el centro -->
+  <path d="M30 92V40l22 26 12-14 12 14 22-26v52" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M57 74v18l16-9z" fill="#FFFFFF"/>
+</svg>
