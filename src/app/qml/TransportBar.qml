@@ -4,20 +4,14 @@ import QtQuick.Layouts
 import MovixStudio
 import "Format.js" as Format
 
-// Barra de transporte: posición, búsqueda y controles de reproducción y volumen.
+// Barra de transporte del visor: posición, búsqueda y controles de reproducción y volumen.
 Rectangle {
     id: bar
 
-    required property Player player
+    required property TimelinePlayer player
 
-    implicitHeight: 104
+    implicitHeight: 92
     color: Theme.surface
-
-    Rectangle {
-        width: parent.width
-        height: 1
-        color: Theme.border
-    }
 
     component TimeLabel: Text {
         color: Theme.text
@@ -27,11 +21,11 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        anchors.topMargin: 10
-        anchors.bottomMargin: 10
-        spacing: 6
+        anchors.leftMargin: 14
+        anchors.rightMargin: 14
+        anchors.topMargin: 8
+        anchors.bottomMargin: 8
+        spacing: 4
 
         RowLayout {
             Layout.fillWidth: true
@@ -42,7 +36,7 @@ Rectangle {
             MxSlider {
                 id: seekSlider
                 Layout.fillWidth: true
-                enabled: bar.player.hasMedia
+                enabled: bar.player.hasContent
                 from: 0
                 to: Math.max(bar.player.duration, 0.001)
                 onMoved: bar.player.seek(value)
@@ -69,33 +63,33 @@ Rectangle {
             IconButton {
                 iconName: "skip-start"
                 tip: qsTr("Ir al inicio (Inicio)")
-                enabled: bar.player.hasMedia
+                enabled: bar.player.hasContent
                 onClicked: bar.player.seek(0)
             }
             IconButton {
                 iconName: "step-back"
                 tip: qsTr("Fotograma anterior (←)")
-                enabled: bar.player.hasVideo
+                enabled: bar.player.hasContent
                 onClicked: bar.player.stepFrames(-1)
             }
             IconButton {
                 iconName: bar.player.playing ? "pause" : "play"
                 tip: bar.player.playing ? qsTr("Pausar (Espacio)") : qsTr("Reproducir (Espacio)")
                 accent: true
-                size: 46
-                enabled: bar.player.hasMedia
+                size: 44
+                enabled: bar.player.hasContent
                 onClicked: bar.player.togglePlayPause()
             }
             IconButton {
                 iconName: "step-forward"
                 tip: qsTr("Fotograma siguiente (→)")
-                enabled: bar.player.hasVideo
+                enabled: bar.player.hasContent
                 onClicked: bar.player.stepFrames(1)
             }
             IconButton {
                 iconName: "skip-end"
                 tip: qsTr("Ir al final (Fin)")
-                enabled: bar.player.hasMedia
+                enabled: bar.player.hasContent
                 onClicked: bar.player.seek(bar.player.duration)
             }
 
@@ -107,8 +101,7 @@ Rectangle {
                 onClicked: bar.player.muted = !bar.player.muted
             }
             MxSlider {
-                id: volumeSlider
-                Layout.preferredWidth: 110
+                Layout.preferredWidth: 96
                 from: 0
                 to: 1
                 value: bar.player.volume

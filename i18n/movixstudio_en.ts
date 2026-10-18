@@ -2,42 +2,61 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="es">
 <context>
-    <name>InfoPanel</name>
+    <name>ExportController</name>
     <message>
-        <source>Información del medio</source>
-        <translation>Media information</translation>
+        <source>codificación</source>
+        <translation>encoding</translation>
     </message>
     <message>
-        <source>Abre un archivo para ver sus propiedades.</source>
-        <translation>Open a file to see its properties.</translation>
+        <source>decodificación</source>
+        <translation>decoding</translation>
     </message>
     <message>
-        <source>Archivo</source>
-        <translation>File</translation>
+        <source>composición</source>
+        <translation>compositing</translation>
     </message>
     <message>
-        <source>Nombre</source>
-        <translation>Name</translation>
+        <source>Exportación cancelada.</source>
+        <translation>Export cancelled.</translation>
+    </message>
+</context>
+<context>
+    <name>ExportDialog</name>
+    <message>
+        <source>Exportar video</source>
+        <translation>Export video</translation>
     </message>
     <message>
-        <source>Contenedor</source>
-        <translation>Container</translation>
+        <source>Como el proyecto (%1 × %2)</source>
+        <translation>Same as project (%1 × %2)</translation>
     </message>
     <message>
-        <source>Duración</source>
-        <translation>Duration</translation>
+        <source>Como el proyecto (%1)</source>
+        <translation>Same as project (%1)</translation>
     </message>
     <message>
-        <source>Tasa de bits</source>
-        <translation>Bit rate</translation>
+        <source>Se exportó «%1».</source>
+        <translation>Exported “%1”.</translation>
+    </message>
+    <message>
+        <source>Guardar el video como</source>
+        <translation>Save video as</translation>
     </message>
     <message>
         <source>Video</source>
         <translation>Video</translation>
     </message>
     <message>
-        <source>Códec</source>
-        <translation>Codec</translation>
+        <source>Archivo</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>Cambiar…</source>
+        <translation>Change…</translation>
+    </message>
+    <message>
+        <source>Formato</source>
+        <translation>Format</translation>
     </message>
     <message>
         <source>Resolución</source>
@@ -48,59 +67,181 @@
         <translation>Frames/s</translation>
     </message>
     <message>
-        <source>Formato de píxel</source>
-        <translation>Pixel format</translation>
+        <source>Calidad</source>
+        <translation>Quality</translation>
     </message>
     <message>
-        <source>Decodificador</source>
-        <translation>Decoder</translation>
+        <source>Alta</source>
+        <translation>High</translation>
+    </message>
+    <message>
+        <source>Media</source>
+        <translation>Medium</translation>
+    </message>
+    <message>
+        <source>Baja (archivo más pequeño)</source>
+        <translation>Low (smaller file)</translation>
     </message>
     <message>
         <source>Audio</source>
         <translation>Audio</translation>
     </message>
     <message>
-        <source>Frecuencia</source>
-        <translation>Sample rate</translation>
+        <source>Incluir audio</source>
+        <translation>Include audio</translation>
     </message>
     <message>
-        <source>Canales</source>
-        <translation>Channels</translation>
+        <source>Duración: %1. Los códecs marcados como GPU usan el codificador por hardware de tu tarjeta gráfica.</source>
+        <translation>Duration: %1. Codecs marked GPU use your graphics card's hardware encoder.</translation>
     </message>
     <message>
-        <source>Salida</source>
-        <translation>Output</translation>
+        <source>La línea de tiempo está vacía: añade clips antes de exportar.</source>
+        <translation>The timeline is empty: add clips before exporting.</translation>
     </message>
     <message>
-        <source>Reproducción</source>
-        <translation>Playback</translation>
+        <source>Exportando…</source>
+        <translation>Exporting…</translation>
     </message>
     <message>
-        <source>Mostrados/s</source>
-        <translation>Shown/s</translation>
+        <source>%1 % · %2 fotogramas/s · quedan %3</source>
+        <translation>%1 % · %2 frames/s · %3 left</translation>
     </message>
     <message>
-        <source>Descartados</source>
-        <translation>Dropped</translation>
+        <source>Etapa más lenta: %1</source>
+        <translation>Slowest stage: %1</translation>
+    </message>
+    <message>
+        <source>Exportación terminada</source>
+        <translation>Export finished</translation>
+    </message>
+    <message>
+        <source>La exportación no se completó</source>
+        <translation>The export did not complete</translation>
+    </message>
+    <message>
+        <source>Exportar</source>
+        <translation>Export</translation>
+    </message>
+    <message>
+        <source>Mostrar en la carpeta</source>
+        <translation>Show in folder</translation>
+    </message>
+    <message>
+        <source>Cancelar exportación</source>
+        <translation>Cancel export</translation>
+    </message>
+    <message>
+        <source>Cerrar</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>Cancelar</source>
+        <translation>Cancel</translation>
+    </message>
+</context>
+<context>
+    <name>Exporter</name>
+    <message>
+        <source>No hay nada que exportar: la línea de tiempo está vacía.</source>
+        <translation>Nothing to export: the timeline is empty.</translation>
+    </message>
+    <message>
+        <source>La resolución debe ser par y mayor que cero.</source>
+        <translation>The resolution must be even and greater than zero.</translation>
+    </message>
+    <message>
+        <source>Exportación cancelada.</source>
+        <translation>Export cancelled.</translation>
+    </message>
+    <message>
+        <source>Error al componer el fotograma %1.</source>
+        <translation>Error compositing frame %1.</translation>
+    </message>
+</context>
+<context>
+    <name>Inspector</name>
+    <message>
+        <source>Propiedades</source>
+        <translation>Properties</translation>
+    </message>
+    <message>
+        <source>Clip</source>
+        <translation>Clip</translation>
+    </message>
+    <message>
+        <source>Medio</source>
+        <translation>Media</translation>
+    </message>
+    <message>
+        <source>Pista</source>
+        <translation>Track</translation>
+    </message>
+    <message>
+        <source>Inicio</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <source>Duración</source>
+        <translation>Duration</translation>
+    </message>
+    <message>
+        <source>Desde el medio</source>
+        <translation>Media in-point</translation>
+    </message>
+    <message>
+        <source>Clip activo</source>
+        <translation>Clip enabled</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>Volumen</source>
+        <translation>Volume</translation>
+    </message>
+    <message>
+        <source>Silencio</source>
+        <translation>Silent</translation>
+    </message>
+    <message>
+        <source>Restablecer (0 dB)</source>
+        <translation>Reset (0 dB)</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n clips seleccionados</source>
+        <translation><numerusform>%n clip selected</numerusform><numerusform>%n clips selected</numerusform></translation>
+    </message>
+    <message>
+        <source>Proyecto</source>
+        <translation>Project</translation>
+    </message>
+    <message>
+        <source>Nombre</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>Resolución</source>
+        <translation>Resolution</translation>
+    </message>
+    <message>
+        <source>Fotogramas/s</source>
+        <translation>Frames/s</translation>
+    </message>
+    <message>
+        <source>Ajustes del proyecto…</source>
+        <translation>Project settings…</translation>
+    </message>
+    <message>
+        <source>Selecciona un clip de la línea de tiempo para ver y cambiar sus propiedades.</source>
+        <translation>Select a clip in the timeline to view and change its properties.</translation>
     </message>
 </context>
 <context>
     <name>Main</name>
     <message>
-        <source>%1 — MovixStudio</source>
-        <translation>%1 — MovixStudio</translation>
-    </message>
-    <message>
         <source>&amp;Archivo</source>
         <translation>&amp;File</translation>
-    </message>
-    <message>
-        <source>&amp;Abrir medio…</source>
-        <translation>&amp;Open media…</translation>
-    </message>
-    <message>
-        <source>&amp;Cerrar medio</source>
-        <translation>&amp;Close media</translation>
     </message>
     <message>
         <source>&amp;Salir</source>
@@ -159,10 +300,6 @@
         <translation>&amp;View</translation>
     </message>
     <message>
-        <source>Panel de &amp;información</source>
-        <translation>&amp;Information panel</translation>
-    </message>
-    <message>
         <source>&amp;Idioma</source>
         <translation>&amp;Language</translation>
     </message>
@@ -173,30 +310,6 @@
     <message>
         <source>&amp;Acerca de MovixStudio</source>
         <translation>&amp;About MovixStudio</translation>
-    </message>
-    <message>
-        <source>Suelta el archivo para abrirlo</source>
-        <translation>Drop the file to open it</translation>
-    </message>
-    <message>
-        <source>Arrastra un video o un audio aquí</source>
-        <translation>Drag a video or audio file here</translation>
-    </message>
-    <message>
-        <source>o usa Archivo → Abrir medio (Ctrl+O)</source>
-        <translation>or use File → Open media (Ctrl+O)</translation>
-    </message>
-    <message>
-        <source>Abrir medio…</source>
-        <translation>Open media…</translation>
-    </message>
-    <message>
-        <source>Archivo de solo audio</source>
-        <translation>Audio-only file</translation>
-    </message>
-    <message>
-        <source>Abrir medio</source>
-        <translation>Open media</translation>
     </message>
     <message>
         <source>Medios compatibles</source>
@@ -219,8 +332,503 @@
         <translation>Distributed under the GNU General Public License, version 3 or later. Uses Qt (LGPLv3), FFmpeg (GPL) and miniaudio (public domain).</translation>
     </message>
     <message>
-        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: reproductor y motor de medios (fase F0).</source>
-        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: player and media engine (phase F0).</translation>
+        <source>&amp;Nuevo proyecto</source>
+        <translation>&amp;New project</translation>
+    </message>
+    <message>
+        <source>&amp;Abrir proyecto…</source>
+        <translation>&amp;Open project…</translation>
+    </message>
+    <message>
+        <source>&amp;Guardar</source>
+        <translation>&amp;Save</translation>
+    </message>
+    <message>
+        <source>Guardar &amp;como…</source>
+        <translation>Save &amp;as…</translation>
+    </message>
+    <message>
+        <source>&amp;Importar medios…</source>
+        <translation>&amp;Import media…</translation>
+    </message>
+    <message>
+        <source>&amp;Exportar video…</source>
+        <translation>&amp;Export video…</translation>
+    </message>
+    <message>
+        <source>Ajustes del &amp;proyecto…</source>
+        <translation>&amp;Project settings…</translation>
+    </message>
+    <message>
+        <source>&amp;Editar</source>
+        <translation>&amp;Edit</translation>
+    </message>
+    <message>
+        <source>&amp;Deshacer: %1</source>
+        <translation>&amp;Undo: %1</translation>
+    </message>
+    <message>
+        <source>&amp;Deshacer</source>
+        <translation>&amp;Undo</translation>
+    </message>
+    <message>
+        <source>&amp;Rehacer: %1</source>
+        <translation>&amp;Redo: %1</translation>
+    </message>
+    <message>
+        <source>&amp;Rehacer</source>
+        <translation>&amp;Redo</translation>
+    </message>
+    <message>
+        <source>&amp;Dividir en el cabezal</source>
+        <translation>&amp;Split at playhead</translation>
+    </message>
+    <message>
+        <source>&amp;Eliminar</source>
+        <translation>&amp;Delete</translation>
+    </message>
+    <message>
+        <source>Supr</source>
+        <translation>Del</translation>
+    </message>
+    <message>
+        <source>Eliminar y &amp;cerrar hueco</source>
+        <translation>Ripple &amp;delete</translation>
+    </message>
+    <message>
+        <source>Mayús+Supr</source>
+        <translation>Shift+Del</translation>
+    </message>
+    <message>
+        <source>Seleccionar &amp;todo</source>
+        <translation>Select &amp;all</translation>
+    </message>
+    <message>
+        <source>Añadir pista de &amp;video</source>
+        <translation>Add &amp;video track</translation>
+    </message>
+    <message>
+        <source>Añadir pista de &amp;audio</source>
+        <translation>Add a&amp;udio track</translation>
+    </message>
+    <message>
+        <source>&amp;Acercar la línea de tiempo</source>
+        <translation>Zoom &amp;in timeline</translation>
+    </message>
+    <message>
+        <source>A&amp;lejar la línea de tiempo</source>
+        <translation>Zoom &amp;out timeline</translation>
+    </message>
+    <message>
+        <source>Ajustar &amp;todo</source>
+        <translation>&amp;Fit all</translation>
+    </message>
+    <message>
+        <source>&amp;Imán</source>
+        <translation>S&amp;napping</translation>
+    </message>
+    <message>
+        <source>Importar medios</source>
+        <translation>Import media</translation>
+    </message>
+    <message>
+        <source>Abrir proyecto</source>
+        <translation>Open project</translation>
+    </message>
+    <message>
+        <source>Proyectos de MovixStudio</source>
+        <translation>MovixStudio projects</translation>
+    </message>
+    <message>
+        <source>Guardar proyecto</source>
+        <translation>Save project</translation>
+    </message>
+    <message>
+        <source>Cambios sin guardar</source>
+        <translation>Unsaved changes</translation>
+    </message>
+    <message>
+        <source>¿Quieres guardar los cambios de «%1»?</source>
+        <translation>Do you want to save the changes to “%1”?</translation>
+    </message>
+    <message>
+        <source>Guardar</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <source>No guardar</source>
+        <translation>Don't save</translation>
+    </message>
+    <message>
+        <source>Cancelar</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Recuperar proyecto</source>
+        <translation>Recover project</translation>
+    </message>
+    <message>
+        <source>MovixStudio no se cerró correctamente. Hay una copia automática del %1.
+¿Quieres recuperarla?</source>
+        <translation>MovixStudio did not close properly. There is an automatic copy from %1.
+Do you want to recover it?</translation>
+    </message>
+    <message>
+        <source>Recuperar</source>
+        <translation>Recover</translation>
+    </message>
+    <message>
+        <source>Descartar</source>
+        <translation>Discard</translation>
+    </message>
+    <message>
+        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: editor multipista básico (fase F1).</source>
+        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: basic multitrack editor (phase F1).</translation>
+    </message>
+</context>
+<context>
+    <name>MediaBin</name>
+    <message>
+        <source>Medios del proyecto</source>
+        <translation>Project media</translation>
+    </message>
+    <message>
+        <source>Importar medios (Ctrl+I)</source>
+        <translation>Import media (Ctrl+I)</translation>
+    </message>
+    <message>
+        <source>En uso en la línea de tiempo</source>
+        <translation>Used in the timeline</translation>
+    </message>
+    <message>
+        <source>Vista previa</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>Añadir a la línea de tiempo</source>
+        <translation>Add to timeline</translation>
+    </message>
+    <message>
+        <source>Quitar del proyecto (y sus clips)</source>
+        <translation>Remove from project (and its clips)</translation>
+    </message>
+    <message>
+        <source>Quitar del proyecto</source>
+        <translation>Remove from project</translation>
+    </message>
+    <message>
+        <source>Importa videos o audio, o arrástralos aquí desde el explorador.</source>
+        <translation>Import video or audio, or drag files here from the file explorer.</translation>
+    </message>
+    <message>
+        <source>Importar medios…</source>
+        <translation>Import media…</translation>
+    </message>
+</context>
+<context>
+    <name>OffscreenRenderer</name>
+    <message>
+        <source>No se pudo inicializar la GPU para renderizar.</source>
+        <translation>Could not initialize the GPU for rendering.</translation>
+    </message>
+    <message>
+        <source>La GPU no admite una textura de %1×%2.</source>
+        <translation>The GPU does not support a %1×%2 texture.</translation>
+    </message>
+</context>
+<context>
+    <name>ProjectController</name>
+    <message>
+        <source>Sin título</source>
+        <translation>Untitled</translation>
+    </message>
+    <message numerus="yes">
+        <source>No se encontraron %n archivos de medios:
+%1</source>
+        <translation><numerusform>%n media file was not found:
+%1</numerusform><numerusform>%n media files were not found:
+%1</numerusform></translation>
+    </message>
+    <message>
+        <source>No se pudo guardar el proyecto: %1</source>
+        <translation>Could not save the project: %1</translation>
+    </message>
+    <message>
+        <source>Ajustes del proyecto</source>
+        <translation>Project settings</translation>
+    </message>
+    <message>
+        <source>Importar medios</source>
+        <translation>Import media</translation>
+    </message>
+    <message>
+        <source>No se pudieron importar algunos archivos:
+%1</source>
+        <translation>Some files could not be imported:
+%1</translation>
+    </message>
+    <message>
+        <source>Quitar medio</source>
+        <translation>Remove media</translation>
+    </message>
+    <message>
+        <source>Añadir clip</source>
+        <translation>Add clip</translation>
+    </message>
+    <message>
+        <source>El proyecto se ajustó al clip: %1×%2 a %3 fps.</source>
+        <translation>The project was matched to the clip: %1×%2 at %3 fps.</translation>
+    </message>
+    <message>
+        <source>Mover clips</source>
+        <translation>Move clips</translation>
+    </message>
+    <message>
+        <source>Recortar clip</source>
+        <translation>Trim clip</translation>
+    </message>
+    <message>
+        <source>Dividir</source>
+        <translation>Split</translation>
+    </message>
+    <message>
+        <source>Eliminar y cerrar hueco</source>
+        <translation>Ripple delete</translation>
+    </message>
+    <message>
+        <source>Eliminar</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Volumen del clip</source>
+        <translation>Clip volume</translation>
+    </message>
+    <message>
+        <source>Activar clip</source>
+        <translation>Enable clip</translation>
+    </message>
+    <message>
+        <source>Desactivar clip</source>
+        <translation>Disable clip</translation>
+    </message>
+    <message>
+        <source>Añadir pista</source>
+        <translation>Add track</translation>
+    </message>
+    <message>
+        <source>Eliminar pista</source>
+        <translation>Delete track</translation>
+    </message>
+    <message>
+        <source>Silenciar pista</source>
+        <translation>Mute track</translation>
+    </message>
+    <message>
+        <source>Activar sonido de pista</source>
+        <translation>Unmute track</translation>
+    </message>
+    <message>
+        <source>Ocultar pista</source>
+        <translation>Hide track</translation>
+    </message>
+    <message>
+        <source>Mostrar pista</source>
+        <translation>Show track</translation>
+    </message>
+    <message>
+        <source>Bloquear pista</source>
+        <translation>Lock track</translation>
+    </message>
+    <message>
+        <source>Desbloquear pista</source>
+        <translation>Unlock track</translation>
+    </message>
+</context>
+<context>
+    <name>ProjectFile</name>
+    <message>
+        <source>El archivo no es un proyecto válido (%1).</source>
+        <translation>The file is not a valid project (%1).</translation>
+    </message>
+    <message>
+        <source>El archivo no es un proyecto de MovixStudio.</source>
+        <translation>The file is not a MovixStudio project.</translation>
+    </message>
+    <message>
+        <source>El proyecto se creó con una versión más reciente de MovixStudio.</source>
+        <translation>The project was created with a newer version of MovixStudio.</translation>
+    </message>
+    <message>
+        <source>El proyecto está dañado: %1</source>
+        <translation>The project is damaged: %1</translation>
+    </message>
+    <message>
+        <source>No se pudo abrir el proyecto: %1</source>
+        <translation>Could not open the project: %1</translation>
+    </message>
+</context>
+<context>
+    <name>ProjectSettingsDialog</name>
+    <message>
+        <source>Ajustes del proyecto</source>
+        <translation>Project settings</translation>
+    </message>
+    <message>
+        <source>1080 × 1920 (vertical 9:16)</source>
+        <translation>1080 × 1920 (vertical 9:16)</translation>
+    </message>
+    <message>
+        <source>1080 × 1080 (cuadrado)</source>
+        <translation>1080 × 1080 (square)</translation>
+    </message>
+    <message>
+        <source>1080 × 1350 (retrato 4:5)</source>
+        <translation>1080 × 1350 (portrait 4:5)</translation>
+    </message>
+    <message>
+        <source>Plantilla</source>
+        <translation>Preset</translation>
+    </message>
+    <message>
+        <source>Elegir…</source>
+        <translation>Choose…</translation>
+    </message>
+    <message>
+        <source>Ancho</source>
+        <translation>Width</translation>
+    </message>
+    <message>
+        <source>Alto</source>
+        <translation>Height</translation>
+    </message>
+    <message>
+        <source>Fotogramas/s</source>
+        <translation>Frames/s</translation>
+    </message>
+    <message>
+        <source>Al añadir el primer clip a una línea de tiempo vacía, el proyecto adopta su resolución y velocidad automáticamente.</source>
+        <translation>When the first clip is added to an empty timeline, the project adopts its resolution and frame rate automatically.</translation>
+    </message>
+</context>
+<context>
+    <name>Timeline</name>
+    <message>
+        <source>Deshacer: %1 (Ctrl+Z)</source>
+        <translation>Undo: %1 (Ctrl+Z)</translation>
+    </message>
+    <message>
+        <source>Deshacer (Ctrl+Z)</source>
+        <translation>Undo (Ctrl+Z)</translation>
+    </message>
+    <message>
+        <source>Rehacer: %1 (Ctrl+Y)</source>
+        <translation>Redo: %1 (Ctrl+Y)</translation>
+    </message>
+    <message>
+        <source>Rehacer (Ctrl+Y)</source>
+        <translation>Redo (Ctrl+Y)</translation>
+    </message>
+    <message>
+        <source>Dividir en el cabezal (Ctrl+B)</source>
+        <translation>Split at playhead (Ctrl+B)</translation>
+    </message>
+    <message>
+        <source>Eliminar selección (Supr)</source>
+        <translation>Delete selection (Del)</translation>
+    </message>
+    <message>
+        <source>Imán activado (N)</source>
+        <translation>Snapping on (N)</translation>
+    </message>
+    <message>
+        <source>Imán desactivado (N)</source>
+        <translation>Snapping off (N)</translation>
+    </message>
+    <message>
+        <source>Añadir pista de video</source>
+        <translation>Add video track</translation>
+    </message>
+    <message>
+        <source>Añadir pista de audio</source>
+        <translation>Add audio track</translation>
+    </message>
+    <message>
+        <source>Alejar (−)</source>
+        <translation>Zoom out (−)</translation>
+    </message>
+    <message>
+        <source>Acercar (+)</source>
+        <translation>Zoom in (+)</translation>
+    </message>
+    <message>
+        <source>Ajustar todo a la vista (Mayús+Z)</source>
+        <translation>Fit everything in view (Shift+Z)</translation>
+    </message>
+</context>
+<context>
+    <name>TimelineClip</name>
+    <message>
+        <source>Dividir en el cabezal</source>
+        <translation>Split at playhead</translation>
+    </message>
+    <message>
+        <source>Eliminar</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Supr</source>
+        <translation>Del</translation>
+    </message>
+    <message>
+        <source>Eliminar y cerrar hueco</source>
+        <translation>Ripple delete</translation>
+    </message>
+    <message>
+        <source>Mayús+Supr</source>
+        <translation>Shift+Del</translation>
+    </message>
+    <message>
+        <source>Desactivar clip</source>
+        <translation>Disable clip</translation>
+    </message>
+    <message>
+        <source>Activar clip</source>
+        <translation>Enable clip</translation>
+    </message>
+    <message>
+        <source>Ir al inicio del clip</source>
+        <translation>Go to clip start</translation>
+    </message>
+</context>
+<context>
+    <name>TrackHeader</name>
+    <message>
+        <source>Mostrar pista</source>
+        <translation>Show track</translation>
+    </message>
+    <message>
+        <source>Ocultar pista</source>
+        <translation>Hide track</translation>
+    </message>
+    <message>
+        <source>Activar sonido de la pista</source>
+        <translation>Unmute track</translation>
+    </message>
+    <message>
+        <source>Silenciar pista</source>
+        <translation>Mute track</translation>
+    </message>
+    <message>
+        <source>Desbloquear pista</source>
+        <translation>Unlock track</translation>
+    </message>
+    <message>
+        <source>Bloquear pista</source>
+        <translation>Lock track</translation>
+    </message>
+    <message>
+        <source>Eliminar pista</source>
+        <translation>Delete track</translation>
     </message>
 </context>
 <context>
@@ -259,10 +867,22 @@
     </message>
 </context>
 <context>
-    <name>movix::playback::Player</name>
+    <name>ViewerPanel</name>
     <message>
-        <source>No se pudo decodificar ningún stream del archivo.</source>
-        <translation>None of the file's streams could be decoded.</translation>
+        <source>Línea de tiempo</source>
+        <translation>Timeline</translation>
+    </message>
+    <message>
+        <source>Medio: %1</source>
+        <translation>Media: %1</translation>
+    </message>
+    <message>
+        <source>Medio</source>
+        <translation>Media</translation>
+    </message>
+    <message>
+        <source>Arrastra medios a la línea de tiempo para empezar a editar</source>
+        <translation>Drag media to the timeline to start editing</translation>
     </message>
 </context>
 </TS>

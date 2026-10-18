@@ -9,15 +9,16 @@ ApplicationWindow {
     id: window
 
     property url initialFile
-    property bool showInfo: true
+    property bool closeConfirmed: false
+    property var pendingAction: null // acción que espera a resolver los cambios sin guardar
 
-    width: 1280
-    height: 800
-    minimumWidth: 900
-    minimumHeight: 560
+    width: 1440
+    height: 900
+    minimumWidth: 1100
+    minimumHeight: 680
     visible: true
     color: Theme.background
-    title: player.hasMedia ? qsTr("%1 — MovixStudio").arg(Format.fileName(player.source)) : "MovixStudio"
+    title: (project.modified ? "• " : "") + project.projectName + " — MovixStudio"
 
     palette {
         window: Theme.background
@@ -37,58 +38,147 @@ ApplicationWindow {
         light: Theme.surfaceHover
     }
 
-    Player {
-        id: player
-        onErrorOccurred: (message) => errorBanner.show(message)
+    ProjectController {
+        id: project
+        onErrorOccurred: (message) => banner.show(message, true)
+        onNotice: (message) => banner.show(message, false)
+        onRecoveryAvailable: (when) => {
+            recoveryDialog.when = when
+            recoveryDialog.open()
+        }
     }
+
+    readonly property TimelinePlayer activePlayer: viewer.activePlayer
 
     Component.onCompleted: {
+        project.checkRecovery()
         if (initialFile.toString() !== "")
-            player.open(initialFile)
+            project.importFiles([initialFile])
     }
 
-    // --- Atajos de teclado (válidos en toda la ventana) ---
-    Shortcut { sequences: [StandardKey.Open]; onActivated: openDialog.open() }
-    Shortcut { sequences: [StandardKey.Quit]; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; enabled: player.hasMedia; onActivated: player.togglePlayPause() }
-    Shortcut { sequence: "K"; enabled: player.hasMedia; onActivated: player.pause() }
-    Shortcut { sequence: "L"; enabled: player.hasMedia; onActivated: player.play() }
-    Shortcut { sequence: "Left"; enabled: player.hasVideo; autoRepeat: true; onActivated: player.stepFrames(-1) }
-    Shortcut { sequence: "Right"; enabled: player.hasVideo; autoRepeat: true; onActivated: player.stepFrames(1) }
-    Shortcut { sequence: "Shift+Left"; enabled: player.hasMedia; autoRepeat: true; onActivated: player.seek(player.position - 1) }
-    Shortcut { sequence: "Shift+Right"; enabled: player.hasMedia; autoRepeat: true; onActivated: player.seek(player.position + 1) }
-    Shortcut { sequence: "Home"; enabled: player.hasMedia; onActivated: player.seek(0) }
-    Shortcut { sequence: "End"; enabled: player.hasMedia; onActivated: player.seek(player.duration) }
-    Shortcut { sequence: "M"; onActivated: player.muted = !player.muted }
-    Shortcut { sequence: "I"; onActivated: window.showInfo = !window.showInfo }
+    // --- Cambios sin guardar ---
+    function guard(action) {
+        if (!project.modified) {
+            action()
+            return
+        }
+        pendingAction = action
+        unsavedDialog.open()
+    }
+    function runPending() {
+        const action = pendingAction
+        pendingAction = null
+        if (action)
+            action()
+    }
+    function saveProject(after) {
+        if (project.fileUrl.toString() === "") {
+            saveDialog.after = after
+            saveDialog.open()
+        } else if (project.save() && after) {
+            after()
+        }
+    }
+
+    onClosing: (close) => {
+        if (closeConfirmed || !project.modified) {
+            project.shutdown()
+            return
+        }
+        close.accepted = false
+        guard(() => {
+            closeConfirmed = true
+            window.close()
+        })
+    }
+
+    // --- Atajos de teclado ---
+    Shortcut { sequences: [StandardKey.New]; onActivated: window.guard(() => project.newProject()) }
+    Shortcut { sequences: [StandardKey.Open]; onActivated: window.guard(() => openDialog.open()) }
+    Shortcut { sequences: [StandardKey.Save]; onActivated: window.saveProject(null) }
+    Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
+    Shortcut { sequence: "Ctrl+I"; onActivated: importDialog.open() }
+    Shortcut { sequence: "Ctrl+E"; onActivated: exportDialog.open() }
+    Shortcut { sequences: [StandardKey.Undo]; onActivated: project.undo() }
+    Shortcut { sequences: ["Ctrl+Y", "Ctrl+Shift+Z"]; onActivated: project.redo() }
+    Shortcut { sequences: ["Ctrl+B", "S"]; onActivated: { viewer.showTimeline(); project.splitAtPlayhead() } }
+    Shortcut { sequence: "Delete"; onActivated: project.deleteSelection(false) }
+    Shortcut { sequence: "Shift+Delete"; onActivated: project.deleteSelection(true) }
+    Shortcut { sequence: "Ctrl+A"; onActivated: project.selectAll() }
+    Shortcut { sequence: "Escape"; onActivated: project.clearSelection() }
+    Shortcut { sequence: "Space"; onActivated: window.activePlayer.togglePlayPause() }
+    Shortcut { sequence: "K"; onActivated: window.activePlayer.pause() }
+    Shortcut { sequence: "L"; onActivated: window.activePlayer.play() }
+    Shortcut { sequence: "Left"; autoRepeat: true; onActivated: window.activePlayer.stepFrames(-1) }
+    Shortcut { sequence: "Right"; autoRepeat: true; onActivated: window.activePlayer.stepFrames(1) }
+    Shortcut { sequence: "Shift+Left"; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position - 1) }
+    Shortcut { sequence: "Shift+Right"; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position + 1) }
+    Shortcut { sequence: "Home"; onActivated: window.activePlayer.seek(0) }
+    Shortcut { sequence: "End"; onActivated: window.activePlayer.seek(window.activePlayer.duration) }
+    Shortcut { sequence: "M"; onActivated: window.activePlayer.muted = !window.activePlayer.muted }
+    Shortcut { sequences: ["+", "="]; onActivated: timeline.zoomBy(1.5) }
+    Shortcut { sequence: "-"; onActivated: timeline.zoomBy(1 / 1.5) }
+    Shortcut { sequence: "Shift+Z"; onActivated: timeline.fitAll() }
+    Shortcut { sequence: "N"; onActivated: timeline.snapping = !timeline.snapping }
 
     menuBar: MenuBar {
         Menu {
             title: qsTr("&Archivo")
-            MenuItem { text: qsTr("&Abrir medio…") + "\tCtrl+O"; onTriggered: openDialog.open() }
-            MenuItem { text: qsTr("&Cerrar medio"); enabled: player.hasMedia; onTriggered: player.close() }
+            MenuItem { text: qsTr("&Nuevo proyecto") + "\tCtrl+N"; onTriggered: window.guard(() => project.newProject()) }
+            MenuItem { text: qsTr("&Abrir proyecto…") + "\tCtrl+O"; onTriggered: window.guard(() => openDialog.open()) }
+            MenuItem { text: qsTr("&Guardar") + "\tCtrl+S"; onTriggered: window.saveProject(null) }
+            MenuItem { text: qsTr("Guardar &como…") + "\tCtrl+Mayús+S"; onTriggered: saveDialog.open() }
             MenuSeparator {}
-            MenuItem { text: qsTr("&Salir") + "\tCtrl+Q"; onTriggered: Qt.quit() }
+            MenuItem { text: qsTr("&Importar medios…") + "\tCtrl+I"; onTriggered: importDialog.open() }
+            MenuItem { text: qsTr("&Exportar video…") + "\tCtrl+E"; onTriggered: exportDialog.open() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Ajustes del &proyecto…"); onTriggered: settingsDialog.open() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("&Salir"); onTriggered: window.close() }
+        }
+        Menu {
+            title: qsTr("&Editar")
+            MenuItem {
+                text: (project.canUndo ? qsTr("&Deshacer: %1").arg(project.undoText) : qsTr("&Deshacer")) + "\tCtrl+Z"
+                enabled: project.canUndo
+                onTriggered: project.undo()
+            }
+            MenuItem {
+                text: (project.canRedo ? qsTr("&Rehacer: %1").arg(project.redoText) : qsTr("&Rehacer")) + "\tCtrl+Y"
+                enabled: project.canRedo
+                onTriggered: project.redo()
+            }
+            MenuSeparator {}
+            MenuItem { text: qsTr("&Dividir en el cabezal") + "\tCtrl+B"; onTriggered: project.splitAtPlayhead() }
+            MenuItem { text: qsTr("&Eliminar") + "\t" + qsTr("Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(false) }
+            MenuItem { text: qsTr("Eliminar y &cerrar hueco") + "\t" + qsTr("Mayús+Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(true) }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Seleccionar &todo") + "\tCtrl+A"; onTriggered: project.selectAll() }
+            MenuItem { text: qsTr("Añadir pista de &video"); onTriggered: project.addTrack("video") }
+            MenuItem { text: qsTr("Añadir pista de &audio"); onTriggered: project.addTrack("audio") }
         }
         Menu {
             title: qsTr("&Reproducción")
             MenuItem {
-                text: (player.playing ? qsTr("&Pausar") : qsTr("&Reproducir")) + "\t" + qsTr("Espacio")
-                enabled: player.hasMedia
-                onTriggered: player.togglePlayPause()
+                text: (window.activePlayer.playing ? qsTr("&Pausar") : qsTr("&Reproducir")) + "\t" + qsTr("Espacio")
+                onTriggered: window.activePlayer.togglePlayPause()
             }
-            MenuItem { text: qsTr("&Detener"); enabled: player.hasMedia; onTriggered: player.stop() }
+            MenuItem { text: qsTr("&Detener"); onTriggered: window.activePlayer.stop() }
             MenuSeparator {}
-            MenuItem { text: qsTr("Fotograma &anterior") + "\t←"; enabled: player.hasVideo; onTriggered: player.stepFrames(-1) }
-            MenuItem { text: qsTr("Fotograma &siguiente") + "\t→"; enabled: player.hasVideo; onTriggered: player.stepFrames(1) }
-            MenuItem { text: qsTr("Ir al &inicio") + "\t" + qsTr("Inicio"); enabled: player.hasMedia; onTriggered: player.seek(0) }
-            MenuItem { text: qsTr("Ir al &final") + "\t" + qsTr("Fin"); enabled: player.hasMedia; onTriggered: player.seek(player.duration) }
+            MenuItem { text: qsTr("Fotograma &anterior") + "\t←"; onTriggered: window.activePlayer.stepFrames(-1) }
+            MenuItem { text: qsTr("Fotograma &siguiente") + "\t→"; onTriggered: window.activePlayer.stepFrames(1) }
+            MenuItem { text: qsTr("Ir al &inicio") + "\t" + qsTr("Inicio"); onTriggered: window.activePlayer.seek(0) }
+            MenuItem { text: qsTr("Ir al &final") + "\t" + qsTr("Fin"); onTriggered: window.activePlayer.seek(window.activePlayer.duration) }
             MenuSeparator {}
-            MenuItem { text: qsTr("Si&lenciar") + "\tM"; checkable: true; checked: player.muted; onTriggered: player.muted = checked }
+            MenuItem { text: qsTr("Si&lenciar") + "\tM"; checkable: true; checked: window.activePlayer.muted; onTriggered: window.activePlayer.muted = checked }
         }
         Menu {
             title: qsTr("&Ver")
-            MenuItem { text: qsTr("Panel de &información") + "\tI"; checkable: true; checked: window.showInfo; onTriggered: window.showInfo = checked }
+            MenuItem { text: qsTr("&Acercar la línea de tiempo") + "\t+"; onTriggered: timeline.zoomBy(1.5) }
+            MenuItem { text: qsTr("A&lejar la línea de tiempo") + "\t−"; onTriggered: timeline.zoomBy(1 / 1.5) }
+            MenuItem { text: qsTr("Ajustar &todo") + "\tMayús+Z"; onTriggered: timeline.fitAll() }
+            MenuItem { text: qsTr("&Imán") + "\tN"; checkable: true; checked: timeline.snapping; onTriggered: timeline.snapping = checked }
+            MenuSeparator {}
             Menu {
                 title: qsTr("&Idioma")
                 // Los nombres de idioma se muestran siempre en su propio idioma.
@@ -102,175 +192,164 @@ ApplicationWindow {
         }
     }
 
-    ColumnLayout {
+    SplitView {
         anchors.fill: parent
-        spacing: 0
+        orientation: Qt.Vertical
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 0
+        SplitView {
+            SplitView.fillHeight: true
+            SplitView.minimumHeight: 300
+            orientation: Qt.Horizontal
 
-            Rectangle {
-                id: viewer
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Theme.viewer
-
-                VideoView {
-                    anchors.fill: parent
-                    player: player
-                    visible: player.hasVideo
-                }
-
-                // Estado vacío: invitación a abrir un archivo.
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 16
-                    visible: !player.hasMedia
-
-                    Image {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: "qrc:/qt/qml/MovixStudio/icons/logo.svg"
-                        sourceSize: Qt.size(72, 72)
-                        opacity: dropArea.containsDrag ? 1 : 0.85
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: dropArea.containsDrag ? qsTr("Suelta el archivo para abrirlo") : qsTr("Arrastra un video o un audio aquí")
-                        color: Theme.text
-                        font.pixelSize: 18
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("o usa Archivo → Abrir medio (Ctrl+O)")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontNormal
-                    }
-                    Button {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("Abrir medio…")
-                        icon.source: "qrc:/qt/qml/MovixStudio/icons/folder-open.svg"
-                        focusPolicy: Qt.NoFocus
-                        onClicked: openDialog.open()
-                    }
-                }
-
-                // Medio de solo audio.
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 10
-                    visible: player.hasMedia && !player.hasVideo
-                    Image {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: "qrc:/qt/qml/MovixStudio/icons/volume.svg"
-                        sourceSize: Qt.size(56, 56)
-                        opacity: 0.6
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("Archivo de solo audio")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontNormal + 2
-                    }
-                }
-
-                // Clic para reproducir/pausar; doble clic para pantalla completa.
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: player.hasMedia
-                    onClicked: player.togglePlayPause()
-                    onDoubleClicked: {
-                        player.togglePlayPause() // deshace el clic simple
-                        window.visibility = window.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
-                    }
-                }
-
-                DropArea {
-                    id: dropArea
-                    anchors.fill: parent
-                    keys: ["text/uri-list"]
-                    onDropped: (drop) => {
-                        if (drop.hasUrls) {
-                            player.open(drop.urls[0])
-                            drop.accept()
-                        }
-                    }
-                }
-
-                // Aviso de error no bloqueante.
-                Rectangle {
-                    id: errorBanner
-
-                    function show(message) {
-                        errorText.text = message
-                        visible = true
-                        hideTimer.restart()
-                    }
-
-                    anchors.top: parent.top
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.topMargin: 16
-                    width: Math.min(parent.width - 32, errorText.implicitWidth + 32)
-                    height: errorText.implicitHeight + 20
-                    radius: Theme.radius
-                    color: Theme.dangerSurface
-                    border.color: Theme.danger
-                    visible: false
-
-                    Text {
-                        id: errorText
-                        anchors.centerIn: parent
-                        width: parent.width - 32
-                        color: Theme.text
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-                    Timer {
-                        id: hideTimer
-                        interval: 6000
-                        onTriggered: errorBanner.visible = false
-                    }
+            MediaBin {
+                SplitView.preferredWidth: 320
+                SplitView.minimumWidth: 220
+                project: project
+                onImportRequested: importDialog.open()
+                onPreviewRequested: (mediaId) => {
+                    project.previewMedia(mediaId)
+                    viewer.showSource()
                 }
             }
-
-            InfoPanel {
-                Layout.preferredWidth: 300
-                Layout.fillHeight: true
-                visible: window.showInfo && window.visibility !== Window.FullScreen
-                player: player
+            ViewerPanel {
+                id: viewer
+                SplitView.fillWidth: true
+                SplitView.minimumWidth: 400
+                project: project
+            }
+            Inspector {
+                SplitView.preferredWidth: 280
+                SplitView.minimumWidth: 220
+                project: project
+                onSettingsRequested: settingsDialog.open()
             }
         }
 
-        TransportBar {
-            Layout.fillWidth: true
-            player: player
-            visible: window.visibility !== Window.FullScreen
+        Timeline {
+            id: timeline
+            SplitView.preferredHeight: 320
+            SplitView.minimumHeight: 200
+            project: project
+            onActivated: viewer.showTimeline()
         }
     }
 
+    // Archivos arrastrados desde el explorador: se importan (o se abre el proyecto).
+    DropArea {
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onDropped: (drop) => {
+            if (drop.hasUrls) {
+                project.importFiles(drop.urls)
+                drop.accept()
+            }
+        }
+    }
+
+    Banner { id: banner; anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 12 }
+
+    // --- Diálogos ---
     FileDialog {
-        id: openDialog
-        title: qsTr("Abrir medio")
+        id: importDialog
+        title: qsTr("Importar medios")
+        fileMode: FileDialog.OpenFiles
         nameFilters: [
             qsTr("Medios compatibles") + " (*.mp4 *.mov *.m4v *.mkv *.webm *.avi *.wmv *.flv *.mts *.m2ts *.ts *.mxf *.mpg *.mpeg *.3gp *.mp3 *.wav *.flac *.aac *.m4a *.ogg *.opus *.wma)",
             qsTr("Todos los archivos") + " (*)"
         ]
-        onAccepted: player.open(selectedFile)
+        onAccepted: project.importFiles(selectedFiles)
     }
+    FileDialog {
+        id: openDialog
+        title: qsTr("Abrir proyecto")
+        nameFilters: [qsTr("Proyectos de MovixStudio") + " (*.mxproj)"]
+        onAccepted: project.openProject(selectedFile)
+    }
+    FileDialog {
+        id: saveDialog
+        property var after: null
+        title: qsTr("Guardar proyecto")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "mxproj"
+        nameFilters: [qsTr("Proyectos de MovixStudio") + " (*.mxproj)"]
+        onAccepted: {
+            const next = after
+            after = null
+            if (project.saveAs(selectedFile) && next)
+                next()
+        }
+        onRejected: after = null
+    }
+
+    Dialog {
+        id: unsavedDialog
+        title: qsTr("Cambios sin guardar")
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("¿Quieres guardar los cambios de «%1»?").arg(project.projectName)
+        }
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("Guardar")
+                highlighted: true
+                onClicked: {
+                    unsavedDialog.close()
+                    window.saveProject(() => window.runPending())
+                }
+            }
+            Button {
+                text: qsTr("No guardar")
+                onClicked: {
+                    unsavedDialog.close()
+                    window.runPending()
+                }
+            }
+            Button {
+                text: qsTr("Cancelar")
+                onClicked: {
+                    window.pendingAction = null
+                    unsavedDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: recoveryDialog
+        property string when
+        title: qsTr("Recuperar proyecto")
+        modal: true
+        anchors.centerIn: parent
+        width: 480
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("MovixStudio no se cerró correctamente. Hay una copia automática del %1.\n¿Quieres recuperarla?").arg(recoveryDialog.when)
+        }
+        footer: DialogButtonBox {
+            Button { text: qsTr("Recuperar"); highlighted: true; onClicked: { recoveryDialog.close(); project.recoverAutosave() } }
+            Button { text: qsTr("Descartar"); onClicked: { recoveryDialog.close(); project.discardAutosave() } }
+        }
+    }
+
+    ExportDialog { id: exportDialog; project: project }
+    ProjectSettingsDialog { id: settingsDialog; project: project }
 
     Dialog {
         id: aboutDialog
         title: qsTr("Acerca de MovixStudio")
         modal: true
         anchors.centerIn: parent
-        width: 460
+        width: 480
         standardButtons: Dialog.Close
 
         ColumnLayout {
             anchors.fill: parent
             spacing: 10
-
             RowLayout {
                 spacing: 14
                 Image { source: "qrc:/qt/qml/MovixStudio/icons/logo.svg"; sourceSize: Qt.size(48, 48) }
@@ -284,7 +363,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.text
-                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: reproductor y motor de medios (fase F0).")
+                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: editor multipista básico (fase F1).")
             }
             Text {
                 Layout.fillWidth: true

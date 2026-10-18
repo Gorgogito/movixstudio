@@ -3,6 +3,11 @@ qt_add_executable(MovixStudio WIN32
     LanguageManager.h LanguageManager.cpp
     PlayerForeign.h
     VideoView.h VideoView.cpp
+    ThumbnailProvider.h ThumbnailProvider.cpp
+    Waveform.h Waveform.cpp
+    TimelineModels.h TimelineModels.cpp
+    ProjectController.h ProjectController.cpp
+    ExportController.h ExportController.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
 target_compile_definitions(MovixStudio PRIVATE MOVIX_VERSION="${PROJECT_VERSION}")
@@ -13,44 +18,46 @@ endif()
 
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+set(MOVIX_ICONS
+    logo play pause step-back step-forward skip-start skip-end volume volume-mute folder-open
+    scissors trash undo redo magnet plus eye eye-off lock lock-open zoom-in zoom-out fit film music
+    export import settings save)
+list(TRANSFORM MOVIX_ICONS PREPEND "icons/")
+list(TRANSFORM MOVIX_ICONS APPEND ".svg")
+
 qt_add_qml_module(MovixStudio
     URI MovixStudio
     VERSION 1.0
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
-        qml/TransportBar.qml
-        qml/InfoPanel.qml
-        qml/IconButton.qml
-        qml/InfoRow.qml
-        qml/MxSlider.qml
         qml/Format.js
+        qml/IconButton.qml
+        qml/MxSlider.qml
+        qml/InfoRow.qml
+        qml/Banner.qml
+        qml/TransportBar.qml
+        qml/ViewerPanel.qml
+        qml/MediaBin.qml
+        qml/Inspector.qml
+        qml/Timeline.qml
+        qml/TimeRuler.qml
+        qml/TrackHeader.qml
+        qml/TimelineClip.qml
+        qml/ExportDialog.qml
+        qml/ProjectSettingsDialog.qml
     RESOURCES
-        icons/logo.svg
-        icons/play.svg
-        icons/pause.svg
-        icons/step-back.svg
-        icons/step-forward.svg
-        icons/skip-start.svg
-        icons/skip-end.svg
-        icons/volume.svg
-        icons/volume-mute.svg
-        icons/folder-open.svg
+        ${MOVIX_ICONS}
 )
 
-qt_add_shaders(MovixStudio "video_shaders"
-    PREFIX "/"
-    FILES
-        shaders/video.vert
-        shaders/video_nv12.frag
-)
-
-target_link_libraries(MovixStudio PRIVATE movix_playback Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(MovixStudio PRIVATE
+    movix_core movix_engine movix_render movix_export movix_playback
+    Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2)
 
 # Español = idioma fuente (cadenas del código); inglés = traducción.
 qt_add_translations(MovixStudio
     TS_FILES ${PROJECT_SOURCE_DIR}/i18n/movixstudio_en.ts
-    SOURCE_TARGETS MovixStudio movix_playback
+    SOURCE_TARGETS MovixStudio movix_playback movix_core movix_export movix_render
     RESOURCE_PREFIX /i18n
     LUPDATE_OPTIONS -no-obsolete -locations none
 )

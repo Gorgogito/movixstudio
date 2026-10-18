@@ -8,6 +8,8 @@ add_library(movix_media STATIC
     ColorMatrix.h ColorMatrix.cpp
     VideoDecoder.h VideoDecoder.cpp
     AudioDecoder.h AudioDecoder.cpp
+    Encoder.h Encoder.cpp
+    FrameConvert.h FrameConvert.cpp
 )
 
 target_include_directories(movix_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

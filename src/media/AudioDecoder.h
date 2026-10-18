@@ -45,6 +45,7 @@ private:
     bool decodeFrame();                       // deja un frame en m_frame; false en EOF
     void appendOutput(AudioChunk& chunk, const float* data, int frames);
 
+    std::string m_path;
     FormatContextPtr m_format;
     CodecContextPtr m_codec;
     PacketPtr m_packet;

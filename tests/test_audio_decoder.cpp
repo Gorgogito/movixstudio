@@ -60,7 +60,7 @@ TEST_CASE("Búsqueda de audio exacta a la muestra", "[audio][seek]")
     double maxDiff = 0.0;
     for (int i = 0; i < 200; ++i)
         maxDiff = std::max(maxDiff, double(std::fabs(c.samples[i] - all[offset + i])));
-    CHECK(maxDiff < 0.02); // el remuestreador arranca en frío: diferencia mínima
+    CHECK(maxDiff < 1e-3); // con pre-roll, solo la fase del remuestreo 44,1→48 kHz
 }
 
 TEST_CASE("Audio de Opus, FLAC y AAC", "[audio]")

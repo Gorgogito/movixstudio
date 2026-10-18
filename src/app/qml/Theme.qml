@@ -17,6 +17,18 @@ QtObject {
     readonly property color accentPressed: "#6555F0"
     readonly property color danger: "#FF5C6C"
     readonly property color dangerSurface: "#3A1A20"
+    readonly property color noticeSurface: "#1E2440"
+
+    // Línea de tiempo
+    readonly property color trackVideo: "#141823"
+    readonly property color trackAudio: "#121A18"
+    readonly property color clipVideo: "#4B57C9"
+    readonly property color clipVideoDark: "#343E99"
+    readonly property color clipAudio: "#1E8A68"
+    readonly property color clipAudioDark: "#166650"
+    readonly property color clipSelected: "#FFC266"
+    readonly property color playhead: "#FF5C8A"
+    readonly property color snapGuide: "#FFC266"
 
     readonly property int radius: 6
     readonly property int spacing: 8

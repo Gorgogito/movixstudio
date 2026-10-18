@@ -11,10 +11,21 @@ add_executable(movix_tests
     test_video_decoder.cpp
     test_audio_decoder.cpp
     test_av_sync.cpp
-    test_player.cpp
+    test_core_edits.cpp
+    test_core_history.cpp
+    test_core_file.cpp
+    test_engine.cpp
+    test_render.cpp
+    test_export.cpp
+    test_timeline_player.cpp
+    test_models.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
-target_link_libraries(movix_tests PRIVATE movix_media movix_playback Qt6::Test Catch2::Catch2 $<$<PLATFORM_ID:Windows>:winmm>)
+target_link_libraries(movix_tests PRIVATE movix_media movix_core movix_engine movix_render movix_export movix_playback Qt6::Test Catch2::Catch2 $<$<PLATFORM_ID:Windows>:winmm>)
+target_include_directories(movix_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(movix_tests PRIVATE Qt6::Quick)
 target_compile_definitions(movix_tests PRIVATE MOVIX_TEST_MEDIA_DIR="${MOVIX_TEST_MEDIA_DIR}")
 
 # Las DLL de FFmpeg junto al ejecutable de pruebas.

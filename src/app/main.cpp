@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "LanguageManager.h"
+#include "ThumbnailProvider.h"
 
 #include <QCommandLineParser>
 #include <QDir>
@@ -27,6 +28,7 @@ int main(int argc, char* argv[])
     av_log_set_level(AV_LOG_ERROR);
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("thumbs"), new ThumbnailProvider); // el motor toma la propiedad
     LanguageManager language(&engine);
     LanguageManager::setInstance(&language);
     language.loadSaved();
@@ -34,7 +36,7 @@ int main(int argc, char* argv[])
     QCommandLineParser parser;
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument(QStringLiteral("archivo"), QStringLiteral("Medio que se abrirá al iniciar."));
+    parser.addPositionalArgument(QStringLiteral("archivo"), QStringLiteral("Proyecto (.mxproj) o medio que se abrirá al iniciar."));
     parser.process(app);
 
     QVariantMap initial;

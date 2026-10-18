@@ -68,6 +68,7 @@ bool AudioDecoder::open(const std::string& path, int outSampleRate, int outChann
         m_duration = m_format->duration == AV_NOPTS_VALUE ? 0 : m_format->duration;
     m_outRate = outSampleRate;
     m_outChannels = outChannels;
+    m_path = path;
     m_packet.reset(av_packet_alloc());
     m_frame.reset(av_frame_alloc());
     return true;
@@ -210,7 +211,20 @@ bool AudioDecoder::seek(TimeUs t)
         return false;
     if (t < 0)
         t = 0;
-    const int64_t ts = usToStream(t, m_timeBase, m_origin);
+    // Pre-roll: se empieza a decodificar un poco antes y se descarta hasta `t`, para que los
+    // códecs con solapamiento (AAC, Opus) y el remuestreador lleguen a `t` con su historial completo.
+    constexpr TimeUs kPreroll = 100'000;
+    if (t < kPreroll) {
+        // Cerca del inicio no hay margen para el pre-roll, y tras vaciar el decodificador se
+        // perdería el tratamiento del "priming" inicial (las primeras muestras de un AAC).
+        // Reabrir equivale exactamente a leer desde el principio.
+        const std::string path = m_path;
+        if (!open(path, m_outRate, m_outChannels))
+            return false;
+        m_trimUntil = t;
+        return true;
+    }
+    const int64_t ts = usToStream(std::max<TimeUs>(0, t - kPreroll), m_timeBase, m_origin);
     if (av_seek_frame(m_format.get(), m_streamIndex, ts, AVSEEK_FLAG_BACKWARD) < 0
         && avformat_seek_file(m_format.get(), m_streamIndex, INT64_MIN, ts, ts, 0) < 0)
         return false;

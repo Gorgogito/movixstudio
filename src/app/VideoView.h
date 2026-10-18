@@ -1,24 +1,23 @@
 #pragma once
 
-#include "playback/Player.h"
+#include "playback/TimelinePlayer.h"
 
 #include <QPointer>
 #include <QQuickRhiItem>
 #include <QtQml/qqmlregistration.h>
 
-// Visor de video: muestra en la GPU (Qt RHI: Direct3D 11/12, Vulkan, Metal u OpenGL) el
-// fotograma que el reproductor indica para cada refresco de pantalla, ajustado al área
-// visible con su relación de aspecto.
+// Visor: muestra en la GPU (Qt RHI) el lienzo del proyecto con el fotograma compuesto que el
+// reproductor indica para cada refresco de pantalla.
 class VideoView : public QQuickRhiItem {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(movix::playback::Player* player READ player WRITE setPlayer NOTIFY playerChanged)
+    Q_PROPERTY(movix::playback::TimelinePlayer* player READ player WRITE setPlayer NOTIFY playerChanged)
 
 public:
     explicit VideoView(QQuickItem* parent = nullptr);
 
-    movix::playback::Player* player() const { return m_player; }
-    void setPlayer(movix::playback::Player* player);
+    movix::playback::TimelinePlayer* player() const { return m_player; }
+    void setPlayer(movix::playback::TimelinePlayer* player);
 
 signals:
     void playerChanged();
@@ -31,6 +30,6 @@ private:
     friend class VideoRenderer;
     void onAfterAnimating();
 
-    QPointer<movix::playback::Player> m_player;
+    QPointer<movix::playback::TimelinePlayer> m_player;
     QMetaObject::Connection m_animatingConnection;
 };
