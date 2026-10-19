@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Project.h"
+#include "color/ColorMath.h"
 #include "core/Timeline.h"
 #include "engine/AudioReader.h"
 #include "engine/VideoReader.h"
@@ -21,6 +22,18 @@ struct LayerFrame {
     core::LayerTransform transform;
     double opacity = 1.0;
     core::CropRect crop;
+    std::shared_ptr<const color::Lut3D> lut; // corrección de color (nullptr = ninguna)
+    core::ChromaKey chromaKey;
+    // Una sola máscara geométrica se calcula en el shader (`masks`); varias, o alguna de forma
+    // libre, se rasterizan en `maskImage`.
+    std::vector<core::LayerMask> masks;
+    std::shared_ptr<const struct MaskImage> maskImage;
+    // Clip compuesto: en lugar de `frame`, las capas de su secuencia (se componen en una textura).
+    std::shared_ptr<const struct FrameBundle> nested;
+    // La corrección incluye una transformación de entrada (OCIO) que ya lleva la señal a la del
+    // proyecto: el compositor no debe convertirla.
+    bool rawSignal = false;
+    core::BlendMode blend = core::BlendMode::Normal;
 };
 
 // Todo lo necesario para dibujar un fotograma de la línea de tiempo.
@@ -29,7 +42,26 @@ struct FrameBundle {
     TimeUs time = 0;
     int canvasWidth = 1920;
     int canvasHeight = 1080;
+    core::ColorMode colorMode = core::ColorMode::SDR; // señal de trabajo (SDR, PQ o HLG)
     std::vector<LayerFrame> layers; // de abajo arriba
+};
+
+// Alfa de las máscaras de una capa, ya combinadas (8 bits, filas de arriba abajo).
+struct MaskImage {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> alpha;
+};
+
+// ¿Hace falta rasterizar las máscaras (varias, o alguna de forma libre)?
+bool masksNeedRaster(const std::vector<core::LayerMask>& masks);
+
+// Rasteriza las máscaras de una capa (en coordenadas de la capa) a una imagen de width × height.
+// La implementa la biblioteca de render (QPainter).
+class MaskRenderer {
+public:
+    virtual ~MaskRenderer() = default;
+    virtual std::shared_ptr<const MaskImage> render(const std::vector<core::LayerMask>& masks, int width, int height) = 0;
 };
 
 // Genera la imagen de un título (RGBA del tamaño del lienzo). La implementa la biblioteca de
@@ -48,6 +80,7 @@ public:
     explicit VideoSources(bool hardware = true, size_t maxOpen = 12) : m_hardware(hardware), m_maxOpen(maxOpen) {}
 
     void setTitleRenderer(std::shared_ptr<TitleRenderer> renderer) { m_titles = std::move(renderer); }
+    void setMaskRenderer(std::shared_ptr<MaskRenderer> renderer) { m_maskRenderer = std::move(renderer); }
     std::shared_ptr<const media::VideoFrame> frame(const core::VideoLayer& layer, int canvasWidth, int canvasHeight);
     FrameBundle build(const core::Project& project, core::FramePos frame);
     void clear();
@@ -56,6 +89,9 @@ public:
 private:
     std::shared_ptr<const media::VideoFrame> still(const std::string& path);
     std::shared_ptr<const media::VideoFrame> title(const core::TitleStyle& style, int w, int h);
+    std::shared_ptr<const color::Lut3D> lut(const core::ColorGrade& grade);
+    std::shared_ptr<const MaskImage> maskImage(const std::vector<core::LayerMask>& masks, int layerWidth, int layerHeight);
+    void buildLayers(const std::vector<core::VideoLayer>& layers, FrameBundle& bundle);
 
     struct Entry {
         std::unique_ptr<VideoReader> reader;
@@ -66,7 +102,7 @@ private:
     bool m_hardware;
     size_t m_maxOpen;
     uint64_t m_tick = 0;
-    std::unordered_map<core::Id, Entry> m_readers;
+    std::unordered_map<std::uint64_t, Entry> m_readers; // por aparición del clip (VideoLayer::instance)
     std::unordered_map<std::string, std::shared_ptr<const media::VideoFrame>> m_stills;
     struct CachedTitle {
         core::TitleStyle style;
@@ -75,6 +111,20 @@ private:
     };
     std::vector<CachedTitle> m_titleCache; // pocos títulos: búsqueda lineal
     std::shared_ptr<TitleRenderer> m_titles;
+    struct CachedLut {
+        core::ColorGrade grade;
+        std::shared_ptr<const color::Lut3D> lut;
+    };
+    std::vector<CachedLut> m_lutCache; // por corrección (pocas distintas a la vez)
+    std::unordered_map<std::string, std::shared_ptr<const color::CubeLut>> m_cubeFiles;
+    std::shared_ptr<MaskRenderer> m_maskRenderer;
+    core::ColorMode m_colorMode = core::ColorMode::SDR; // las LUT con OCIO dependen de él
+    struct CachedMask {
+        std::vector<core::LayerMask> masks;
+        int width = 0, height = 0;
+        std::shared_ptr<const MaskImage> image;
+    };
+    std::vector<CachedMask> m_maskCache;
 };
 
 // Mezclador de audio de la línea de tiempo: suma todos los tramos que suenan en un intervalo.
@@ -106,7 +156,7 @@ private:
     int m_channels;
     size_t m_maxOpen;
     uint64_t m_tick = 0;
-    std::unordered_map<core::Id, Entry> m_readers;
+    std::unordered_map<std::uint64_t, Entry> m_readers;
 };
 
 // Decodifica una imagen fija a RGBA (conserva la transparencia de PNG/WebP).

@@ -23,6 +23,7 @@ Item {
     required property real gain
     required property bool selected
     required property bool isTitle
+    required property bool isCompound
     required property bool isStill
     required property real speed
     required property var transitionFrames
@@ -67,7 +68,8 @@ Item {
         anchors.fill: parent
         radius: 4
         clip: true
-        color: clipItem.isTitle ? Theme.clipTitle : clipItem.kind === "video" ? Theme.clipVideoDark : Theme.clipAudioDark
+        color: clipItem.isCompound ? Theme.clipCompound : clipItem.isTitle ? Theme.clipTitle
+                                   : clipItem.kind === "video" ? Theme.clipVideoDark : Theme.clipAudioDark
         opacity: clipItem.clipEnabled ? 1 : 0.45
         border.width: clipItem.selected ? 2 : 1
         border.color: clipItem.selected ? Theme.clipSelected : Qt.lighter(color, 1.35)
@@ -75,7 +77,7 @@ Item {
         // Tira de miniaturas (clips de video).
         Item {
             id: filmstrip
-            visible: clipItem.kind === "video" && clipItem.hasVideo && !clipItem.isTitle
+            visible: clipItem.kind === "video" && clipItem.hasVideo && !clipItem.isTitle && !clipItem.isCompound
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
@@ -168,7 +170,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 x: 4
                 width: parent.width - 8
-                text: (clipItem.isTitle ? "T  " : "") + clipItem.name
+                text: (clipItem.isTitle ? "T  " : clipItem.isCompound ? "▣  " : "") + clipItem.name
                       + (clipItem.speed !== 1 ? "  ·  " + clipItem.speed.toLocaleString(Qt.locale(), "f", 2).replace(/,?0+$/, "") + "×" : "")
                       + (clipItem.gain >= 0 && clipItem.gain !== 1 ? "  ·  " + Math.round(clipItem.gain * 100) + " %" : "")
                 color: "white"
@@ -237,7 +239,9 @@ Item {
         }
         onReleased: moved ? clipItem.owner.commitDrag() : clipItem.owner.cancelDrag()
         onCanceled: clipItem.owner.cancelDrag()
-        onDoubleClicked: clipItem.owner.player.seekFrame(clipItem.start)
+        // Doble clic: en un compuesto, abre su secuencia; en los demás, lleva el cabezal al inicio.
+        onDoubleClicked: clipItem.isCompound ? clipItem.owner.project.openCompound(clipItem.clipId)
+                                             : clipItem.owner.player.seekFrame(clipItem.start)
     }
 
     // --- Recortar ---
@@ -322,6 +326,22 @@ Item {
                     onTriggered: clipItem.owner.project.setClipSpeed(clipItem.clipId, modelData)
                 }
             }
+        }
+        MenuItem {
+            text: qsTr("Crear clip compuesto") + "\tCtrl+G"
+            onTriggered: clipItem.owner.project.createCompound()
+        }
+        MenuItem {
+            visible: clipItem.isCompound
+            height: visible ? implicitHeight : 0
+            text: qsTr("Abrir clip compuesto")
+            onTriggered: clipItem.owner.project.openCompound(clipItem.clipId)
+        }
+        MenuItem {
+            visible: clipItem.isCompound
+            height: visible ? implicitHeight : 0
+            text: qsTr("Deshacer clip compuesto") + "\tCtrl+Mayús+G"
+            onTriggered: clipItem.owner.project.breakCompound(clipItem.clipId)
         }
         MenuItem {
             text: qsTr("Separar audio")

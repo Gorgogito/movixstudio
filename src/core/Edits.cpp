@@ -7,6 +7,8 @@
 
 namespace movix::core::edit {
 
+bool sequenceContains(const Project& p, Id sequence, Id target);
+
 namespace {
 
 constexpr TimeUs kDefaultStillDuration = 5 * kUsPerSecond;
@@ -25,8 +27,23 @@ void insertSorted(Track& t, Clip clip)
 
 void forEachAnimated(Clip& c, const auto& fn)
 {
-    for (Animated* a : {&c.transform.x, &c.transform.y, &c.transform.scale, &c.transform.rotation, &c.transform.opacity, &c.volume})
+    Transform& t = c.transform;
+    for (Animated* a : {&t.x, &t.y, &t.scale, &t.rotation, &t.opacity, &t.cropLeft, &t.cropTop, &t.cropRight, &t.cropBottom, &c.volume})
         fn(*a);
+    for (Mask& m : c.masks)
+        for (Animated* a : {&m.x, &m.y, &m.width, &m.height, &m.rotation, &m.feather})
+            fn(*a);
+}
+
+// Fotograma (relativo al clip) de cada keyframe del clip: propiedades y corrección de color.
+void forEachKeyFrame(Clip& c, const auto& fn)
+{
+    forEachAnimated(c, [&](Animated& a) {
+        for (Keyframe& k : a.keys)
+            fn(k.frame);
+    });
+    for (GradeKey& k : c.color.keys)
+        fn(k.frame);
 }
 
 // Desplaza los keyframes cuando cambia el inicio del clip, para que sigan en el mismo instante.
@@ -34,10 +51,7 @@ void shiftKeys(Clip& c, FramePos delta)
 {
     if (delta == 0)
         return;
-    forEachAnimated(c, [&](Animated& a) {
-        for (Keyframe& k : a.keys)
-            k.frame += delta;
-    });
+    forEachKeyFrame(c, [&](std::int64_t& f) { f += delta; });
 }
 
 // Instante del medio tras avanzar `frames` fotogramas desde el inicio del clip.
@@ -135,13 +149,62 @@ void clampValue(Property prop, double& v)
     case Property::Volume: v = std::clamp(v, 0.0, 4.0); break;
     case Property::PositionX:
     case Property::PositionY: v = std::clamp(v, -5.0, 5.0); break;
-    case Property::Rotation: v = std::clamp(v, -3600.0, 3600.0); break;
+    case Property::Rotation:
+    case Property::MaskRotation: v = std::clamp(v, -3600.0, 3600.0); break;
+    case Property::CropLeft:
+    case Property::CropTop:
+    case Property::CropRight:
+    case Property::CropBottom: v = std::clamp(v, 0.0, 0.99); break;
+    case Property::MaskX:
+    case Property::MaskY: v = std::clamp(v, -2.0, 3.0); break;
+    case Property::MaskWidth:
+    case Property::MaskHeight: v = std::clamp(v, 0.0, 4.0); break;
+    case Property::MaskFeather: v = std::clamp(v, 0.0, 1.0); break;
     }
 }
 
 double defaultValue(Property prop)
 {
-    return (prop == Property::Scale || prop == Property::Opacity || prop == Property::Volume) ? 1.0 : 0.0;
+    switch (prop) {
+    case Property::Scale:
+    case Property::Opacity:
+    case Property::Volume: return 1.0;
+    case Property::MaskX:
+    case Property::MaskY: return 0.5;
+    case Property::MaskWidth:
+    case Property::MaskHeight: return 0.6;
+    case Property::MaskFeather: return 0.02;
+    default: return 0.0;
+    }
+}
+
+bool isEditableVideoClip(Project& p, Id clipId, Clip*& clip)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->kind != TrackKind::Video || loc.track->locked)
+        return false;
+    clip = loc.clip();
+    return true;
+}
+
+// Curva sin efecto (vacía, o solo la diagonal) → vacía; si no, ordenada y dentro de 0..1.
+void sanitizeCurve(std::vector<CurvePoint>& curve)
+{
+    for (CurvePoint& pt : curve) {
+        pt.x = std::clamp(pt.x, 0.0, 1.0);
+        pt.y = std::clamp(pt.y, 0.0, 1.0);
+    }
+    std::stable_sort(curve.begin(), curve.end(), [](const CurvePoint& a, const CurvePoint& b) { return a.x < b.x; });
+    curve.erase(std::unique(curve.begin(), curve.end(), [](const CurvePoint& a, const CurvePoint& b) { return std::abs(a.x - b.x) < 1e-4; }),
+                curve.end());
+    if (std::all_of(curve.begin(), curve.end(), [](const CurvePoint& pt) { return std::abs(pt.x - pt.y) < 1e-6; }))
+        curve.clear();
+}
+
+void sanitizeWheel(ColorWheel& w)
+{
+    for (double* v : {&w.r, &w.g, &w.b, &w.master})
+        *v = std::clamp(*v, -1.0, 1.0);
 }
 
 } // namespace
@@ -158,10 +221,30 @@ const Clip* clipAt(const Track& track, FramePos f)
 
 void normalize(Project& p)
 {
-    for (auto* list : {&p.videoTracks, &p.audioTracks}) {
-        for (auto& t : *list) {
+    // Secuencias en uso: la principal, la activa, las del camino y las que contienen sus compuestos.
+    std::set<Id> used;
+    std::vector<Id> pending{p.mainSequence, p.activeSequence};
+    pending.insert(pending.end(), p.sequencePath.begin(), p.sequencePath.end());
+    while (!pending.empty()) {
+        const Id seq = pending.back();
+        pending.pop_back();
+        if (seq == kNoId || !used.insert(seq).second)
+            continue;
+        for (const auto* list : {p.videoTracksOf(seq), p.audioTracksOf(seq)})
+            if (list)
+                for (const Track& t : *list)
+                    for (const Clip& c : t.clips)
+                        if (c.isCompound())
+                            pending.push_back(c.sequenceId);
+    }
+    std::erase_if(p.sequences, [&](const Sequence& seq) { return !used.contains(seq.id); });
+
+    p.forEachTrack([&](Track& t) {
+        {
             for (size_t i = 0; i < t.clips.size(); ++i) {
                 Clip& c = t.clips[i];
+                if (c.isCompound()) // la secuencia pudo acortarse mientras se editaba
+                    c.duration = std::clamp<FramePos>(maxClipFrames(p, c), 1, c.duration);
                 clampFades(c);
                 if (!c.transitionIn.active()) {
                     c.transitionIn = {};
@@ -175,7 +258,212 @@ void normalize(Project& p)
                 c.transitionIn.duration = std::min({c.transitionIn.duration, prev->duration, c.duration});
             }
         }
+    });
+}
+
+bool sequenceContains(const Project& p, Id sequence, Id target)
+{
+    if (sequence == target)
+        return true;
+    for (const auto* list : {p.videoTracksOf(sequence), p.audioTracksOf(sequence)})
+        if (list)
+            for (const Track& t : *list)
+                for (const Clip& c : t.clips)
+                    if (c.isCompound() && sequenceContains(p, c.sequenceId, target))
+                        return true;
+    return false;
+}
+
+// --- Clips compuestos ---
+
+namespace {
+
+Track newTrack(Project& p, TrackKind kind, int number)
+{
+    Track t;
+    t.id = p.newId();
+    t.kind = kind;
+    t.name = (kind == TrackKind::Video ? "V" : "A") + std::to_string(number);
+    return t;
+}
+
+bool rangeFree(const Track& t, FramePos a, FramePos b)
+{
+    return std::none_of(t.clips.begin(), t.clips.end(), [&](const Clip& c) { return c.start < b && c.end() > a; });
+}
+
+} // namespace
+
+Id createCompound(Project& p, const std::vector<Id>& clipIds, const std::string& name)
+{
+    struct Pick {
+        TrackKind kind;
+        size_t track;
+        Clip clip;
+    };
+    std::vector<Pick> picks;
+    for (TrackKind kind : {TrackKind::Video, TrackKind::Audio}) {
+        auto& tracks = p.tracksOf(kind);
+        for (size_t ti = 0; ti < tracks.size(); ++ti)
+            for (const Clip& c : tracks[ti].clips)
+                if (std::find(clipIds.begin(), clipIds.end(), c.id) != clipIds.end()) {
+                    if (tracks[ti].locked)
+                        return kNoId;
+                    picks.push_back({kind, ti, c});
+                }
     }
+    if (picks.empty())
+        return kNoId;
+    FramePos from = INT64_MAX, to = 0;
+    size_t minIndex[2] = {SIZE_MAX, SIZE_MAX}, maxIndex[2] = {0, 0};
+    for (const Pick& pk : picks) {
+        from = std::min(from, pk.clip.start);
+        to = std::max(to, pk.clip.end());
+        const int k = pk.kind == TrackKind::Video ? 0 : 1;
+        minIndex[k] = std::min(minIndex[k], pk.track);
+        maxIndex[k] = std::max(maxIndex[k], pk.track);
+    }
+    const bool hasVideo = minIndex[0] != SIZE_MAX;
+    const bool hasAudio = minIndex[1] != SIZE_MAX;
+
+    // La secuencia nueva conserva las distancias y el orden de las pistas (siempre con al menos
+    // una pista de cada tipo, para poder seguir editándola).
+    Sequence seq;
+    seq.id = p.newId();
+    seq.name = name;
+    const size_t videoCount = hasVideo ? maxIndex[0] - minIndex[0] + 1 : 1;
+    const size_t audioCount = hasAudio ? maxIndex[1] - minIndex[1] + 1 : 1;
+    for (size_t i = 0; i < videoCount; ++i)
+        seq.videoTracks.push_back(newTrack(p, TrackKind::Video, int(i) + 1));
+    for (size_t i = 0; i < audioCount; ++i)
+        seq.audioTracks.push_back(newTrack(p, TrackKind::Audio, int(i) + 1));
+    for (Pick& pk : picks) {
+        const int k = pk.kind == TrackKind::Video ? 0 : 1;
+        Clip c = pk.clip;
+        c.start -= from;
+        auto& list = pk.kind == TrackKind::Video ? seq.videoTracks : seq.audioTracks;
+        insertSorted(list[pk.track - minIndex[k]], std::move(c));
+        auto& source = p.tracksOf(pk.kind)[pk.track].clips;
+        std::erase_if(source, [&](const Clip& x) { return x.id == pk.clip.id; });
+    }
+
+    Clip compound;
+    compound.id = p.newId();
+    compound.sequenceId = seq.id;
+    compound.start = from;
+    compound.duration = to - from;
+    const TrackKind kind = hasVideo ? TrackKind::Video : TrackKind::Audio;
+    const size_t index = hasVideo ? minIndex[0] : minIndex[1];
+    Track* target = &p.tracksOf(kind)[index];
+    if (!rangeFree(*target, from, to)) // ocupado por clips que no se eligieron: pista nueva
+        target = p.findTrack(addTrack(p, kind));
+    const Id id = compound.id;
+    p.sequences.push_back(std::move(seq));
+    insertSorted(*target, std::move(compound));
+    normalize(p);
+    return id;
+}
+
+std::vector<Id> breakCompound(Project& p, Id clipId)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->locked)
+        return {};
+    const Clip comp = *loc.clip();
+    if (!comp.isCompound() || comp.speed != 1.0)
+        return {};
+    const auto* nv = p.videoTracksOf(comp.sequenceId);
+    const auto* na = p.audioTracksOf(comp.sequenceId);
+    if (!nv || !na)
+        return {};
+    const std::vector<Track> nestedVideo = *nv, nestedAudio = *na; // copias: el proyecto cambia abajo
+    const TrackKind kind = loc.track->kind;
+    const size_t base = size_t(std::distance(p.tracksOf(kind).data(), loc.track));
+    loc.track->clips.erase(loc.track->clips.begin() + std::ptrdiff_t(loc.index));
+
+    const FramePos a = p.settings.timeToFrame(comp.sourceIn);
+    const FramePos b = a + comp.duration;
+    const FramePos offset = comp.start - a;
+    std::vector<Id> created;
+    auto place = [&](const std::vector<Track>& nested, TrackKind k, size_t first) {
+        for (size_t ti = 0; ti < nested.size(); ++ti) {
+            for (const Clip& c : nested[ti].clips) {
+                if (c.end() <= a || c.start >= b)
+                    continue;
+                Clip piece = c;
+                if (piece.start < a)
+                    piece = rightPart(p, piece, a, piece.id);
+                if (piece.end() > b)
+                    piece = leftPart(piece, b);
+                piece.id = p.newId(); // la secuencia original se conserva (deshacer)
+                piece.start += offset;
+                while (p.tracksOf(k).size() <= first + ti)
+                    addTrack(p, k);
+                Track& t = p.tracksOf(k)[first + ti];
+                created.push_back(placePrepared(p, t, std::move(piece), PlaceMode::Overwrite));
+            }
+        }
+    };
+    // Las pistas de video del compuesto empiezan en la suya; las de audio, en A1 (o en la suya si
+    // el compuesto estaba en una pista de audio).
+    place(nestedVideo, TrackKind::Video, kind == TrackKind::Video ? base : 0);
+    place(nestedAudio, TrackKind::Audio, kind == TrackKind::Audio ? base : 0);
+    normalize(p);
+    return created;
+}
+
+bool openSequence(Project& p, Id sequence)
+{
+    if (sequence == p.activeSequence)
+        return false;
+    auto it = std::find_if(p.sequences.begin(), p.sequences.end(), [&](const Sequence& s) { return s.id == sequence; });
+    if (it == p.sequences.end())
+        return false;
+    Sequence target = std::move(*it);
+    p.sequences.erase(it);
+    Sequence current{p.activeSequence, p.activeName, std::move(p.videoTracks), std::move(p.audioTracks)};
+    // Volver a una secuencia del camino lo recorta; abrir otra nueva lo alarga.
+    auto back = std::find(p.sequencePath.begin(), p.sequencePath.end(), sequence);
+    if (back != p.sequencePath.end())
+        p.sequencePath.erase(back, p.sequencePath.end());
+    else
+        p.sequencePath.push_back(current.id);
+    p.sequences.push_back(std::move(current));
+    p.videoTracks = std::move(target.videoTracks);
+    p.audioTracks = std::move(target.audioTracks);
+    p.activeSequence = target.id;
+    p.activeName = std::move(target.name);
+    normalize(p);
+    return true;
+}
+
+bool closeSequence(Project& p)
+{
+    return !p.sequencePath.empty() && openSequence(p, p.sequencePath.back());
+}
+
+bool renameSequence(Project& p, Id sequence, const std::string& name)
+{
+    if (sequence == p.activeSequence) {
+        if (p.activeName == name)
+            return false;
+        p.activeName = name;
+        return true;
+    }
+    for (Sequence& seq : p.sequences)
+        if (seq.id == sequence && seq.name != name) {
+            seq.name = name;
+            return true;
+        }
+    return false;
+}
+
+bool setColorMode(Project& p, ColorMode mode)
+{
+    if (p.settings.colorMode == mode)
+        return false;
+    p.settings.colorMode = mode;
+    return true;
 }
 
 // --- Medios ---
@@ -193,9 +481,7 @@ bool removeMedia(Project& p, Id mediaId)
     if (it == p.media.end())
         return false;
     p.media.erase(it);
-    for (auto* list : {&p.videoTracks, &p.audioTracks})
-        for (auto& t : *list)
-            std::erase_if(t.clips, [&](const Clip& c) { return !c.title && c.mediaId == mediaId; });
+    p.forEachTrack([&](Track& t) { std::erase_if(t.clips, [&](const Clip& c) { return !c.isGenerated() && c.mediaId == mediaId; }); });
     normalize(p);
     return true;
 }
@@ -217,10 +503,7 @@ bool setFrameRate(Project& p, Rational rate)
                 const FramePos end = convert(c.end());
                 // Duraciones y keyframes (relativos al clip) se convierten igual que las posiciones.
                 auto rel = [&](FramePos r) { return convert(c.start + r) - start; };
-                forEachAnimated(c, [&](Animated& a) {
-                    for (Keyframe& k : a.keys)
-                        k.frame = rel(k.frame);
-                });
+                forEachKeyFrame(c, [&](std::int64_t& f) { f = rel(f); });
                 c.fadeIn = rel(c.fadeIn);
                 c.fadeOut = c.fadeOut ? end - convert(c.end() - c.fadeOut) : 0;
                 c.audioFadeIn = rel(c.audioFadeIn);
@@ -352,6 +635,10 @@ FramePos maxClipFrames(const Project& p, const Clip& c)
 {
     if (c.title)
         return p.settings.framesIn(kUnlimitedDuration);
+    if (c.isCompound()) {
+        const TimeUs remaining = p.settings.frameToTime(p.sequenceDuration(c.sequenceId)) - c.sourceIn;
+        return p.settings.framesIn(c.speed == 1.0 ? remaining : TimeUs(double(remaining) / c.speed));
+    }
     const MediaItem* m = p.findMedia(c.mediaId);
     return m ? availableFrames(p, *m, c.sourceIn, c.speed) : c.duration;
 }
@@ -448,8 +735,8 @@ std::optional<FramePos> trimClip(Project& p, Id clipId, Edge edge, FramePos posi
     if (!loc.track || loc.track->locked)
         return std::nullopt;
     Clip& c = *loc.clip();
-    const MediaItem* m = c.title ? nullptr : p.findMedia(c.mediaId);
-    if (!c.title && !m)
+    const MediaItem* m = c.isGenerated() ? nullptr : p.findMedia(c.mediaId);
+    if (!c.isGenerated() && !m)
         return std::nullopt;
     const bool unlimited = c.title || (m && m->isStill);
     const auto& clips = loc.track->clips;
@@ -557,8 +844,9 @@ bool setClipEnabled(Project& p, Id clipId, bool enabled)
 
 // --- Propiedades animables ---
 
-Animated* property(Clip& c, Property prop)
+Animated* property(Clip& c, Property prop, int maskIndex)
 {
+    Mask* m = maskIndex >= 0 && size_t(maskIndex) < c.masks.size() ? &c.masks[size_t(maskIndex)] : nullptr;
     switch (prop) {
     case Property::PositionX: return &c.transform.x;
     case Property::PositionY: return &c.transform.y;
@@ -566,45 +854,61 @@ Animated* property(Clip& c, Property prop)
     case Property::Rotation: return &c.transform.rotation;
     case Property::Opacity: return &c.transform.opacity;
     case Property::Volume: return &c.volume;
+    case Property::CropLeft: return &c.transform.cropLeft;
+    case Property::CropTop: return &c.transform.cropTop;
+    case Property::CropRight: return &c.transform.cropRight;
+    case Property::CropBottom: return &c.transform.cropBottom;
+    case Property::MaskX: return m ? &m->x : nullptr;
+    case Property::MaskY: return m ? &m->y : nullptr;
+    case Property::MaskWidth: return m ? &m->width : nullptr;
+    case Property::MaskHeight: return m ? &m->height : nullptr;
+    case Property::MaskRotation: return m ? &m->rotation : nullptr;
+    case Property::MaskFeather: return m ? &m->feather : nullptr;
     }
     return nullptr;
 }
 
-const Animated* property(const Clip& c, Property prop)
+const Animated* property(const Clip& c, Property prop, int maskIndex)
 {
-    return property(const_cast<Clip&>(c), prop);
+    return property(const_cast<Clip&>(c), prop, maskIndex);
 }
 
-bool setProperty(Project& p, Id clipId, Property prop, FramePos rel, double value)
+bool setProperty(Project& p, Id clipId, Property prop, FramePos rel, double value, int maskIndex)
 {
     Clip* c = p.findClip(clipId);
     if (!c || p.trackOfClip(clipId)->locked)
         return false;
     clampValue(prop, value);
-    Animated* a = property(*c, prop);
+    Animated* a = property(*c, prop, maskIndex);
+    if (!a)
+        return false;
     const Animated before = *a;
     a->set(rel, value);
     return !(*a == before);
 }
 
-bool toggleKeyframe(Project& p, Id clipId, Property prop, FramePos rel)
+bool toggleKeyframe(Project& p, Id clipId, Property prop, FramePos rel, int maskIndex)
 {
     Clip* c = p.findClip(clipId);
     if (!c || p.trackOfClip(clipId)->locked)
         return false;
-    Animated* a = property(*c, prop);
+    Animated* a = property(*c, prop, maskIndex);
+    if (!a)
+        return false;
     if (a->keyAt(rel))
         return a->removeKey(rel);
     a->setKey(rel, a->at(rel));
     return true;
 }
 
-bool setKeyframeInterpolation(Project& p, Id clipId, Property prop, FramePos rel, Interpolation interp)
+bool setKeyframeInterpolation(Project& p, Id clipId, Property prop, FramePos rel, Interpolation interp, int maskIndex)
 {
     Clip* c = p.findClip(clipId);
     if (!c)
         return false;
-    Animated* a = property(*c, prop);
+    Animated* a = property(*c, prop, maskIndex);
+    if (!a)
+        return false;
     const Keyframe* k = a->keyAt(rel);
     if (!k || k->interp == interp)
         return false;
@@ -612,12 +916,14 @@ bool setKeyframeInterpolation(Project& p, Id clipId, Property prop, FramePos rel
     return true;
 }
 
-bool resetProperty(Project& p, Id clipId, Property prop)
+bool resetProperty(Project& p, Id clipId, Property prop, int maskIndex)
 {
     Clip* c = p.findClip(clipId);
     if (!c)
         return false;
-    Animated* a = property(*c, prop);
+    Animated* a = property(*c, prop, maskIndex);
+    if (!a)
+        return false;
     const Animated reset(defaultValue(prop));
     if (*a == reset)
         return false;
@@ -636,18 +942,18 @@ bool setClipSpeed(Project& p, Id clipId, double speed)
     speed = std::clamp(speed, 0.1, 16.0);
     if (c.title || std::abs(speed - c.speed) < 1e-9)
         return false;
-    const MediaItem* m = p.findMedia(c.mediaId);
-    if (!m || m->isStill)
+    const MediaItem* m = c.isCompound() ? nullptr : p.findMedia(c.mediaId);
+    if (!c.isCompound() && (!m || m->isStill))
         return false;
     const double ratio = c.speed / speed; // > 1 al ralentizar: el clip se alarga
     const auto& clips = loc.track->clips;
     const FramePos nextStart = loc.index + 1 < clips.size() ? clips[loc.index + 1].start : INT64_MAX;
     FramePos duration = std::max<FramePos>(1, std::llround(double(c.duration) * ratio));
-    duration = std::min({duration, availableFrames(p, *m, c.sourceIn, speed), nextStart - c.start});
-    forEachAnimated(c, [&](Animated& a) {
-        for (Keyframe& k : a.keys)
-            k.frame = std::llround(double(k.frame) * ratio);
-    });
+    Clip probe = c;
+    probe.speed = speed;
+    const FramePos available = m ? availableFrames(p, *m, c.sourceIn, speed) : maxClipFrames(p, probe);
+    duration = std::min({duration, available, nextStart - c.start});
+    forEachKeyFrame(c, [&](std::int64_t& f) { f = std::llround(double(f) * ratio); });
     c.speed = speed;
     c.duration = std::max<FramePos>(1, duration);
     normalize(p);
@@ -707,6 +1013,166 @@ bool setTitleStyle(Project& p, Id clipId, const TitleStyle& style)
     if (!c || !c->title || *c->title == style)
         return false;
     c->title = style;
+    return true;
+}
+
+// --- Efectos de imagen ---
+
+ColorGrade sanitized(ColorGrade g)
+{
+    g.exposure = std::clamp(g.exposure, -4.0, 4.0);
+    for (double* v : {&g.contrast, &g.saturation, &g.vibrance, &g.temperature, &g.tint, &g.highlights, &g.shadows, &g.whites, &g.blacks})
+        *v = std::clamp(*v, -1.0, 1.0);
+    sanitizeWheel(g.lift);
+    sanitizeWheel(g.gamma);
+    sanitizeWheel(g.gain);
+    for (auto* curve : {&g.curveMaster, &g.curveRed, &g.curveGreen, &g.curveBlue})
+        sanitizeCurve(*curve);
+    for (HslBand& b : g.hsl) {
+        b.hue = std::clamp(b.hue, -30.0, 30.0);
+        b.saturation = std::clamp(b.saturation, -1.0, 1.0);
+        b.luminance = std::clamp(b.luminance, -1.0, 1.0);
+    }
+    g.lutIntensity = std::clamp(g.lutIntensity, 0.0, 1.0);
+    return g;
+}
+
+bool setColorGrade(Project& p, Id clipId, const ColorGrade& grade, FramePos rel)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c))
+        return false;
+    const AnimatedGrade before = c->color;
+    c->color.set(rel, sanitized(grade));
+    return !(c->color == before);
+}
+
+bool toggleColorKeyframe(Project& p, Id clipId, FramePos rel)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c))
+        return false;
+    if (c->color.keyAt(rel))
+        return c->color.removeKey(rel);
+    c->color.setKey(rel, c->color.valueAt(rel));
+    return true;
+}
+
+bool setColorKeyInterpolation(Project& p, Id clipId, FramePos rel, Interpolation interp)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c))
+        return false;
+    const GradeKey* k = c->color.keyAt(rel);
+    if (!k || k->interp == interp)
+        return false;
+    c->color.setKey(rel, k->grade, interp);
+    return true;
+}
+
+bool setAnimatedGrade(Project& p, Id clipId, const AnimatedGrade& grade)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c))
+        return false;
+    AnimatedGrade g = grade;
+    g.value = sanitized(g.value);
+    for (GradeKey& k : g.keys)
+        k.grade = sanitized(k.grade);
+    std::sort(g.keys.begin(), g.keys.end(), [](const GradeKey& a, const GradeKey& b) { return a.frame < b.frame; });
+    if (c->color == g)
+        return false;
+    c->color = std::move(g);
+    return true;
+}
+
+bool setChromaKey(Project& p, Id clipId, const ChromaKey& key)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c))
+        return false;
+    ChromaKey k = key;
+    k.color |= 0xFF000000u;
+    k.tolerance = std::clamp(k.tolerance, 0.0, 1.0);
+    k.softness = std::clamp(k.softness, 0.0, 1.0);
+    k.spill = std::clamp(k.spill, 0.0, 1.0);
+    if (c->chromaKey == k)
+        return false;
+    c->chromaKey = k;
+    return true;
+}
+
+int addMask(Project& p, Id clipId, MaskShape shape)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || shape == MaskShape::None || c->masks.size() >= kMaxMasks)
+        return -1;
+    Mask m;
+    m.shape = shape;
+    if (shape == MaskShape::Path)
+        m.points = defaultMaskPath();
+    c->masks.push_back(m);
+    return int(c->masks.size()) - 1;
+}
+
+bool removeMask(Project& p, Id clipId, int index)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size())
+        return false;
+    c->masks.erase(c->masks.begin() + index);
+    return true;
+}
+
+bool setMaskShape(Project& p, Id clipId, int index, MaskShape shape)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size() || shape == MaskShape::None)
+        return false;
+    Mask& m = c->masks[size_t(index)];
+    if (m.shape == shape)
+        return false;
+    m.shape = shape;
+    if (shape == MaskShape::Path && m.points.size() < 3)
+        m.points = defaultMaskPath();
+    return true;
+}
+
+bool setMaskOptions(Project& p, Id clipId, int index, MaskMode mode, bool invert)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size())
+        return false;
+    Mask& m = c->masks[size_t(index)];
+    if (m.mode == mode && m.invert == invert)
+        return false;
+    m.mode = mode;
+    m.invert = invert;
+    return true;
+}
+
+bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size() || points.size() < 3
+        || points.size() > 256)
+        return false;
+    for (PathPoint& pt : points)
+        for (double* v : {&pt.x, &pt.y, &pt.inX, &pt.inY, &pt.outX, &pt.outY})
+            *v = std::clamp(*v, -4.0, 4.0);
+    Mask& m = c->masks[size_t(index)];
+    if (m.points == points)
+        return false;
+    m.points = std::move(points);
+    return true;
+}
+
+bool setBlendMode(Project& p, Id clipId, BlendMode mode)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || int(mode) < 0 || int(mode) >= kBlendModeCount || c->blend == mode)
+        return false;
+    c->blend = mode;
     return true;
 }
 
@@ -777,8 +1243,9 @@ std::vector<Id> pasteClips(Project& p, const Clipboard& cb, FramePos at)
 {
     std::vector<Id> created;
     for (const Clipboard::Item& item : cb.items) {
-        if (!item.clip.title && !p.findMedia(item.clip.mediaId))
-            continue; // el medio ya no está en el proyecto
+        if (item.clip.isCompound() ? !p.videoTracksOf(item.clip.sequenceId) || sequenceContains(p, item.clip.sequenceId, p.activeSequence)
+                                   : !item.clip.title && !p.findMedia(item.clip.mediaId))
+            continue; // el medio ya no está, o el compuesto contendría la secuencia en la que se pega
         auto& list = p.tracksOf(item.kind);
         while (int(list.size()) <= item.trackIndex)
             addTrack(p, item.kind);

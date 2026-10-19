@@ -19,6 +19,7 @@ bool removeMedia(Project& p, Id mediaId);        // elimina también sus clips
 // su instante (redondeado al fotograma más cercano de la nueva velocidad).
 bool setFrameRate(Project& p, Rational rate);
 bool setResolution(Project& p, int width, int height);
+bool setColorMode(Project& p, ColorMode mode);
 // Velocidad de fotogramas exacta para un valor decimal (29,97 → 30000/1001...).
 Rational guessFrameRate(double fps);
 // Si la línea de tiempo está vacía, ajusta resolución y velocidad del proyecto a las del medio.
@@ -71,17 +72,22 @@ bool deleteClips(Project& p, const std::vector<Id>& clipIds, bool ripple = false
 bool setClipEnabled(Project& p, Id clipId, bool enabled);
 
 // --- Propiedades animables ---
-enum class Property { PositionX, PositionY, Scale, Rotation, Opacity, Volume };
-Animated* property(Clip& c, Property prop);
-const Animated* property(const Clip& c, Property prop);
+enum class Property {
+    PositionX, PositionY, Scale, Rotation, Opacity, Volume,
+    CropLeft, CropTop, CropRight, CropBottom,
+    MaskX, MaskY, MaskWidth, MaskHeight, MaskRotation, MaskFeather,
+};
+// Las propiedades de máscara se refieren a la máscara `maskIndex` del clip (nullptr si no existe).
+Animated* property(Clip& c, Property prop, int maskIndex = 0);
+const Animated* property(const Clip& c, Property prop, int maskIndex = 0);
 // Fija el valor de la propiedad en el fotograma `rel` (relativo al clip): actualiza o crea el
 // keyframe si la propiedad está animada; si no, cambia su valor constante.
-bool setProperty(Project& p, Id clipId, Property prop, FramePos rel, double value);
+bool setProperty(Project& p, Id clipId, Property prop, FramePos rel, double value, int maskIndex = 0);
 // Crea un keyframe en `rel` con el valor actual o, si ya existe, lo quita.
-bool toggleKeyframe(Project& p, Id clipId, Property prop, FramePos rel);
-bool setKeyframeInterpolation(Project& p, Id clipId, Property prop, FramePos rel, Interpolation interp);
+bool toggleKeyframe(Project& p, Id clipId, Property prop, FramePos rel, int maskIndex = 0);
+bool setKeyframeInterpolation(Project& p, Id clipId, Property prop, FramePos rel, Interpolation interp, int maskIndex = 0);
 // Devuelve la propiedad a su valor por defecto y sin keyframes.
-bool resetProperty(Project& p, Id clipId, Property prop);
+bool resetProperty(Project& p, Id clipId, Property prop, int maskIndex = 0);
 
 // --- Velocidad, fundidos, transiciones, títulos ---
 // Cambia la velocidad conservando el inicio; la duración se ajusta (limitada por el medio y el clip siguiente).
@@ -91,6 +97,23 @@ bool setAudioFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 // Transición desde el clip anterior contiguo. TransitionType::None la quita.
 bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration);
 bool setTitleStyle(Project& p, Id clipId, const TitleStyle& style);
+
+// --- Efectos de imagen (solo clips de video) ---
+// Valores fuera de rango se limitan; las curvas diagonales se vacían.
+ColorGrade sanitized(ColorGrade grade);
+// Con keyframes de color, cambia (o crea) el de `rel`; sin ellos, la corrección de todo el clip.
+bool setColorGrade(Project& p, Id clipId, const ColorGrade& grade, FramePos rel = 0);
+bool toggleColorKeyframe(Project& p, Id clipId, FramePos rel);
+bool setColorKeyInterpolation(Project& p, Id clipId, FramePos rel, Interpolation interp);
+bool setAnimatedGrade(Project& p, Id clipId, const AnimatedGrade& grade); // pegar la corrección completa
+bool setChromaKey(Project& p, Id clipId, const ChromaKey& key);
+// Máscaras (hasta kMaxMasks; sus valores animables se editan como propiedades con su índice).
+int addMask(Project& p, Id clipId, MaskShape shape); // devuelve el índice o -1
+bool removeMask(Project& p, Id clipId, int index);
+bool setMaskShape(Project& p, Id clipId, int index, MaskShape shape);
+bool setMaskOptions(Project& p, Id clipId, int index, MaskMode mode, bool invert);
+bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points);
+bool setBlendMode(Project& p, Id clipId, BlendMode mode);
 
 // Separa el audio de un clip de video a una pista de audio libre (o nueva). Devuelve el clip de audio.
 Id detachAudio(Project& p, Id clipId);
@@ -109,6 +132,21 @@ struct Clipboard {
 Clipboard copyClips(const Project& p, const std::vector<Id>& clipIds);
 // Pega en `at` conservando las distancias y las pistas (crea las que falten). Devuelve los nuevos ids.
 std::vector<Id> pasteClips(Project& p, const Clipboard& clipboard, FramePos at);
+
+// --- Clips compuestos ---
+// Mueve los clips a una secuencia nueva y los sustituye por un clip compuesto (en la pista de video
+// más baja de la selección o, si solo hay audio, en la de audio; en una pista nueva si su hueco no
+// queda libre). Devuelve el id del compuesto.
+Id createCompound(Project& p, const std::vector<Id>& clipIds, const std::string& name);
+// Devuelve el contenido visible de un compuesto (a velocidad 1) a la línea de tiempo, sobrescribiendo.
+std::vector<Id> breakCompound(Project& p, Id clipId);
+// La secuencia pasa a ser la línea de tiempo activa (la actual se guarda); closeSequence vuelve a
+// la anterior del camino.
+bool openSequence(Project& p, Id sequence);
+bool closeSequence(Project& p);
+bool renameSequence(Project& p, Id sequence, const std::string& name);
+// ¿Contiene `sequence` (directa o indirectamente) a `target`?
+bool sequenceContains(const Project& p, Id sequence, Id target);
 
 // Clip de la pista que ocupa el fotograma `f`, o nullptr.
 const Clip* clipAt(const Track& track, FramePos f);

@@ -18,6 +18,12 @@ const QString kFormatName = QStringLiteral("movixstudio-project");
 // Nombres estables de los enumerados en el archivo (no dependen del orden en el código).
 const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
 const char* const kInterpolationNames[] = {"linear", "hold", "smooth"};
+const char* const kBlendNames[] = {"normal",    "multiply",  "screen",    "overlay",    "darken",    "lighten", "colorDodge",
+                                   "colorBurn", "hardLight", "softLight", "difference", "exclusion", "add",     "subtract"};
+const char* const kMaskNames[] = {"none", "rectangle", "ellipse", "linear", "path"};
+const char* const kMaskModeNames[] = {"add", "subtract", "intersect"};
+const char* const kColorModeNames[] = {"sdr", "pq", "hlg"};
+static_assert(std::size(kBlendNames) == kBlendModeCount);
 
 template <typename E, size_t N>
 E enumFromName(const QString& name, const char* const (&names)[N], E fallback)
@@ -102,13 +108,191 @@ TitleStyle titleFromJson(const QJsonObject& o)
     return s;
 }
 
-QJsonObject trackToJson(const Track& t)
+QJsonArray wheelToJson(const ColorWheel& w)
+{
+    return QJsonArray{w.r, w.g, w.b, w.master};
+}
+
+ColorWheel wheelFromJson(const QJsonValue& v)
+{
+    const QJsonArray a = v.toArray();
+    return {a.at(0).toDouble(), a.at(1).toDouble(), a.at(2).toDouble(), a.at(3).toDouble()};
+}
+
+QJsonArray curveToJson(const std::vector<CurvePoint>& curve)
+{
+    QJsonArray a;
+    for (const CurvePoint& pt : curve)
+        a.append(QJsonArray{pt.x, pt.y});
+    return a;
+}
+
+std::vector<CurvePoint> curveFromJson(const QJsonValue& v)
+{
+    std::vector<CurvePoint> curve;
+    for (const QJsonValue& pt : v.toArray())
+        curve.push_back({pt.toArray().at(0).toDouble(), pt.toArray().at(1).toDouble()});
+    return curve;
+}
+
+// La LUT se guarda como los medios: ruta absoluta y relativa al proyecto.
+QJsonObject gradeToJson(const ColorGrade& g, const QDir& projectDir)
+{
+    QJsonArray hsl;
+    for (const HslBand& b : g.hsl)
+        hsl.append(QJsonArray{b.hue, b.saturation, b.luminance});
+    QJsonObject o{
+        {"exposure", g.exposure},
+        {"contrast", g.contrast},
+        {"saturation", g.saturation},
+        {"vibrance", g.vibrance},
+        {"temperature", g.temperature},
+        {"tint", g.tint},
+        {"highlights", g.highlights},
+        {"shadows", g.shadows},
+        {"whites", g.whites},
+        {"blacks", g.blacks},
+        {"lift", wheelToJson(g.lift)},
+        {"gamma", wheelToJson(g.gamma)},
+        {"gain", wheelToJson(g.gain)},
+        {"curves", QJsonObject{{"master", curveToJson(g.curveMaster)},
+                               {"red", curveToJson(g.curveRed)},
+                               {"green", curveToJson(g.curveGreen)},
+                               {"blue", curveToJson(g.curveBlue)}}},
+        {"hsl", hsl},
+    };
+    if (!g.inputSpace.empty())
+        o["inputSpace"] = QString::fromStdString(g.inputSpace);
+    if (!g.lutPath.empty()) {
+        const QString path = QString::fromStdString(g.lutPath);
+        o["lut"] = QJsonObject{{"path", QDir::fromNativeSeparators(path)},
+                               {"relativePath", projectDir.relativeFilePath(path)},
+                               {"intensity", g.lutIntensity}};
+    }
+    return o;
+}
+
+ColorGrade gradeFromJson(const QJsonObject& o, const QDir& projectDir, QStringList& missing)
+{
+    ColorGrade g;
+    g.exposure = o["exposure"].toDouble();
+    g.contrast = o["contrast"].toDouble();
+    g.saturation = o["saturation"].toDouble();
+    g.vibrance = o["vibrance"].toDouble();
+    g.temperature = o["temperature"].toDouble();
+    g.tint = o["tint"].toDouble();
+    g.highlights = o["highlights"].toDouble();
+    g.shadows = o["shadows"].toDouble();
+    g.whites = o["whites"].toDouble();
+    g.blacks = o["blacks"].toDouble();
+    g.inputSpace = o["inputSpace"].toString().toStdString();
+    g.lift = wheelFromJson(o["lift"]);
+    g.gamma = wheelFromJson(o["gamma"]);
+    g.gain = wheelFromJson(o["gain"]);
+    const QJsonObject curves = o["curves"].toObject();
+    g.curveMaster = curveFromJson(curves["master"]);
+    g.curveRed = curveFromJson(curves["red"]);
+    g.curveGreen = curveFromJson(curves["green"]);
+    g.curveBlue = curveFromJson(curves["blue"]);
+    const QJsonArray hsl = o["hsl"].toArray();
+    for (qsizetype i = 0; i < hsl.size() && i < qsizetype(g.hsl.size()); ++i) {
+        const QJsonArray b = hsl.at(i).toArray();
+        g.hsl[size_t(i)] = {b.at(0).toDouble(), b.at(1).toDouble(), b.at(2).toDouble()};
+    }
+    if (o.contains("lut")) {
+        const QJsonObject lut = o["lut"].toObject();
+        QString path = lut["path"].toString();
+        if (!QFileInfo::exists(path)) {
+            const QString relative = projectDir.absoluteFilePath(lut["relativePath"].toString());
+            if (QFileInfo::exists(relative))
+                path = QDir::cleanPath(relative);
+            else if (!missing.contains(QDir::toNativeSeparators(path)))
+                missing.append(QDir::toNativeSeparators(path));
+        }
+        g.lutPath = QDir::toNativeSeparators(path).toStdString();
+        g.lutIntensity = lut["intensity"].toDouble(1.0);
+    }
+    return g;
+}
+
+// Sin keyframes, la corrección se guarda tal cual; con ellos, {value, keys: [{frame, interp, grade}]}.
+QJsonObject animatedGradeToJson(const AnimatedGrade& a, const QDir& projectDir)
+{
+    if (!a.isAnimated())
+        return gradeToJson(a.value, projectDir);
+    QJsonArray keys;
+    for (const GradeKey& k : a.keys)
+        keys.append(QJsonObject{{"frame", qint64(k.frame)},
+                                {"interp", QLatin1String(kInterpolationNames[int(k.interp)])},
+                                {"grade", gradeToJson(k.grade, projectDir)}});
+    return QJsonObject{{"value", gradeToJson(a.value, projectDir)}, {"keys", keys}};
+}
+
+AnimatedGrade animatedGradeFromJson(const QJsonObject& o, const QDir& projectDir, QStringList& missing)
+{
+    AnimatedGrade a;
+    if (!o.contains("keys")) {
+        a.value = gradeFromJson(o, projectDir, missing);
+        return a;
+    }
+    a.value = gradeFromJson(o["value"].toObject(), projectDir, missing);
+    for (const QJsonValue& v : o["keys"].toArray()) {
+        const QJsonObject k = v.toObject();
+        a.setKey(k["frame"].toInteger(), gradeFromJson(k["grade"].toObject(), projectDir, missing),
+                 enumFromName(k["interp"].toString(), kInterpolationNames, Interpolation::Linear));
+    }
+    return a;
+}
+
+QJsonObject maskToJson(const Mask& m)
+{
+    QJsonObject o{{"shape", QLatin1String(kMaskNames[int(m.shape)])},
+                  {"mode", QLatin1String(kMaskModeNames[int(m.mode)])},
+                  {"invert", m.invert},
+                  {"x", animatedToJson(m.x)},
+                  {"y", animatedToJson(m.y)},
+                  {"width", animatedToJson(m.width)},
+                  {"height", animatedToJson(m.height)},
+                  {"rotation", animatedToJson(m.rotation)},
+                  {"feather", animatedToJson(m.feather)}};
+    if (!m.points.empty()) {
+        QJsonArray pts;
+        for (const PathPoint& pt : m.points)
+            pts.append(QJsonArray{pt.x, pt.y, pt.inX, pt.inY, pt.outX, pt.outY});
+        o["points"] = pts;
+    }
+    return o;
+}
+
+Mask maskFromJson(const QJsonObject& m)
+{
+    Mask mask;
+    const Mask def;
+    mask.shape = enumFromName(m["shape"].toString(), kMaskNames, MaskShape::None);
+    mask.mode = enumFromName(m["mode"].toString(), kMaskModeNames, MaskMode::Add);
+    mask.invert = m["invert"].toBool();
+    mask.x = animatedFromJson(m["x"], def.x.value);
+    mask.y = animatedFromJson(m["y"], def.y.value);
+    mask.width = animatedFromJson(m["width"], def.width.value);
+    mask.height = animatedFromJson(m["height"], def.height.value);
+    mask.rotation = animatedFromJson(m["rotation"], def.rotation.value);
+    mask.feather = animatedFromJson(m["feather"], def.feather.value);
+    for (const QJsonValue& v : m["points"].toArray()) {
+        const QJsonArray a = v.toArray();
+        mask.points.push_back({a.at(0).toDouble(), a.at(1).toDouble(), a.at(2).toDouble(), a.at(3).toDouble(), a.at(4).toDouble(),
+                               a.at(5).toDouble()});
+    }
+    return mask;
+}
+
+QJsonObject trackToJson(const Track& t, const QDir& projectDir)
 {
     QJsonArray clips;
     for (const Clip& c : t.clips) {
         QJsonObject o{
             {"id", qint64(c.id)},
             {"mediaId", qint64(c.mediaId)},
+            {"sequenceId", qint64(c.sequenceId)},
             {"start", qint64(c.start)},
             {"duration", qint64(c.duration)},
             {"sourceIn", qint64(c.sourceIn)},
@@ -119,7 +303,10 @@ QJsonObject trackToJson(const Track& t)
                                       {"y", animatedToJson(c.transform.y)},
                                       {"scale", animatedToJson(c.transform.scale)},
                                       {"rotation", animatedToJson(c.transform.rotation)},
-                                      {"opacity", animatedToJson(c.transform.opacity)}}},
+                                      {"opacity", animatedToJson(c.transform.opacity)},
+                                      {"crop", QJsonArray{animatedToJson(c.transform.cropLeft), animatedToJson(c.transform.cropTop),
+                                                          animatedToJson(c.transform.cropRight),
+                                                          animatedToJson(c.transform.cropBottom)}}}},
             {"fades", QJsonArray{qint64(c.fadeIn), qint64(c.fadeOut)}},
             {"audioFades", QJsonArray{qint64(c.audioFadeIn), qint64(c.audioFadeOut)}},
             {"audioDetached", c.audioDetached},
@@ -129,6 +316,24 @@ QJsonObject trackToJson(const Track& t)
         if (c.transitionIn.active())
             o["transitionIn"] = QJsonObject{{"type", QLatin1String(kTransitionNames[int(c.transitionIn.type)])},
                                             {"duration", qint64(c.transitionIn.duration)}};
+        if (!c.color.isIdentity())
+            o["color"] = animatedGradeToJson(c.color, projectDir);
+        if (c.chromaKey != ChromaKey{}) {
+            const ChromaKey& k = c.chromaKey;
+            o["chromaKey"] = QJsonObject{{"enabled", k.enabled},
+                                         {"color", argb(k.color)},
+                                         {"tolerance", k.tolerance},
+                                         {"softness", k.softness},
+                                         {"spill", k.spill}};
+        }
+        if (!c.masks.empty()) {
+            QJsonArray masks;
+            for (const Mask& m : c.masks)
+                masks.append(maskToJson(m));
+            o["masks"] = masks;
+        }
+        if (c.blend != BlendMode::Normal)
+            o["blend"] = QLatin1String(kBlendNames[int(c.blend)]);
         clips.append(o);
     }
     return QJsonObject{
@@ -142,7 +347,7 @@ QJsonObject trackToJson(const Track& t)
     };
 }
 
-Track trackFromJson(const QJsonObject& o, TrackKind kind)
+Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir, QStringList& missing)
 {
     Track t;
     t.id = Id(o["id"].toInteger());
@@ -157,6 +362,7 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind)
         Clip clip;
         clip.id = Id(c["id"].toInteger());
         clip.mediaId = Id(c["mediaId"].toInteger());
+        clip.sequenceId = Id(c["sequenceId"].toInteger());
         clip.start = c["start"].toInteger();
         clip.duration = c["duration"].toInteger();
         clip.sourceIn = c["sourceIn"].toInteger();
@@ -170,6 +376,11 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind)
         clip.transform.scale = animatedFromJson(tr["scale"], 1.0);
         clip.transform.rotation = animatedFromJson(tr["rotation"], 0.0);
         clip.transform.opacity = animatedFromJson(tr["opacity"], 1.0);
+        const QJsonArray crop = tr["crop"].toArray();
+        clip.transform.cropLeft = animatedFromJson(crop.at(0), 0.0);
+        clip.transform.cropTop = animatedFromJson(crop.at(1), 0.0);
+        clip.transform.cropRight = animatedFromJson(crop.at(2), 0.0);
+        clip.transform.cropBottom = animatedFromJson(crop.at(3), 0.0);
         clip.fadeIn = c["fades"].toArray().at(0).toInteger();
         clip.fadeOut = c["fades"].toArray().at(1).toInteger();
         clip.audioFadeIn = c["audioFades"].toArray().at(0).toInteger();
@@ -182,6 +393,26 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind)
             clip.transitionIn.type = enumFromName(ti["type"].toString(), kTransitionNames, TransitionType::None);
             clip.transitionIn.duration = ti["duration"].toInteger();
         }
+        if (c.contains("color"))
+            clip.color = animatedGradeFromJson(c["color"].toObject(), projectDir, missing);
+        if (c.contains("chromaKey")) {
+            const QJsonObject k = c["chromaKey"].toObject();
+            const ChromaKey def;
+            clip.chromaKey = {k["enabled"].toBool(), argbFromJson(k["color"], def.color), k["tolerance"].toDouble(def.tolerance),
+                              k["softness"].toDouble(def.softness), k["spill"].toDouble(def.spill)};
+        }
+        // Versión 3: una sola máscara llamada "mask".
+        if (c.contains("mask")) {
+            Mask m = maskFromJson(c["mask"].toObject());
+            if (m.active())
+                clip.masks.push_back(m);
+        }
+        for (const QJsonValue& mv : c["masks"].toArray()) {
+            Mask m = maskFromJson(mv.toObject());
+            if (m.active() && clip.masks.size() < kMaxMasks)
+                clip.masks.push_back(m);
+        }
+        clip.blend = enumFromName(c["blend"].toString(), kBlendNames, BlendMode::Normal);
         t.clips.push_back(clip);
     }
     return t;
@@ -212,9 +443,21 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
     }
     QJsonArray video, audio;
     for (const Track& t : p.videoTracks)
-        video.append(trackToJson(t));
+        video.append(trackToJson(t, projectDir));
     for (const Track& t : p.audioTracks)
-        audio.append(trackToJson(t));
+        audio.append(trackToJson(t, projectDir));
+    QJsonArray sequences;
+    for (const Sequence& seq : p.sequences) {
+        QJsonArray sv, sa;
+        for (const Track& t : seq.videoTracks)
+            sv.append(trackToJson(t, projectDir));
+        for (const Track& t : seq.audioTracks)
+            sa.append(trackToJson(t, projectDir));
+        sequences.append(QJsonObject{{"id", qint64(seq.id)}, {"name", QString::fromStdString(seq.name)}, {"videoTracks", sv}, {"audioTracks", sa}});
+    }
+    QJsonArray path;
+    for (Id id : p.sequencePath)
+        path.append(qint64(id));
 
     const QJsonObject root{
         {"format", kFormatName},
@@ -227,11 +470,17 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
              {"frameRate", QJsonObject{{"num", qint64(p.settings.frameRate.num)}, {"den", qint64(p.settings.frameRate.den)}}},
              {"sampleRate", p.settings.sampleRate},
              {"channels", p.settings.channels},
+             {"colorMode", QLatin1String(kColorModeNames[int(p.settings.colorMode)])},
          }},
         {"nextId", qint64(p.nextId)},
         {"media", media},
         {"videoTracks", video},
         {"audioTracks", audio},
+        // Las pistas de arriba son las de la secuencia activa; el resto, en "sequences".
+        {"activeSequence", QJsonObject{{"id", qint64(p.activeSequence)}, {"name", QString::fromStdString(p.activeName)}}},
+        {"mainSequence", qint64(p.mainSequence)},
+        {"sequencePath", path},
+        {"sequences", sequences},
     };
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
@@ -263,6 +512,7 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
     p.settings.frameRate.den = s["frameRate"].toObject()["den"].toInteger(1);
     p.settings.sampleRate = s["sampleRate"].toInt(48000);
     p.settings.channels = s["channels"].toInt(2);
+    p.settings.colorMode = enumFromName(s["colorMode"].toString(), kColorModeNames, ColorMode::SDR);
     p.nextId = Id(root["nextId"].toInteger(1));
 
     const QDir projectDir = QFileInfo(projectFilePath).absoluteDir();
@@ -290,9 +540,31 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
         p.media.push_back(m);
     }
     for (const QJsonValue& v : root["videoTracks"].toArray())
-        p.videoTracks.push_back(trackFromJson(v.toObject(), TrackKind::Video));
+        p.videoTracks.push_back(trackFromJson(v.toObject(), TrackKind::Video, projectDir, result.missingMedia));
     for (const QJsonValue& v : root["audioTracks"].toArray())
-        p.audioTracks.push_back(trackFromJson(v.toObject(), TrackKind::Audio));
+        p.audioTracks.push_back(trackFromJson(v.toObject(), TrackKind::Audio, projectDir, result.missingMedia));
+    for (const QJsonValue& v : root["sequences"].toArray()) {
+        const QJsonObject o = v.toObject();
+        Sequence seq;
+        seq.id = Id(o["id"].toInteger());
+        seq.name = o["name"].toString().toStdString();
+        for (const QJsonValue& t : o["videoTracks"].toArray())
+            seq.videoTracks.push_back(trackFromJson(t.toObject(), TrackKind::Video, projectDir, result.missingMedia));
+        for (const QJsonValue& t : o["audioTracks"].toArray())
+            seq.audioTracks.push_back(trackFromJson(t.toObject(), TrackKind::Audio, projectDir, result.missingMedia));
+        p.sequences.push_back(std::move(seq));
+    }
+    if (root.contains("activeSequence")) {
+        const QJsonObject active = root["activeSequence"].toObject();
+        p.activeSequence = Id(active["id"].toInteger());
+        p.activeName = active["name"].toString().toStdString();
+        p.mainSequence = Id(root["mainSequence"].toInteger());
+        for (const QJsonValue& v : root["sequencePath"].toArray())
+            p.sequencePath.push_back(Id(v.toInteger()));
+    } else { // versiones 1 a 3: solo la principal
+        p.mainSequence = p.activeSequence = p.newId();
+        p.activeName = "Principal";
+    }
 
     std::string why;
     if (!p.validate(&why)) {

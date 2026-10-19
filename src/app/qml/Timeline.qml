@@ -170,6 +170,48 @@ Rectangle {
                     ToolTip.delay: 600
                     ToolTip.text: qsTr("Modo inserción: al soltar, los clips posteriores se desplazan en lugar de sobrescribirse")
                 }
+                // Ruta de secuencias al editar un clip compuesto: cada nivel vuelve a él.
+                Row {
+                    visible: timeline.project.inCompound
+                    Layout.leftMargin: 12
+                    spacing: 2
+                    Repeater {
+                        model: timeline.project.sequencePath
+                        Row {
+                            required property int index
+                            required property string modelData
+                            readonly property bool last: index === timeline.project.sequencePath.length - 1
+                            spacing: 2
+                            Text {
+                                visible: index > 0
+                                text: "›"
+                                color: Theme.textMuted
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            AbstractButton {
+                                id: crumb
+                                enabled: !parent.last
+                                focusPolicy: Qt.NoFocus
+                                implicitHeight: 26
+                                implicitWidth: crumbText.implicitWidth + 14
+                                onClicked: timeline.project.openSequenceLevel(parent.index)
+                                contentItem: Text {
+                                    id: crumbText
+                                    text: modelData
+                                    color: crumb.parent.last ? Theme.clipCompound : (crumb.hovered ? Theme.text : Theme.textMuted)
+                                    font.bold: crumb.parent.last
+                                    font.pixelSize: Theme.fontSmall + 1
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: Theme.radius
+                                    color: crumb.hovered && crumb.enabled ? Theme.surfaceHover : "transparent"
+                                }
+                            }
+                        }
+                    }
+                }
                 Item { Layout.fillWidth: true }
                 IconButton { iconName: "film"; size: 32; tip: qsTr("Añadir pista de video"); onClicked: timeline.project.addTrack("video") }
                 IconButton { iconName: "music"; size: 32; tip: qsTr("Añadir pista de audio"); onClicked: timeline.project.addTrack("audio") }

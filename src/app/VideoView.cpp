@@ -5,28 +5,56 @@
 #include <QQuickWindow>
 #include <rhi/qrhi.h>
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 
 namespace {
 const QColor kViewerBackground(8, 9, 12);
+constexpr int kScopeWidth = 480;                         // ancho de la copia para los scopes
+constexpr std::chrono::milliseconds kScopeInterval{60}; // ~15 lecturas por segundo como máximo
 }
 
 class VideoRenderer : public QQuickRhiItemRenderer {
 public:
+    ~VideoRenderer() override;
     void initialize(QRhiCommandBuffer* cb) override;
     void synchronize(QQuickRhiItem* item) override;
     void render(QRhiCommandBuffer* cb) override;
 
 private:
+    void updateScopes(QRhiCommandBuffer* cb);
+
     QRhi* m_rhi = nullptr;
     std::unique_ptr<movix::render::Compositor> m_compositor;
     std::shared_ptr<const movix::engine::FrameBundle> m_bundle;
+
+    // Scopes: copia reducida del lienzo y su lectura asíncrona.
+    std::shared_ptr<ScopeFeed> m_feed;
+    std::unique_ptr<QRhiTexture> m_scopeTexture;
+    std::unique_ptr<QRhiTextureRenderTarget> m_scopeTarget;
+    std::unique_ptr<QRhiRenderPassDescriptor> m_scopePass;
+    QRhiReadbackResult m_readback;
+    std::atomic<bool> m_readbackPending{false};
+    std::chrono::steady_clock::time_point m_lastScope;
+    std::shared_ptr<const movix::engine::FrameBundle> m_scopeBundle; // último fotograma copiado
+    QSize m_scopeCanvas;
 };
+
+VideoRenderer::~VideoRenderer()
+{
+    m_scopeTarget.reset();
+    m_scopePass.reset();
+    m_scopeTexture.reset();
+}
 
 void VideoRenderer::initialize(QRhiCommandBuffer*)
 {
     if (m_rhi != rhi()) {
         m_compositor.reset();
+        m_scopeTarget.reset();
+        m_scopePass.reset();
+        m_scopeTexture.reset();
         m_rhi = rhi();
     }
     if (!m_compositor)
@@ -38,6 +66,7 @@ void VideoRenderer::synchronize(QQuickRhiItem* item)
 {
     auto* view = static_cast<VideoView*>(item);
     m_bundle = view->m_player ? view->m_player->frameForPresentation() : nullptr;
+    m_feed = view->m_feed;
 }
 
 void VideoRenderer::render(QRhiCommandBuffer* cb)
@@ -49,10 +78,63 @@ void VideoRenderer::render(QRhiCommandBuffer* cb)
     QRectF canvas;
     if (m_bundle && bundle.canvasHeight > 0)
         canvas = movix::render::Compositor::fitRect(target, double(bundle.canvasWidth) / bundle.canvasHeight);
+    m_compositor->setRetainCanvas(m_feed && m_feed->active()); // los scopes leen el lienzo
+    m_compositor->setSdrDisplay(true); // proyectos HDR: se ven convertidos a SDR
     m_compositor->prepare(bundle, updates, target, canvas);
-    cb->beginPass(renderTarget(), kViewerBackground, {1.0f, 0}, updates);
-    m_compositor->draw(cb, target);
-    cb->endPass();
+    m_compositor->render(cb, renderTarget(), kViewerBackground, updates);
+    if (m_feed && m_feed->active())
+        updateScopes(cb);
+    else
+        m_scopeBundle.reset();
+}
+
+// La lectura de la GPU se completa en un fotograma posterior y, en pausa, no llegaría ninguno:
+// mientras haya una lectura en curso o una imagen nueva sin copiar se pide otro refresco.
+void VideoRenderer::updateScopes(QRhiCommandBuffer* cb)
+{
+    if (m_readbackPending) {
+        update();
+        return;
+    }
+    const QRect canvas = m_compositor->canvasRect();
+    if (canvas.isEmpty() || !m_compositor->canvasTexture())
+        return;
+    if (m_bundle == m_scopeBundle && canvas.size() == m_scopeCanvas)
+        return; // el scope ya analiza esta imagen
+    const auto now = std::chrono::steady_clock::now();
+    if (now - m_lastScope < kScopeInterval) {
+        update();
+        return;
+    }
+    const int w = std::min(kScopeWidth, canvas.width());
+    const QSize size(w, std::max(1, int(std::lround(double(w) * canvas.height() / canvas.width()))));
+    if (!m_scopeTexture || m_scopeTexture->pixelSize() != size) {
+        m_scopeTarget.reset();
+        m_scopeTexture.reset(m_rhi->newTexture(QRhiTexture::RGBA8, size, 1,
+                                               QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
+        if (!m_scopeTexture->create())
+            return;
+        m_scopeTarget.reset(m_rhi->newTextureRenderTarget({m_scopeTexture.get()}));
+        if (!m_scopePass)
+            m_scopePass.reset(m_scopeTarget->newCompatibleRenderPassDescriptor());
+        m_scopeTarget->setRenderPassDescriptor(m_scopePass.get());
+        m_scopeTarget->create();
+    }
+    m_lastScope = now;
+    m_scopeBundle = m_bundle;
+    m_scopeCanvas = canvas.size();
+    m_readbackPending = true;
+    m_readback = {};
+    std::weak_ptr<ScopeFeed> feed = m_feed;
+    m_readback.completed = [this, feed] {
+        if (auto f = feed.lock())
+            f->publish(m_readback.data, m_readback.pixelSize);
+        m_readbackPending = false;
+    };
+    QRhiResourceUpdateBatch* readback = m_rhi->nextResourceUpdateBatch();
+    readback->readBackTexture(QRhiReadbackDescription(m_scopeTexture.get()), &m_readback);
+    m_compositor->copyCanvas(cb, m_scopeTarget.get(), readback);
+    update();
 }
 
 VideoView::VideoView(QQuickItem* parent) : QQuickRhiItem(parent) {}
@@ -75,6 +157,15 @@ void VideoView::setPlayer(movix::playback::TimelinePlayer* player)
     }
     update();
     emit playerChanged();
+}
+
+void VideoView::setScopesActive(bool active)
+{
+    if (active == m_feed->active())
+        return;
+    m_feed->setActive(active);
+    update(); // en pausa, un fotograma nuevo para tener la primera lectura
+    emit scopesActiveChanged();
 }
 
 void VideoView::itemChange(ItemChange change, const ItemChangeData& data)

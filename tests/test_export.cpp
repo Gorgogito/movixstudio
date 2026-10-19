@@ -273,3 +273,33 @@ TEST_CASE("Cancelar la exportación borra el archivo parcial", "[export]")
     CHECK(exporter.wasCancelled());
     CHECK_FALSE(QFileInfo::exists(s.path));
 }
+
+TEST_CASE("La corrección de color y la fusión llegan al archivo exportado", "[export][f3]")
+{
+    QTemporaryDir dir;
+    Project p = Project::createDefault();
+    p.settings.width = 320;
+    p.settings.height = 180;
+    TitleStyle style;
+    style.text = "MMMM";
+    style.size = 0.4;
+    style.shadow = false;
+    const Id title = edit::placeTitle(p, p.videoTracks[0].id, 0, 5, style);
+    ColorGrade g; // el blanco del texto pasa a rojo
+    g.gain.g = -1;
+    g.gain.b = -1;
+    REQUIRE(edit::setColorGrade(p, title, g));
+    REQUIRE(edit::setBlendMode(p, title, BlendMode::Screen));
+    auto s = settingsFor(dir.filePath("color.mp4"), p);
+    REQUIRE(runExport(p, s));
+    const auto frames = decodeAll(s.path.toStdString());
+    REQUIRE(frames.size() == 5);
+    const auto& f = *frames[2];
+    int maxCr = 0, maxCb = 0;
+    for (size_t i = 0; i < f.uv.size(); i += 2) {
+        maxCb = std::max(maxCb, int(f.uv[i]));
+        maxCr = std::max(maxCr, int(f.uv[i + 1]));
+    }
+    CHECK(maxCr > 200); // rojo saturado
+    CHECK(maxCb < 140);
+}

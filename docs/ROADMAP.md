@@ -72,10 +72,58 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
   y esa conversión limitan a ~94 fps en 1080p60).
 - Selección por recuadro y edición de varios clips a la vez en el inspector.
 
-## F3 — Color y composición
+## F3 — Color y composición ✅
 
-Corrección primaria, ruedas, curvas, HSL, LUT `.cube`, OpenColorIO, scopes, máscaras, croma,
-modos de fusión, clips compuestos.
+- [x] Compositor con lienzo propio en coma flotante (RGBA16F) y pasadas adicionales para los modos
+      de fusión que leen el fondo; sin modos de fusión (ni scopes) dibuja directamente en el
+      destino, en una sola pasada. Misma ruta en el visor y en la exportación
+- [x] Corrección de color por clip aplicada en la GPU como LUT 3D (33³) generada en la CPU:
+      exposición, contraste, saturación, intensidad, temperatura, matiz, altas luces, sombras,
+      blancos, negros; ruedas lift/gamma/gain; curvas general y RGB (monótonas); HSL en 8 gamas;
+      LUT `.cube` 1D/3D con intensidad; copiar/pegar la corrección
+- [x] Corrección de color animable: keyframes con la corrección completa (lineal, mantener, suave);
+      entre dos keyframes se mezclan sus LUT, así que se animan también curvas, HSL y LUT
+- [x] OpenColorIO 2.6 con el config de estudio de ACES incluido: 28 espacios de cámara (S-Log3,
+      V-Log, LogC, C-Log…) llevados a la señal del proyecto con la vista estándar de su pantalla,
+      dentro de la misma LUT del clip
+- [x] 10 bits y HDR: decodificación P016, señales PQ y HLG (Rec.2020) detectadas y convertidas a la
+      de trabajo del proyecto (SDR Rec.709, HDR10 o HLG; SDR a 203 nits; mapeo de tonos a SDR);
+      visor HDR mostrado en SDR; exportación de 10 bits con la señalización y los metadatos HDR10
+- [x] Clave de croma (distancia en Cb/Cr sobre la señal de la fuente, borde suave, supresión del
+      derrame) con cuentagotas
+- [x] Hasta 8 máscaras por clip (rectángulo, elipse, lineal y forma libre de Bézier) que se suman,
+      restan o intersecan, con difuminado, inversión y keyframes; edición de puntos sobre el visor
+- [x] 14 modos de fusión (fórmulas de W3C) y recorte animable
+- [x] Clips compuestos: secuencias anidadas que se crean desde la selección, se abren para
+      editarlas (ruta de navegación), se recortan, cambian de velocidad, admiten efectos y se
+      pueden deshacer; vídeo compuesto en una textura transparente y audio mezclado recursivamente
+- [x] Scopes: forma de onda, desfile RGB, vectorscopio (con objetivos y línea de piel) e histograma
+- [x] Formato `.mxproj` v4 (abre v1–v3)
+- [x] 91 casos de prueba en Debug y Release; la GPU coincide con la referencia en la CPU
+      (corrección ≤ 1 nivel, cada modo de fusión ≤ 2, PQ ≤ 0,03 %), exportación HDR10 verificada al
+      decodificarla; prueba aleatoria de 3000 ediciones que incluye compuestos, máscaras y color
+
+### Correcciones que salieron de las pruebas
+
+- Con una capa normal y otra con fusión en la misma pasada, la segunda leía un fondo sin copiar.
+- La lectura de la GPU para los scopes se completa en el fotograma siguiente: en pausa no llegaba
+  nunca; ahora el visor pide otro refresco solo mientras hay una lectura o una imagen nueva.
+- El disco de las ruedas de color se genera en C++ (el `Canvas` de QML no mostraba los píxeles
+  escritos con `putImageData`).
+- Al arrastrar un punto de una máscara de forma libre, la lista de tiradores se recreaba y se
+  perdía el arrastre.
+- En proyectos HDR la clave de croma se calculaba después de convertir la señal y no coincidía
+  con el color clave (tomado de la fuente).
+
+### Limitaciones conocidas
+
+- El visor muestra los proyectos HDR convertidos a SDR (no usa la salida HDR de Windows).
+- La corrección, los modos de fusión y la clave trabajan sobre la señal codificada (no en luz
+  lineal); los modos de fusión dentro de un compuesto suponen un fondo opaco.
+- Los puntos de las máscaras de forma libre no se animan (sí su posición, tamaño, giro y borde).
+- Deshacer un clip compuesto exige velocidad 1× y sobrescribe lo que haya en su sitio.
+- Pendientes de F2 que siguen abiertos: *speed ramping*, interpolación de keyframes en la interfaz,
+  animaciones de texto, atajos configurables, proxies, copia cero, selección por recuadro.
 
 ## F4 — IA de audio y texto (local)
 

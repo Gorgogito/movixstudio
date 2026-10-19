@@ -1,5 +1,7 @@
 #include "ProjectController.h"
 
+#include "EffectNames.h"
+
 #include "core/Edits.h"
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
@@ -191,6 +193,22 @@ bool ProjectController::saveAs(const QUrl& url)
     emit fileChanged();
     emit historyChanged();
     return true;
+}
+
+QString ProjectController::colorMode() const
+{
+    switch (project().settings.colorMode) {
+    case ColorMode::PQ: return QStringLiteral("pq");
+    case ColorMode::HLG: return QStringLiteral("hlg");
+    case ColorMode::SDR: break;
+    }
+    return QStringLiteral("sdr");
+}
+
+void ProjectController::setColorMode(const QString& mode)
+{
+    const ColorMode m = mode == QLatin1String("pq") ? ColorMode::PQ : mode == QLatin1String("hlg") ? ColorMode::HLG : ColorMode::SDR;
+    apply(tr("Espacio de color del proyecto"), [&](Project& p) { return edit::setColorMode(p, m); });
 }
 
 void ProjectController::setProjectSettings(int width, int height, int fpsNum, int fpsDen)
@@ -454,14 +472,35 @@ void ProjectController::deleteSelection(bool ripple)
 
 namespace {
 
-std::optional<edit::Property> propertyFromName(const QString& name)
+// Propiedad animable por nombre de QML: "x", "opacity", "cropLeft"... o "mask.<índice>.<campo>"
+// (campo: x, y, width, height, rotation, feather).
+struct NamedProperty {
+    edit::Property prop;
+    int maskIndex = 0;
+};
+
+std::optional<NamedProperty> propertyFromName(const QString& name)
 {
     static const QHash<QString, edit::Property> kMap{
         {"x", edit::Property::PositionX}, {"y", edit::Property::PositionY}, {"scale", edit::Property::Scale},
         {"rotation", edit::Property::Rotation}, {"opacity", edit::Property::Opacity}, {"volume", edit::Property::Volume},
+        {"cropLeft", edit::Property::CropLeft}, {"cropTop", edit::Property::CropTop}, {"cropRight", edit::Property::CropRight},
+        {"cropBottom", edit::Property::CropBottom},
     };
-    auto it = kMap.find(name);
-    return it == kMap.end() ? std::nullopt : std::optional(it.value());
+    static const QHash<QString, edit::Property> kMask{
+        {"x", edit::Property::MaskX}, {"y", edit::Property::MaskY}, {"width", edit::Property::MaskWidth},
+        {"height", edit::Property::MaskHeight}, {"rotation", edit::Property::MaskRotation}, {"feather", edit::Property::MaskFeather},
+    };
+    if (auto it = kMap.find(name); it != kMap.end())
+        return NamedProperty{it.value(), 0};
+    const QStringList parts = name.split(QLatin1Char('.'));
+    bool ok = false;
+    if (parts.size() == 3 && parts[0] == QLatin1String("mask")) {
+        const int index = parts[1].toInt(&ok);
+        if (auto it = kMask.find(parts[2]); ok && index >= 0 && it != kMask.end())
+            return NamedProperty{it.value(), index};
+    }
+    return std::nullopt;
 }
 
 const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
@@ -474,16 +513,8 @@ TransitionType transitionFromName(const QString& name)
     return TransitionType::None;
 }
 
-QString colorName(std::uint32_t argb)
-{
-    return QColor::fromRgba(QRgb(argb)).name(QColor::HexArgb);
-}
-
-std::uint32_t colorValue(const QVariant& v, std::uint32_t fallback)
-{
-    const QColor c(v.toString());
-    return c.isValid() ? std::uint32_t(c.rgba()) : fallback;
-}
+using movix::app::colorName;
+using movix::app::colorValue;
 
 } // namespace
 
@@ -500,7 +531,8 @@ void ProjectController::setClipProperty(qint64 clipId, const QString& prop, doub
         return;
     const FramePos rel = playheadRel(*c);
     // Arrastrar un control agrupa todos los cambios en un único paso de deshacer.
-    apply(tr("Cambiar propiedad del clip"), [&](Project& p) { return edit::setProperty(p, Id(clipId), *property, rel, value); },
+    apply(tr("Cambiar propiedad del clip"),
+          [&](Project& p) { return edit::setProperty(p, Id(clipId), property->prop, rel, value, property->maskIndex); },
           QStringLiteral("prop:%1:%2").arg(clipId).arg(prop));
 }
 
@@ -511,13 +543,14 @@ void ProjectController::toggleKeyframe(qint64 clipId, const QString& prop)
     if (!property || !c)
         return;
     const FramePos rel = playheadRel(*c);
-    apply(tr("Keyframe"), [&](Project& p) { return edit::toggleKeyframe(p, Id(clipId), *property, rel); });
+    apply(tr("Keyframe"), [&](Project& p) { return edit::toggleKeyframe(p, Id(clipId), property->prop, rel, property->maskIndex); });
 }
 
 void ProjectController::resetClipProperty(qint64 clipId, const QString& prop)
 {
     if (const auto property = propertyFromName(prop))
-        apply(tr("Restablecer propiedad"), [&](Project& p) { return edit::resetProperty(p, Id(clipId), *property); });
+        apply(tr("Restablecer propiedad"),
+              [&](Project& p) { return edit::resetProperty(p, Id(clipId), property->prop, property->maskIndex); });
 }
 
 QVariantMap ProjectController::propertyState(qint64 clipId, const QString& prop) const
@@ -526,7 +559,10 @@ QVariantMap ProjectController::propertyState(qint64 clipId, const QString& prop)
     const Clip* c = project().findClip(Id(clipId));
     if (!property || !c)
         return {};
-    const Animated& a = *edit::property(*c, *property);
+    const Animated* animated = edit::property(*c, property->prop, property->maskIndex);
+    if (!animated)
+        return {};
+    const Animated& a = *animated;
     const FramePos rel = playheadRel(*c);
     bool prev = false, next = false;
     for (const Keyframe& k : a.keys) {
@@ -541,10 +577,15 @@ QVariantList ProjectController::keyframeFrames(qint64 clipId) const
     const Clip* c = project().findClip(Id(clipId));
     QSet<qint64> frames;
     if (c) {
-        for (auto prop : {edit::Property::PositionX, edit::Property::PositionY, edit::Property::Scale, edit::Property::Rotation,
-                          edit::Property::Opacity, edit::Property::Volume})
-            for (const Keyframe& k : edit::property(*c, prop)->keys)
+        for (int prop = 0; prop < int(edit::Property::MaskX); ++prop)
+            for (const Keyframe& k : edit::property(*c, edit::Property(prop))->keys)
                 frames.insert(c->start + k.frame);
+        for (int mask = 0; mask < int(c->masks.size()); ++mask)
+            for (int prop = int(edit::Property::MaskX); prop <= int(edit::Property::MaskFeather); ++prop)
+                for (const Keyframe& k : edit::property(*c, edit::Property(prop), mask)->keys)
+                    frames.insert(c->start + k.frame);
+        for (const GradeKey& k : c->color.keys)
+            frames.insert(c->start + k.frame);
     }
     QVariantList out;
     for (qint64 f : frames)
@@ -586,9 +627,27 @@ QVariantMap ProjectController::clipGeometry(qint64 clipId) const
     const double fitH = aspect > canvasAspect ? canvasAspect / aspect : 1.0;
     const FramePos rel = std::clamp<FramePos>(playheadRel(*c), 0, c->duration - 1);
     const double scale = c->transform.scale.at(rel);
-    return {{"cx", 0.5 + c->transform.x.at(rel)},   {"cy", 0.5 + c->transform.y.at(rel)}, {"hw", fitW / 2 * scale},
-            {"hh", fitH / 2 * scale},              {"rotation", c->transform.rotation.at(rel)},
-            {"visible", playheadRel(*c) >= 0 && playheadRel(*c) < c->duration}};
+    QVariantList masks;
+    for (const Mask& m : c->masks) {
+        QVariantList points;
+        for (const PathPoint& pt : m.points)
+            points.append(QVariant(QVariantList{pt.x, pt.y, pt.inX, pt.inY, pt.outX, pt.outY}));
+        masks.append(QVariantMap{{"shape", QLatin1String(movix::app::kMaskShapeNames[int(m.shape)])},
+                                 {"x", m.x.at(rel)},
+                                 {"y", m.y.at(rel)},
+                                 {"width", m.width.at(rel)},
+                                 {"height", m.height.at(rel)},
+                                 {"rotation", m.rotation.at(rel)},
+                                 {"points", points}});
+    }
+    return {{"cx", 0.5 + c->transform.x.at(rel)},
+            {"cy", 0.5 + c->transform.y.at(rel)},
+            {"hw", fitW / 2 * scale},
+            {"hh", fitH / 2 * scale},
+            {"rotation", c->transform.rotation.at(rel)},
+            {"visible", playheadRel(*c) >= 0 && playheadRel(*c) < c->duration},
+            // Máscaras en coordenadas de la capa (0..1), para dibujarlas y moverlas sobre el visor.
+            {"masks", masks}};
 }
 
 void ProjectController::setClipSpeed(qint64 clipId, double speed)
@@ -813,7 +872,11 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
     QVariantMap info{
         {"clipId", qint64(c->id)},
         {"mediaId", qint64(c->mediaId)},
-        {"name", c->title ? tr("Título") : m ? QString::fromStdString(m->name) : QString()},
+        {"name", c->title          ? tr("Título")
+                 : c->isCompound() ? QString::fromStdString(project().sequenceName(c->sequenceId))
+                 : m               ? QString::fromStdString(m->name)
+                                   : QString()},
+        {"isCompound", c->isCompound()},
         {"track", t ? QString::fromStdString(t->name) : QString()},
         {"trackId", qint64(t->id)},
         {"trackVolume", t->volume},
@@ -835,6 +898,21 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
         {"transition", QLatin1String(kTransitionNames[int(c->transitionIn.type)])},
         {"transitionSeconds", toSeconds(s.frameToTime(c->transitionIn.duration))},
         {"durationSeconds", toSeconds(s.frameToTime(c->duration))},
+        {"blend", QLatin1String(movix::app::kBlendModeNames[int(c->blend)])},
+        {"masks", [&] {
+             QVariantList list;
+             for (const Mask& m : c->masks)
+                 list.append(QVariantMap{{"shape", QLatin1String(movix::app::kMaskShapeNames[int(m.shape)])},
+                                         {"mode", QLatin1String(movix::app::kMaskModeNames[int(m.mode)])},
+                                         {"invert", m.invert}});
+             return list;
+         }()},
+        {"colorActive", !c->color.isIdentity()},
+        {"chromaKey", QVariantMap{{"enabled", c->chromaKey.enabled},
+                                  {"color", colorName(c->chromaKey.color)},
+                                  {"tolerance", c->chromaKey.tolerance},
+                                  {"softness", c->chromaKey.softness},
+                                  {"spill", c->chromaKey.spill}}},
     };
     if (c->title) {
         const TitleStyle& ts = *c->title;
@@ -909,4 +987,69 @@ void ProjectController::selectAll()
                 m_selection.insert(c.id);
     m_clips.sync(project(), m_selection);
     emit selectionChanged();
+}
+
+// --- Clips compuestos ---
+
+QStringList ProjectController::sequencePath() const
+{
+    const Project& p = project();
+    auto name = [&](Id seq) {
+        return seq == p.mainSequence ? tr("Principal") : QString::fromStdString(p.sequenceName(seq));
+    };
+    QStringList out;
+    for (Id seq : p.sequencePath)
+        out.append(name(seq));
+    out.append(name(p.activeSequence));
+    return out;
+}
+
+void ProjectController::createCompound()
+{
+    if (m_selection.isEmpty())
+        return;
+    const std::vector<Id> ids(m_selection.begin(), m_selection.end());
+    const std::string name = tr("Compuesto %1").arg(project().sequences.size() + 1).toStdString();
+    Id created = kNoId;
+    if (apply(tr("Crear clip compuesto"), [&](Project& p) { return (created = edit::createCompound(p, ids, name)) != kNoId; })) {
+        m_selection = {created};
+        emit selectionChanged();
+        refresh();
+    }
+}
+
+void ProjectController::openCompound(qint64 clipId)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c || !c->isCompound())
+        return;
+    const Id seq = c->sequenceId;
+    m_player->pause();
+    if (apply(tr("Abrir clip compuesto"), [&](Project& p) { return edit::openSequence(p, seq); })) {
+        clearSelection();
+        m_player->seekFrame(0);
+    }
+}
+
+void ProjectController::openSequenceLevel(int level)
+{
+    const auto& path = project().sequencePath;
+    if (level < 0 || size_t(level) >= path.size())
+        return;
+    const Id seq = path[size_t(level)];
+    m_player->pause();
+    if (apply(tr("Volver a la secuencia"), [&](Project& p) { return edit::openSequence(p, seq); }))
+        clearSelection();
+}
+
+void ProjectController::breakCompound(qint64 clipId)
+{
+    std::vector<Id> created;
+    if (apply(tr("Deshacer clip compuesto"), [&](Project& p) { return !(created = edit::breakCompound(p, Id(clipId))).empty(); })) {
+        m_selection = QSet<Id>(created.begin(), created.end());
+        emit selectionChanged();
+        refresh();
+    } else if (const Clip* c = project().findClip(Id(clipId)); c && c->isCompound() && c->speed != 1.0) {
+        emit notice(tr("Para deshacer un clip compuesto, su velocidad debe ser 1×."));
+    }
 }

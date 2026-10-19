@@ -14,7 +14,8 @@ bool VideoReader::open(const std::string& path, bool hardware, std::string* erro
     m_current.reset();
     m_next.reset();
     m_nextValid = false;
-    return m_decoder.open(path, media::VideoDecoderOptions{hardware}, error);
+    // 10 bits o más se conservan (P016) para la composición y el HDR.
+    return m_decoder.open(path, media::VideoDecoderOptions{hardware, true}, error);
 }
 
 std::shared_ptr<media::VideoFrame> VideoReader::decodeNext()

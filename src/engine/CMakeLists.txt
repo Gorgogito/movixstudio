@@ -8,4 +8,4 @@ add_library(movix_engine STATIC
 )
 
 target_include_directories(movix_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(movix_engine PUBLIC movix_core movix_media)
+target_link_libraries(movix_engine PUBLIC movix_core movix_color movix_media)

@@ -9,6 +9,10 @@ Rectangle {
 
     required property ProjectController project
     property bool sourceMode: false
+    property bool scopesVisible: false
+    property string overlayMode: "transform" // ver TransformOverlay
+    property int overlayMaskIndex: 0
+    signal keyPicked()
     readonly property TimelinePlayer activePlayer: sourceMode ? project.sourcePlayer : project.player
 
     function showTimeline() {
@@ -79,29 +83,51 @@ Rectangle {
                     font.pixelSize: Theme.fontSmall
                     visible: !panel.sourceMode
                 }
+                ModeButton {
+                    text: qsTr("Scopes")
+                    active: panel.scopesVisible
+                    onClicked: panel.scopesVisible = !panel.scopesVisible
+                }
             }
         }
 
-        VideoView {
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            player: panel.activePlayer
+            spacing: 0
 
-            MouseArea {
-                anchors.fill: parent
-                onClicked: panel.activePlayer.togglePlayPause()
+            VideoView {
+                id: videoView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                player: panel.activePlayer
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: panel.activePlayer.togglePlayPause()
+                }
+                Text {
+                    anchors.centerIn: parent
+                    visible: !panel.sourceMode && !panel.project.player.hasContent
+                    text: qsTr("Arrastra medios a la línea de tiempo para empezar a editar")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontNormal
+                }
+                TransformOverlay {
+                    anchors.fill: parent
+                    visible: !panel.sourceMode && !panel.activePlayer.playing
+                    project: panel.project
+                    mode: panel.overlayMode
+                    maskIndex: panel.overlayMaskIndex
+                    onPicked: panel.keyPicked()
+                }
             }
-            Text {
-                anchors.centerIn: parent
-                visible: !panel.sourceMode && !panel.project.player.hasContent
-                text: qsTr("Arrastra medios a la línea de tiempo para empezar a editar")
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontNormal
-            }
-            TransformOverlay {
-                anchors.fill: parent
-                visible: !panel.sourceMode && !panel.activePlayer.playing
-                project: panel.project
+
+            ScopesPanel {
+                visible: panel.scopesVisible
+                Layout.fillHeight: true
+                Layout.preferredWidth: Math.min(320, panel.width * 0.35)
+                view: videoView
             }
         }
 

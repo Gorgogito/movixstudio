@@ -98,6 +98,11 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Save]; onActivated: window.saveProject(null) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
     Shortcut { sequence: "Ctrl+I"; onActivated: importDialog.open() }
+    Shortcut { sequence: "Ctrl+G"; onActivated: project.createCompound() }
+    Shortcut {
+        sequence: "Ctrl+Shift+G"
+        onActivated: if (project.selection.length === 1) project.breakCompound(project.selection[0])
+    }
     Shortcut { sequence: "Ctrl+E"; onActivated: exportDialog.open() }
     Shortcut { sequences: [StandardKey.Undo]; onActivated: project.undo() }
     Shortcut { sequences: ["Ctrl+Y", "Ctrl+Shift+Z"]; onActivated: project.redo() }
@@ -163,6 +168,17 @@ ApplicationWindow {
             MenuItem { text: qsTr("Modo &inserción"); checkable: true; checked: project.insertMode; onTriggered: project.insertMode = checked }
             MenuSeparator {}
             MenuItem { text: qsTr("Añadir tít&ulo") + "\tT"; onTriggered: project.addTitle(0) }
+            MenuSeparator {}
+            MenuItem {
+                text: qsTr("Crear clip c&ompuesto") + "\tCtrl+G"
+                enabled: project.selection.length > 0
+                onTriggered: project.createCompound()
+            }
+            MenuItem {
+                text: qsTr("Volver a la secuencia anterior")
+                enabled: project.inCompound
+                onTriggered: project.openSequenceLevel(project.sequencePath.length - 2)
+            }
             MenuItem { text: qsTr("Seleccionar &todo") + "\tCtrl+A"; onTriggered: project.selectAll() }
             MenuItem { text: qsTr("Añadir pista de &video"); onTriggered: project.addTrack("video") }
             MenuItem { text: qsTr("Añadir pista de &audio"); onTriggered: project.addTrack("audio") }
@@ -226,10 +242,14 @@ ApplicationWindow {
                 SplitView.fillWidth: true
                 SplitView.minimumWidth: 400
                 project: project
+                overlayMode: inspector.overlayMode
+                overlayMaskIndex: inspector.maskIndex
+                onKeyPicked: inspector.pickingKey = false
             }
             Inspector {
-                SplitView.preferredWidth: 280
-                SplitView.minimumWidth: 220
+                id: inspector
+                SplitView.preferredWidth: 320
+                SplitView.minimumWidth: 260
                 project: project
                 onSettingsRequested: settingsDialog.open()
             }
@@ -373,7 +393,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.text
-                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos y transiciones (fase F2).")
+                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color y composición (fase F3).")
             }
             Text {
                 Layout.fillWidth: true

@@ -5,8 +5,9 @@ import QtQuick.Layouts
 import MovixStudio
 import "Format.js" as Format
 
-// Propiedades del clip seleccionado (transformación, fundidos, velocidad, transición, título,
-// audio) o, sin selección, del proyecto.
+// Propiedades del clip seleccionado o, sin selección, del proyecto. Los clips de video tienen tres
+// pestañas: Clip (transformación, recorte, fusión, fundidos, velocidad, transición, título, audio),
+// Color y Efectos (croma y máscara).
 Rectangle {
     id: inspector
 
@@ -17,6 +18,20 @@ Rectangle {
     readonly property int selectedCount: project.selection.length
     readonly property bool hasClip: info.clipId !== undefined
     readonly property var title: info.title ?? ({})
+    readonly property bool videoClip: hasClip && info.isVideoTrack === true
+    property int tab: 0
+    property bool pickingKey: false
+    property int maskIndex: 0
+    // Qué edita el recuadro del visor según la pestaña.
+    readonly property string overlayMode: !videoClip ? "transform"
+                                          : pickingKey ? "pick"
+                                          : (tab === 2 && maskIndex < (info.masks ?? []).length) ? "mask" : "transform"
+    onInfoChanged: {
+        if (!videoClip)
+            pickingKey = false
+        maskIndex = Math.max(0, Math.min(maskIndex, (info.masks ?? []).length - 1))
+    }
+    onTabChanged: pickingKey = false
 
     function refresh() {
         info = selectedCount === 1 ? project.clipInfo(project.selection[0]) : ({})
@@ -88,15 +103,56 @@ Rectangle {
                 font.pixelSize: Theme.fontNormal + 1
                 font.bold: true
             }
+            TabBar {
+                id: tabs
+                Layout.fillWidth: true
+                visible: inspector.videoClip
+                currentIndex: inspector.tab
+                onCurrentIndexChanged: inspector.tab = currentIndex
+                TabButton { text: qsTr("Clip"); focusPolicy: Qt.NoFocus }
+                TabButton {
+                    text: inspector.info.colorActive ? qsTr("Color") + " •" : qsTr("Color")
+                    focusPolicy: Qt.NoFocus
+                }
+                TabButton {
+                    text: (inspector.info.chromaKey?.enabled || (inspector.info.masks ?? []).length > 0) ? qsTr("Efectos") + " •" : qsTr("Efectos")
+                    focusPolicy: Qt.NoFocus
+                }
+            }
+
+            ColorPanel {
+                visible: inspector.videoClip && inspector.tab === 1
+                project: inspector.project
+                clipId: inspector.info.clipId
+            }
+            EffectsPanel {
+                visible: inspector.videoClip && inspector.tab === 2
+                project: inspector.project
+                info: inspector.info
+                picking: inspector.pickingKey
+                onPickToggled: (on) => inspector.pickingKey = on
+                maskIndex: inspector.maskIndex
+                onMaskSelected: (i) => inspector.maskIndex = i
+            }
 
             // ======== Un clip seleccionado ========
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: inspector.hasClip
+                visible: inspector.hasClip && (!inspector.videoClip || inspector.tab === 0)
                 spacing: 6
 
                 SectionTitle { text: inspector.info.isTitle ? qsTr("Título") : qsTr("Clip") }
-                InfoRow { label: qsTr("Medio"); value: inspector.info.name ?? ""; visible: !inspector.info.isTitle }
+                InfoRow {
+                    label: inspector.info.isCompound ? qsTr("Secuencia") : qsTr("Medio")
+                    value: inspector.info.name ?? ""
+                    visible: !inspector.info.isTitle
+                }
+                Button {
+                    visible: inspector.info.isCompound === true
+                    text: qsTr("Abrir clip compuesto")
+                    focusPolicy: Qt.NoFocus
+                    onClicked: inspector.project.openCompound(inspector.info.clipId)
+                }
                 InfoRow { label: qsTr("Pista"); value: inspector.info.track ?? "" }
                 InfoRow { label: qsTr("Inicio"); value: inspector.project.timecode(inspector.info.start ?? 0) }
                 InfoRow { label: qsTr("Duración"); value: inspector.project.timecode(inspector.info.duration ?? 0) }
@@ -238,6 +294,26 @@ Rectangle {
                     PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "scale"; label: qsTr("Escala"); from: 0.05; to: 4; displayScale: 100; suffix: "%" }
                     PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "rotation"; label: qsTr("Rotación"); from: -180; to: 180; suffix: "°" }
                     PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "opacity"; label: qsTr("Opacidad"); from: 0; to: 1; displayScale: 100; suffix: "%" }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        SmallLabel { text: qsTr("Fusión"); Layout.fillWidth: true }
+                        ComboBox {
+                            Layout.preferredWidth: 150
+                            readonly property var modes: ["normal", "multiply", "screen", "overlay", "darken", "lighten", "colorDodge",
+                                                          "colorBurn", "hardLight", "softLight", "difference", "exclusion", "add", "subtract"]
+                            model: [qsTr("Normal"), qsTr("Multiplicar"), qsTr("Trama"), qsTr("Superponer"), qsTr("Oscurecer"),
+                                    qsTr("Aclarar"), qsTr("Sobreexponer color"), qsTr("Subexponer color"), qsTr("Luz fuerte"),
+                                    qsTr("Luz suave"), qsTr("Diferencia"), qsTr("Exclusión"), qsTr("Sumar"), qsTr("Restar")]
+                            currentIndex: Math.max(0, modes.indexOf(inspector.info.blend ?? "normal"))
+                            onActivated: (i) => inspector.project.setBlendMode(inspector.info.clipId, modes[i])
+                        }
+                    }
+
+                    SectionTitle { text: qsTr("Recorte") }
+                    PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "cropLeft"; label: qsTr("Izquierda"); from: 0; to: 0.9; displayScale: 100; suffix: "%" }
+                    PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "cropRight"; label: qsTr("Derecha"); from: 0; to: 0.9; displayScale: 100; suffix: "%" }
+                    PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "cropTop"; label: qsTr("Arriba"); from: 0; to: 0.9; displayScale: 100; suffix: "%" }
+                    PropertyRow { project: inspector.project; clipId: inspector.info.clipId; prop: "cropBottom"; label: qsTr("Abajo"); from: 0; to: 0.9; displayScale: 100; suffix: "%" }
 
                     SectionTitle { text: qsTr("Fundidos") }
                     RowLayout {

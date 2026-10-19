@@ -28,6 +28,8 @@ struct ExportSettings {
     core::FramePos rangeStart = 0;
     core::FramePos rangeEnd = -1;
     bool hardwareDecoding = true;
+    // 10 bits (con composición en coma flotante). En proyectos HDR es obligatorio y se activa solo.
+    bool tenBit = false;
 };
 
 struct ExportProgress {

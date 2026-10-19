@@ -70,6 +70,7 @@ Dialog {
             codec: currentCodec().name,
             quality: qualityHigh.checked ? "alta" : qualityMedium.checked ? "media" : "baja",
             includeAudio: audioCheck.checked,
+            tenBit: tenBitCheck.checked || dlg.project.colorMode !== "sdr",
             audioKbps: [128, 192, 256, 320][audioRate.currentIndex]
         })
         state_ = "running"
@@ -162,6 +163,14 @@ Dialog {
                 RadioButton { id: qualityHigh; text: qsTr("Alta"); checked: true }
                 RadioButton { id: qualityMedium; text: qsTr("Media") }
                 RadioButton { id: qualityLow; text: qsTr("Baja (archivo más pequeño)") }
+            }
+
+            Label { text: qsTr("Profundidad") }
+            CheckBox {
+                id: tenBitCheck
+                text: dlg.project.colorMode !== "sdr" ? qsTr("10 bits (obligatorio en HDR)") : qsTr("10 bits (menos bandas en degradados)")
+                checked: dlg.project.colorMode !== "sdr"
+                enabled: dlg.project.colorMode === "sdr"
             }
 
             Label { text: qsTr("Audio") }

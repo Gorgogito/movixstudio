@@ -16,6 +16,10 @@ add_executable(movix_tests
     test_core_file.cpp
     test_core_f2.cpp
     test_f2_media.cpp
+    test_f3.cpp
+    test_f3_more.cpp
+    test_compound.cpp
+    test_hdr.cpp
     test_engine.cpp
     test_render.cpp
     test_export.cpp
@@ -25,7 +29,7 @@ add_executable(movix_tests
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
-target_link_libraries(movix_tests PRIVATE movix_media movix_core movix_engine movix_render movix_export movix_playback Qt6::Test Catch2::Catch2 $<$<PLATFORM_ID:Windows>:winmm>)
+target_link_libraries(movix_tests PRIVATE movix_media movix_core movix_color movix_engine movix_render movix_export movix_playback Qt6::Test Catch2::Catch2 $<$<PLATFORM_ID:Windows>:winmm>)
 target_include_directories(movix_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(movix_tests PRIVATE Qt6::Quick)
 target_compile_definitions(movix_tests PRIVATE MOVIX_TEST_MEDIA_DIR="${MOVIX_TEST_MEDIA_DIR}")

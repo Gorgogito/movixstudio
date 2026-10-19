@@ -21,11 +21,23 @@ double fadeFactor(FramePos fadeIn, FramePos fadeOut, FramePos rel, FramePos dura
     return f;
 }
 
+// Clave de la aparición de un clip dentro de la de su compuesto (0 = línea de tiempo activa).
+std::uint64_t instanceKey(std::uint64_t outer, Id clip)
+{
+    if (outer == 0)
+        return clip;
+    std::uint64_t h = outer * 0x9E3779B97F4A7C15ull ^ (clip + 0x632BE59BD9B4E019ull);
+    h ^= h >> 31;
+    return h | (1ull << 63); // nunca coincide con un id de la línea de tiempo activa
+}
+
+std::vector<VideoLayer> layersOf(const Project& p, const std::vector<Track>& tracks, FramePos frame, std::uint64_t outer, int depth);
+
 bool contributesVideo(const Project& p, const Clip& c)
 {
     if (!c.enabled)
         return false;
-    if (c.title)
+    if (c.title || c.isCompound())
         return true;
     const MediaItem* m = p.findMedia(c.mediaId);
     return m && m->hasVideo;
@@ -33,13 +45,20 @@ bool contributesVideo(const Project& p, const Clip& c)
 
 // Capa de un clip en el fotograma `f`. `extended`: el clip se usa fuera de sus bordes (pierna
 // de una transición), sin fundidos.
-VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f, bool extended)
+VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f, bool extended, std::uint64_t outer, int depth)
 {
     VideoLayer l;
     l.clipId = c.id;
+    l.instance = instanceKey(outer, c.id);
     l.trackIndex = trackIndex;
     if (c.title) {
         l.title = &*c.title;
+    } else if (c.isCompound()) {
+        l.compound = true;
+        const FramePos nestedFrame = p.settings.timeToFrame(std::max<TimeUs>(0, sourceTimeAt(p.settings, c, f)));
+        const auto* tracks = p.videoTracksOf(c.sequenceId);
+        if (tracks && depth < kMaxNesting)
+            l.nested = layersOf(p, *tracks, nestedFrame, l.instance, depth + 1);
     } else {
         l.media = p.findMedia(c.mediaId);
         l.mediaId = c.mediaId;
@@ -48,6 +67,26 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
     const FramePos rel = f - c.start;
     l.transform = {c.transform.x.at(rel), c.transform.y.at(rel), c.transform.scale.at(rel), c.transform.rotation.at(rel)};
     l.opacity = std::clamp(c.transform.opacity.at(rel), 0.0, 1.0);
+    const Transform& tr = c.transform;
+    l.crop = {std::clamp(tr.cropLeft.at(rel), 0.0, 1.0), std::clamp(tr.cropTop.at(rel), 0.0, 1.0),
+              1.0 - std::clamp(tr.cropRight.at(rel), 0.0, 1.0), 1.0 - std::clamp(tr.cropBottom.at(rel), 0.0, 1.0)};
+    if (!c.color.isIdentity()) {
+        const AnimatedGrade::Sample g = c.color.at(rel);
+        l.grade = g.from;
+        l.gradeTo = g.to;
+        l.gradeMix = g.t;
+    }
+    l.chromaKey = c.chromaKey;
+    for (const Mask& m : c.masks) {
+        if (!m.active())
+            continue;
+        LayerMask lm{m.shape, m.invert, m.x.at(rel), m.y.at(rel), m.width.at(rel), m.height.at(rel), m.rotation.at(rel),
+                     std::max(0.0, m.feather.at(rel)), m.mode, {}};
+        if (m.shape == MaskShape::Path)
+            lm.points = m.points;
+        l.masks.push_back(std::move(lm));
+    }
+    l.blend = c.blend;
     if (!extended)
         l.opacity *= fadeFactor(c.fadeIn, c.fadeOut, rel, c.duration);
     return l;
@@ -72,10 +111,10 @@ void applyTransition(TransitionType type, double t, VideoLayer& a, VideoLayer& b
         }
         break;
     case TransitionType::WipeLeft: // la entrante aparece desde la derecha
-        b.crop.left = 1.0 - t;
+        b.crop.left = std::max(b.crop.left, 1.0 - t);
         break;
     case TransitionType::WipeRight:
-        b.crop.right = t;
+        b.crop.right = std::min(b.crop.right, t);
         break;
     case TransitionType::PushLeft:
         a.transform.x -= t;
@@ -103,11 +142,13 @@ TransitionSpan transitionSpan(const TransitionIn& t)
     return {t.duration / 2, t.duration - t.duration / 2};
 }
 
-std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame)
+namespace {
+
+std::vector<VideoLayer> layersOf(const Project& p, const std::vector<Track>& tracks, FramePos frame, std::uint64_t outer, int depth)
 {
     std::vector<VideoLayer> layers;
-    for (size_t ti = 0; ti < p.videoTracks.size(); ++ti) {
-        const Track& t = p.videoTracks[ti];
+    for (size_t ti = 0; ti < tracks.size(); ++ti) {
+        const Track& t = tracks[ti];
         if (t.hidden)
             continue;
         const Clip* c = edit::clipAt(t, frame);
@@ -134,8 +175,8 @@ std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame)
             const TransitionSpan span = transitionSpan(incoming->transitionIn);
             const FramePos k = frame - (incoming->start - span.before); // 0..duration-1
             const double progress = (double(k) + 0.5) / double(incoming->transitionIn.duration);
-            VideoLayer a = makeLayer(p, *outgoing, track, frame, outgoing != c);
-            VideoLayer b = makeLayer(p, *incoming, track, frame, incoming != c);
+            VideoLayer a = makeLayer(p, *outgoing, track, frame, outgoing != c, outer, depth);
+            VideoLayer b = makeLayer(p, *incoming, track, frame, incoming != c, outer, depth);
             bool drawA = true, drawB = true;
             applyTransition(incoming->transitionIn.type, progress, a, b, drawA, drawB);
             if (drawA)
@@ -145,14 +186,23 @@ std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame)
             continue;
         }
         if (contributesVideo(p, *c))
-            layers.push_back(makeLayer(p, *c, track, frame, false));
+            layers.push_back(makeLayer(p, *c, track, frame, false, outer, depth));
     }
     return layers;
 }
 
-std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1)
+} // namespace
+
+std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame)
 {
-    std::vector<AudioSegment> segments;
+    return layersOf(p, p.videoTracks, frame, 0, 0);
+}
+
+namespace {
+
+void collectAudio(const Project& p, const std::vector<Track>& vtracks, const std::vector<Track>& atracks, TimeUs t0, TimeUs t1,
+                  std::uint64_t outer, int depth, std::vector<AudioSegment>& segments)
+{
     const auto& s = p.settings;
 
     auto collect = [&](const Track& t, bool videoTrack) {
@@ -162,8 +212,8 @@ std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1
             const Clip& c = t.clips[i];
             if (!c.enabled || c.title || (videoTrack && c.audioDetached))
                 continue;
-            const MediaItem* m = p.findMedia(c.mediaId);
-            if (!m || !m->hasAudio)
+            const MediaItem* m = c.isCompound() ? nullptr : p.findMedia(c.mediaId);
+            if (!c.isCompound() && (!m || !m->hasAudio))
                 continue;
 
             const TimeUs cs = s.frameToTime(c.start);
@@ -204,11 +254,36 @@ std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1
                 return float(g);
             };
 
+            const TimeUs from = std::max(t0, xs), to = std::min(t1, xe);
+            if (c.isCompound()) {
+                // El audio de la secuencia en el tramo, llevado al tiempo de esta línea de tiempo.
+                const auto* nv = p.videoTracksOf(c.sequenceId);
+                const auto* na = p.audioTracksOf(c.sequenceId);
+                if (!nv || !na || depth >= kMaxNesting)
+                    continue;
+                std::vector<AudioSegment> nested;
+                collectAudio(p, *nv, *na, sourceTimeAtTime(s, c, from), sourceTimeAtTime(s, c, to), instanceKey(outer, c.id),
+                             depth + 1, nested);
+                auto toOuter = [&](TimeUs nt) { return cs + TimeUs(std::llround(double(nt - c.sourceIn) / c.speed)); };
+                for (AudioSegment n : nested) {
+                    n.timelineStart = std::clamp(toOuter(n.timelineStart), from, to);
+                    n.timelineEnd = std::clamp(toOuter(n.timelineEnd), from, to);
+                    if (n.timelineEnd <= n.timelineStart)
+                        continue;
+                    n.speed *= c.speed;
+                    n.gainStart *= gainAt(n.timelineStart);
+                    n.gainEnd *= gainAt(n.timelineEnd);
+                    segments.push_back(n);
+                }
+                continue;
+            }
+
             AudioSegment seg;
             seg.clipId = c.id;
+            seg.instance = instanceKey(outer, c.id);
             seg.media = m;
-            seg.timelineStart = std::max(t0, xs);
-            seg.timelineEnd = std::min(t1, xe);
+            seg.timelineStart = from;
+            seg.timelineEnd = to;
             seg.sourceStart = sourceTimeAtTime(s, c, seg.timelineStart);
             seg.speed = c.speed;
             seg.gainStart = gainAt(seg.timelineStart);
@@ -216,10 +291,18 @@ std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1
             segments.push_back(seg);
         }
     };
-    for (const Track& t : p.videoTracks)
+    for (const Track& t : vtracks)
         collect(t, true);
-    for (const Track& t : p.audioTracks)
+    for (const Track& t : atracks)
         collect(t, false);
+}
+
+} // namespace
+
+std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1)
+{
+    std::vector<AudioSegment> segments;
+    collectAudio(p, p.videoTracks, p.audioTracks, t0, t1, 0, 0, segments);
     return segments;
 }
 

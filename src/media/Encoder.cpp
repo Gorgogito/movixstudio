@@ -11,6 +11,7 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
+#include <libavutil/mastering_display_metadata.h>
 #include <libswscale/swscale.h>
 }
 
@@ -43,9 +44,15 @@ std::vector<T> supported(const AVCodecContext* ctx, const AVCodec* codec, AVCode
     return out; // vacío = el códec no restringe
 }
 
-AVPixelFormat choosePixelFormat(const AVCodecContext* ctx, const AVCodec* codec)
+AVPixelFormat choosePixelFormat(const AVCodecContext* ctx, const AVCodec* codec, bool tenBit)
 {
     const auto formats = supported<AVPixelFormat>(ctx, codec, AV_CODEC_CONFIG_PIX_FORMAT, AV_PIX_FMT_NONE);
+    if (tenBit) {
+        for (AVPixelFormat preferred : {AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_P010LE, AV_PIX_FMT_YUV422P10LE})
+            if (std::find(formats.begin(), formats.end(), preferred) != formats.end())
+                return preferred;
+        return AV_PIX_FMT_NONE; // el códec no admite 10 bits
+    }
     if (formats.empty())
         return AV_PIX_FMT_YUV420P;
     for (AVPixelFormat preferred : {AV_PIX_FMT_YUV420P, AV_PIX_FMT_NV12})
@@ -203,12 +210,20 @@ struct Encoder::Impl {
         vctx->time_base = AVRational{s.fpsDen, s.fpsNum};
         vctx->framerate = AVRational{s.fpsNum, s.fpsDen};
         vctx->sample_aspect_ratio = AVRational{1, 1};
-        vctx->pix_fmt = choosePixelFormat(vctx.get(), codec);
+        vctx->pix_fmt = choosePixelFormat(vctx.get(), codec, s.tenBit);
+        if (vctx->pix_fmt == AV_PIX_FMT_NONE)
+            return fail("El códec " + s.codec + " no admite 10 bits; para HDR usa HEVC, AV1, VP9 o ProRes.");
         vctx->gop_size = std::max(1, 2 * s.fpsNum / std::max(1, s.fpsDen)); // keyframe cada ~2 s
+        const bool hdr = s.signal != VideoEncoderSettings::Signal::SDR;
+        const AVColorPrimaries primaries = hdr ? AVCOL_PRI_BT2020 : AVCOL_PRI_BT709;
+        const AVColorTransferCharacteristic trc = s.signal == VideoEncoderSettings::Signal::PQ  ? AVCOL_TRC_SMPTE2084
+                                                  : s.signal == VideoEncoderSettings::Signal::HLG ? AVCOL_TRC_ARIB_STD_B67
+                                                                                                  : AVCOL_TRC_BT709;
+        const AVColorSpace matrix = hdr ? AVCOL_SPC_BT2020_NCL : AVCOL_SPC_BT709;
         vctx->color_range = AVCOL_RANGE_MPEG;
-        vctx->color_primaries = AVCOL_PRI_BT709;
-        vctx->color_trc = AVCOL_TRC_BT709;
-        vctx->colorspace = AVCOL_SPC_BT709;
+        vctx->color_primaries = primaries;
+        vctx->color_trc = trc;
+        vctx->colorspace = matrix;
         if (fmt->oformat->flags & AVFMT_GLOBALHEADER)
             vctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -221,6 +236,32 @@ struct Encoder::Impl {
 
         vstream = avformat_new_stream(fmt, nullptr);
         avcodec_parameters_from_context(vstream->codecpar, vctx.get());
+        if (s.signal == VideoEncoderSettings::Signal::PQ) {
+            // Metadatos HDR10 del contenedor: pantalla de referencia P3-D65 de 1000 nits.
+            AVCodecParameters* par = vstream->codecpar;
+            if (AVPacketSideData* sd = av_packet_side_data_new(&par->coded_side_data, &par->nb_coded_side_data,
+                                                               AV_PKT_DATA_MASTERING_DISPLAY_METADATA,
+                                                               sizeof(AVMasteringDisplayMetadata), 0)) {
+                auto* m = reinterpret_cast<AVMasteringDisplayMetadata*>(sd->data);
+                *m = {};
+                const int primariesP3[3][2] = {{34000, 16000}, {13250, 34500}, {7500, 3000}}; // R, G, B en 1/50000
+                for (int i = 0; i < 3; ++i) {
+                    m->display_primaries[i][0] = av_make_q(primariesP3[i][0], 50000);
+                    m->display_primaries[i][1] = av_make_q(primariesP3[i][1], 50000);
+                }
+                m->white_point[0] = av_make_q(15635, 50000);
+                m->white_point[1] = av_make_q(16450, 50000);
+                m->max_luminance = av_make_q(1000, 1);
+                m->min_luminance = av_make_q(1, 10000);
+                m->has_primaries = m->has_luminance = 1;
+            }
+            if (AVPacketSideData* sd = av_packet_side_data_new(&par->coded_side_data, &par->nb_coded_side_data,
+                                                               AV_PKT_DATA_CONTENT_LIGHT_LEVEL, sizeof(AVContentLightMetadata), 0)) {
+                auto* cll = reinterpret_cast<AVContentLightMetadata*>(sd->data);
+                cll->MaxCLL = 1000;
+                cll->MaxFALL = 400;
+            }
+        }
         vstream->time_base = vctx->time_base;
         vstream->avg_frame_rate = vctx->framerate;
 
@@ -229,19 +270,19 @@ struct Encoder::Impl {
         vframe->width = s.width;
         vframe->height = s.height;
         vframe->color_range = AVCOL_RANGE_MPEG;
-        vframe->colorspace = AVCOL_SPC_BT709;
-        vframe->color_primaries = AVCOL_PRI_BT709;
-        vframe->color_trc = AVCOL_TRC_BT709;
+        vframe->colorspace = matrix;
+        vframe->color_primaries = primaries;
+        vframe->color_trc = trc;
         if (av_frame_get_buffer(vframe.get(), 0) < 0)
             return fail("Sin memoria para el fotograma de salida.");
 
-        sws = sws_getContext(s.width, s.height, AV_PIX_FMT_RGBA, s.width, s.height, vctx->pix_fmt,
+        sws = sws_getContext(s.width, s.height, s.input16 ? AV_PIX_FMT_RGBA64LE : AV_PIX_FMT_RGBA, s.width, s.height, vctx->pix_fmt,
                              SWS_BILINEAR | SWS_ACCURATE_RND, nullptr, nullptr, nullptr);
         if (!sws)
             return fail("No se pudo preparar la conversión de color de salida.");
-        // RGB de rango completo → YUV BT.709 de rango limitado.
-        const int* bt709 = sws_getCoefficients(SWS_CS_ITU709);
-        sws_setColorspaceDetails(sws, bt709, 1, bt709, 0, 0, 1 << 16, 1 << 16);
+        // RGB de rango completo → YUV de rango limitado (matriz BT.709, o BT.2020 en HDR).
+        const int* coeffs = sws_getCoefficients(hdr ? SWS_CS_BT2020 : SWS_CS_ITU709);
+        sws_setColorspaceDetails(sws, coeffs, 1, coeffs, 0, 0, 1 << 16, 1 << 16);
         return true;
     }
 
@@ -460,7 +501,7 @@ const std::vector<EncoderInfo>& Encoder::availableVideoEncoders()
             ctx->height = 360;
             ctx->time_base = AVRational{1, 30};
             ctx->framerate = AVRational{30, 1};
-            ctx->pix_fmt = choosePixelFormat(ctx.get(), codec);
+            ctx->pix_fmt = choosePixelFormat(ctx.get(), codec, false);
             if (avcodec_open2(ctx.get(), codec, nullptr) == 0)
                 result.push_back({name, codec->long_name ? codec->long_name : name, isHardware(name)});
         }

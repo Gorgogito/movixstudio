@@ -140,6 +140,7 @@ QVariant ClipListModel::data(const QModelIndex& index, int role) const
     case GainRole: return i.clip.volume.isAnimated() ? -1.0 : i.clip.volume.value; // -1: animado
     case SelectedRole: return i.selected;
     case IsTitleRole: return i.clip.title.has_value();
+    case IsCompoundRole: return i.clip.isCompound();
     case IsStillRole: return i.isStill;
     case SpeedRole: return i.clip.speed;
     case TransitionRole: return i.clip.transitionIn.active() ? qint64(i.clip.transitionIn.duration) : qint64(0);
@@ -155,7 +156,7 @@ QHash<int, QByteArray> ClipListModel::roleNames() const
             {DurationRole, "duration"}, {MediaIdRole, "mediaId"}, {NameRole, "name"}, {PathRole, "path"},
             {SourceInRole, "sourceIn"}, {MediaDurationRole, "mediaDuration"}, {KindRole, "kind"},
             {HasAudioRole, "hasAudio"}, {HasVideoRole, "hasVideo"}, {EnabledRole, "clipEnabled"}, {GainRole, "gain"},
-            {SelectedRole, "selected"}, {IsTitleRole, "isTitle"}, {IsStillRole, "isStill"}, {SpeedRole, "speed"},
+            {SelectedRole, "selected"}, {IsTitleRole, "isTitle"}, {IsCompoundRole, "isCompound"}, {IsStillRole, "isStill"}, {SpeedRole, "speed"},
             {TransitionRole, "transitionFrames"}, {FadeInRole, "fadeIn"}, {FadeOutRole, "fadeOut"}};
 }
 
@@ -166,14 +167,19 @@ void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
         for (int ti = 0; ti < int(tracks.size()); ++ti) {
             const Track& t = tracks[size_t(ti)];
             for (const Clip& c : t.clips) {
-                const MediaItem* m = c.title ? nullptr : project.findMedia(c.mediaId);
-                // Los títulos se identifican por su texto (primera línea).
-                const QString name = c.title ? QString::fromStdString(c.title->text).section(QLatin1Char('\n'), 0, 0)
-                                             : m ? QString::fromStdString(m->name) : QString();
-                const bool audio = m && m->hasAudio && !(kind == TrackKind::Video && c.audioDetached);
+                const MediaItem* m = c.isGenerated() ? nullptr : project.findMedia(c.mediaId);
+                // Los títulos se identifican por su texto (primera línea); los compuestos, por su secuencia.
+                const QString name = c.title          ? QString::fromStdString(c.title->text).section(QLatin1Char('\n'), 0, 0)
+                                     : c.isCompound() ? QString::fromStdString(project.sequenceName(c.sequenceId))
+                                     : m              ? QString::fromStdString(m->name)
+                                                      : QString();
+                const bool audio = c.isCompound() || (m && m->hasAudio && !(kind == TrackKind::Video && c.audioDetached));
+                const qint64 sourceDuration = c.isCompound() ? qint64(project.settings.frameToTime(project.sequenceDuration(c.sequenceId)))
+                                              : m            ? qint64(m->duration)
+                                                             : 0;
                 next.push_back({c, t.id, TrackListModel::displayRow(project, kind, ti), kind, name,
-                                m ? QString::fromStdString(m->path) : QString(), m ? qint64(m->duration) : 0, audio,
-                                c.title.has_value() || (m && m->hasVideo), selection.contains(c.id), m && m->isStill});
+                                m ? QString::fromStdString(m->path) : QString(), sourceDuration, audio,
+                                c.isGenerated() || (m && m->hasVideo), selection.contains(c.id), m && m->isStill});
             }
         }
     };

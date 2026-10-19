@@ -29,7 +29,10 @@ Dialog {
         { label: "59,94", num: 60000, den: 1001 }, { label: "60", num: 60, den: 1 }
     ]
 
+    readonly property var colorModes: ["sdr", "pq", "hlg"]
+
     onAboutToShow: {
+        colorCombo.currentIndex = Math.max(0, colorModes.indexOf(project.colorMode))
         widthBox.value = project.canvasWidth
         heightBox.value = project.canvasHeight
         let idx = rates.findIndex(r => r.num === project.frameRateNum && r.den === project.frameRateDen)
@@ -38,6 +41,7 @@ Dialog {
     onAccepted: {
         const r = rates[rateCombo.currentIndex]
         project.setProjectSettings(widthBox.value, heightBox.value, r.num, r.den)
+        project.setColorMode(colorModes[colorCombo.currentIndex])
     }
 
     GridLayout {
@@ -66,6 +70,22 @@ Dialog {
 
         Label { text: qsTr("Fotogramas/s") }
         ComboBox { id: rateCombo; Layout.fillWidth: true; model: dlg.rates; textRole: "label" }
+
+        Label { text: qsTr("Espacio de color") }
+        ComboBox {
+            id: colorCombo
+            Layout.fillWidth: true
+            model: [qsTr("SDR · Rec.709"), qsTr("HDR10 · PQ, Rec.2020"), qsTr("HLG · Rec.2020")]
+        }
+        Label {
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            visible: colorCombo.currentIndex > 0
+            wrapMode: Text.WordWrap
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            text: qsTr("En HDR el material SDR se coloca a 203 nits, el visor muestra una conversión a SDR y la exportación es de 10 bits (HEVC, AV1, VP9 o ProRes).")
+        }
 
         Label {
             Layout.columnSpan: 2

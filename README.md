@@ -3,9 +3,22 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Estado: fase F2 completada** — edición multipista con keyframes, títulos, transiciones,
-> velocidad e imágenes. Consulta la [hoja de ruta](docs/ROADMAP.md) para lo que viene (color,
-> composición, IA local…).
+> **Estado: fase F3 completada** — corrección de color animable, OpenColorIO, HDR, croma, máscaras,
+> modos de fusión, clips compuestos y scopes, sobre la edición multipista de F2. Consulta la [hoja de ruta](docs/ROADMAP.md) para lo que viene
+> (IA local de audio y texto…) y lo que queda pendiente.
+
+**Novedades de F3**
+- Pestaña Color en el inspector: ajustes básicos, ruedas de sombras/medios/luces, curvas general y
+  RGB, HSL por 8 gamas de color y LUT `.cube` con intensidad, todo con keyframes. Copiar y pegar la
+  corrección. Material de cámara (S-Log3, V-Log, LogC…) convertido con OpenColorIO (ACES).
+- Pestaña Efectos: clave de croma con cuentagotas sobre el visor y hasta 8 máscaras por clip
+  (rectángulo, elipse, lineal y forma libre) que se suman, restan o intersecan, con keyframes.
+- 14 modos de fusión (multiplicar, trama, superponer, luz suave…) y recorte animable por borde.
+- Clips compuestos (Ctrl+G): agrupan clips en una secuencia que se abre con doble clic.
+- HDR: proyectos HDR10 (PQ) o HLG en Rec.2020, material de 10 bits y exportación de 10 bits con
+  metadatos HDR10; el visor muestra la conversión a SDR.
+- Scopes junto al visor: forma de onda, desfile RGB, vectorscopio e histograma en tiempo real.
+- Todo se calcula en la GPU con el mismo compositor en la vista previa y en la exportación.
 
 **Novedades de F2**
 - Transformación por clip (posición, escala, rotación, opacidad) con keyframes (lineal, mantener,
@@ -60,6 +73,7 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
 | Inicio / final | `Inicio` / `Fin` | Deshacer / rehacer | `Ctrl+Z` / `Ctrl+Y` |
 | Acercar / alejar / ajustar | `+` / `-` / `Mayús+Z` | Imán | `N` |
 | Nuevo / abrir / guardar | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | Importar / exportar | `Ctrl+I` / `Ctrl+E` |
+| Crear / deshacer clip compuesto | `Ctrl+G` / `Ctrl+Mayús+G` | Abrir clip compuesto | doble clic |
 
 ## Arquitectura
 
@@ -67,6 +81,7 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
 src/
   media/     movix_media     FFmpeg: sondeo, decodificación (D3D11VA/CPU), codificación, color
   core/      movix_core      modelo del proyecto, ediciones, deshacer/rehacer, .mxproj, evaluación
+  color/     movix_color     matemática del color (corrección, curvas, HSL, LUT .cube), croma, fusión, scopes
   engine/    movix_engine    lectores por clip, composición de capas por fotograma, mezcla de audio
   render/    movix_render    compositor GPU (Qt RHI) compartido por visor y exportación
   export/    movix_export    exportación (compositor fuera de pantalla + mezcla + codificador)
@@ -80,7 +95,7 @@ El núcleo no depende de la interfaz: cada edición es una función pura sobre e
 historial guarda instantáneas (deshacer exacto por construcción) y el reproductor y la exportación
 trabajan sobre instantáneas inmutables.
 
-Tecnologías: C++20 · Qt 6.8 (Qt Quick, RHI) · FFmpeg 9 · miniaudio · CMake + Ninja · vcpkg · Catch2.
+Tecnologías: C++20 · Qt 6.8 (Qt Quick, RHI) · FFmpeg 9 · OpenColorIO 2.6 · miniaudio · CMake + Ninja · vcpkg · Catch2.
 
 ## Compilar (Windows)
 
@@ -102,7 +117,10 @@ Diagnóstico de la reproducción: `$env:QT_LOGGING_RULES = "movix.player.stats.d
 
 ## Pruebas
 
-`ctest --preset debug` genera los medios sintéticos y ejecuta 49 casos (Debug y Release):
+`ctest --preset debug` genera los medios sintéticos y ejecuta 91 casos (Debug y Release). Además de
+los de F0–F2, los de F3 comparan la GPU con una referencia en la CPU (corrección de color, croma,
+cada modo de fusión, máscaras, conversiones HDR) y comprueban LUT `.cube`, curvas, scopes, OCIO,
+clips compuestos, la exportación HDR10 y el `.mxproj` v4:
 
 | Área | Qué se verifica |
 |---|---|
@@ -117,6 +135,7 @@ Diagnóstico de la reproducción: `$env:QT_LOGGING_RULES = "movix.player.stats.d
 ## Licencia
 
 GPL-3.0-or-later. Ver [LICENSE](LICENSE). Componentes de terceros: Qt (LGPLv3), FFmpeg (GPL, compilado
-con x264/x265), miniaudio (dominio público / MIT-0), Catch2 (BSL-1.0, solo pruebas).
+con x264/x265), OpenColorIO (BSD-3-Clause; config de ACES incluido), miniaudio (dominio público /
+MIT-0), Catch2 (BSL-1.0, solo pruebas).
 
 MovixStudio no está afiliado a Wondershare ni a Filmora; no usa su código, marca ni recursos.

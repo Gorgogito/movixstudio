@@ -42,6 +42,14 @@ make_media(hevc10_360p.mkv
     -f lavfi -i "sine=f=440:r=44100:d=2"
     -c:v libx265 -preset ultrafast -x265-params log-level=error -c:a flac -shortest)
 
+# 3b) HDR10: HEVC de 10 bits marcado como PQ (SMPTE ST 2084) y Rec.2020, gris uniforme.
+set(ext .mkv)
+make_media(hdr_pq.mkv
+    -f lavfi -i "color=c=0x9C9C9C:s=320x180:r=30:d=1,format=yuv420p10le"
+    -c:v libx265 -preset ultrafast
+    -x265-params "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc"
+    -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc)
+
 # 4) VP9 + Opus en WebM.
 set(ext .webm)
 make_media(vp9_opus.webm

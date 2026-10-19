@@ -2,7 +2,7 @@
 
 namespace movix::media {
 
-std::array<float, 16> yuvToRgbMatrix(ColorSpace space, bool fullRange)
+std::array<float, 16> yuvToRgbMatrix(ColorSpace space, bool fullRange, bool deep)
 {
     double kr = 0.2126, kb = 0.0722; // BT.709
     if (space == ColorSpace::BT601) {
@@ -15,10 +15,14 @@ std::array<float, 16> yuvToRgbMatrix(ColorSpace space, bool fullRange)
     const double kg = 1.0 - kr - kb;
 
     // Expansión de rango: Y' = (Y - yOff) * yScale ; C' = (C - 128/255) * cScale
-    const double yOff = fullRange ? 0.0 : 16.0 / 255.0;
-    const double yScale = fullRange ? 1.0 : 255.0 / 219.0;
-    const double cScale = fullRange ? 1.0 : 255.0 / 224.0;
-    const double cOff = 128.0 / 255.0;
+    // En 8 bits, los niveles son 16..235 (luma) y 16..240 (croma) sobre 255; en P016, los de 10
+    // bits (64..940, 64..960) desplazados 6 bits, sobre 65535.
+    const double maxCode = deep ? 65535.0 : 255.0;
+    const double unit = deep ? 64.0 * 4.0 : 1.0; // un nivel de 8 bits en códigos del contenedor
+    const double yOff = fullRange ? 0.0 : 16.0 * unit / maxCode;
+    const double yScale = fullRange ? 1.0 : maxCode / (219.0 * unit);
+    const double cScale = fullRange ? 1.0 : maxCode / (224.0 * unit);
+    const double cOff = (deep ? 512.0 * 64.0 : 128.0) / maxCode;
 
     // Coeficientes de R'G'B' a partir de Y' y Cb/Cr centrados en cero.
     const double rCr = 2.0 * (1.0 - kr);

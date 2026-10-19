@@ -3,6 +3,7 @@ add_library(movix_render STATIC
     Compositor.h Compositor.cpp
     OffscreenRenderer.h OffscreenRenderer.cpp
     TitleRenderer.h TitleRenderer.cpp
+    MaskRenderer.h MaskRenderer.cpp
 )
 
 target_include_directories(movix_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -13,7 +14,7 @@ qt_add_shaders(movix_render "movix_shaders"
     PREFIX "/movix"
     FILES
         shaders/layer.vert
-        shaders/layer_nv12.frag
-        shaders/layer_rgba.frag
+        shaders/layer.frag
         shaders/solid.frag
+        shaders/canvas.frag
 )

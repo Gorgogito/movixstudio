@@ -1,8 +1,9 @@
 #include "export/Exporter.h"
 
-#include "export/BoundedQueue.h"
-
+#include "core/Edits.h"
 #include "engine/Sources.h"
+#include "export/BoundedQueue.h"
+#include "render/MaskRenderer.h"
 #include "render/OffscreenRenderer.h"
 #include "render/TitleRenderer.h"
 
@@ -15,9 +16,13 @@
 
 namespace movix::exporting {
 
-bool Exporter::run(const core::Project& project, const ExportSettings& s, const std::atomic<bool>& cancel,
+bool Exporter::run(const core::Project& input, const ExportSettings& s, const std::atomic<bool>& cancel,
                    const ProgressCallback& progress, QString* error)
 {
+    // Siempre se exporta la secuencia principal, aunque se esté editando un clip compuesto.
+    core::Project project = input;
+    if (project.mainSequence != core::kNoId && project.activeSequence != project.mainSequence)
+        core::edit::openSequence(project, project.mainSequence);
     m_cancelled = false;
     auto fail = [&](const QString& msg) {
         if (error)
@@ -41,7 +46,9 @@ bool Exporter::run(const core::Project& project, const ExportSettings& s, const 
 
     render::OffscreenRenderer renderer;
     QString renderError;
-    if (!renderer.init(s.width, s.height, &renderError))
+    const bool hdr = project.settings.colorMode != core::ColorMode::SDR;
+    const bool deep = s.tenBit || hdr;
+    if (!renderer.init(s.width, s.height, &renderError, deep))
         return fail(renderError);
 
     media::EncoderSettings es;
@@ -55,6 +62,11 @@ bool Exporter::run(const core::Project& project, const ExportSettings& s, const 
     es.video.quality = s.quality;
     es.video.bitRate = s.videoBitRate;
     es.video.preset = s.preset;
+    es.video.input16 = deep;
+    es.video.tenBit = deep;
+    es.video.signal = project.settings.colorMode == core::ColorMode::PQ  ? media::VideoEncoderSettings::Signal::PQ
+                      : project.settings.colorMode == core::ColorMode::HLG ? media::VideoEncoderSettings::Signal::HLG
+                                                                           : media::VideoEncoderSettings::Signal::SDR;
     es.hasAudio = s.includeAudio;
     es.audio.codec = s.audioCodec;
     es.audio.bitRate = s.audioBitRate;
@@ -91,6 +103,7 @@ bool Exporter::run(const core::Project& project, const ExportSettings& s, const 
     std::thread decoder([&] {
         engine::VideoSources sources(s.hardwareDecoding);
         sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
+        sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
         for (int64_t j = 0; j < total && !stop.load(); ++j) {
             const auto a = Clock::now();
             engine::FrameBundle bundle = sources.build(project, project.settings.timeToFrame(t0 + out.frameToTime(j)));
@@ -105,7 +118,7 @@ bool Exporter::run(const core::Project& project, const ExportSettings& s, const 
             if (stop.load())
                 break; // cancelada o con error: no tiene sentido codificar lo pendiente
             const auto a = Clock::now();
-            bool ok = encoder.writeVideo(job->rgba.data(), s.width * 4);
+            bool ok = encoder.writeVideo(job->rgba.data(), s.width * (deep ? 8 : 4));
             if (ok && job->audioFrames > 0)
                 ok = encoder.writeAudio(job->audio.data(), job->audioFrames);
             encodeTotal = encodeTotal + ms(a, Clock::now());

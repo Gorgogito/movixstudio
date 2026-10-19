@@ -2,6 +2,335 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="es">
 <context>
+    <name>ColorPanel</name>
+    <message>
+        <source>Restablecer esta sección</source>
+        <translation>Reset this section</translation>
+    </message>
+    <message>
+        <source>Cargar LUT</source>
+        <translation>Load LUT</translation>
+    </message>
+    <message>
+        <source>LUT de color (*.cube)</source>
+        <translation>Color LUT (*.cube)</translation>
+    </message>
+    <message>
+        <source>Todos los archivos (*)</source>
+        <translation>All files (*)</translation>
+    </message>
+    <message>
+        <source>Copiar</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>Pegar</source>
+        <translation>Paste</translation>
+    </message>
+    <message>
+        <source>Pega la corrección copiada en los clips seleccionados</source>
+        <translation>Paste the copied grade onto the selected clips</translation>
+    </message>
+    <message>
+        <source>Restablecer</source>
+        <translation>Reset</translation>
+    </message>
+    <message>
+        <source>Básica</source>
+        <translation>Basic</translation>
+    </message>
+    <message>
+        <source>Exposición</source>
+        <translation>Exposure</translation>
+    </message>
+    <message>
+        <source>Contraste</source>
+        <translation>Contrast</translation>
+    </message>
+    <message>
+        <source>Saturación</source>
+        <translation>Saturation</translation>
+    </message>
+    <message>
+        <source>Intensidad</source>
+        <translation>Vibrance</translation>
+    </message>
+    <message>
+        <source>Temperatura</source>
+        <translation>Temperature</translation>
+    </message>
+    <message>
+        <source>Matiz</source>
+        <translation>Tint</translation>
+    </message>
+    <message>
+        <source>Altas luces</source>
+        <translation>Highlights</translation>
+    </message>
+    <message>
+        <source>Sombras</source>
+        <translation>Shadows</translation>
+    </message>
+    <message>
+        <source>Blancos</source>
+        <translation>Whites</translation>
+    </message>
+    <message>
+        <source>Negros</source>
+        <translation>Blacks</translation>
+    </message>
+    <message>
+        <source>Ruedas de color</source>
+        <translation>Color wheels</translation>
+    </message>
+    <message>
+        <source>Medios</source>
+        <translation>Media</translation>
+    </message>
+    <message>
+        <source>Luces</source>
+        <translation>Highlights</translation>
+    </message>
+    <message>
+        <source>Curvas</source>
+        <translation>Curves</translation>
+    </message>
+    <message>
+        <source>HSL</source>
+        <translation>HSL</translation>
+    </message>
+    <message>
+        <source>Rojos</source>
+        <translation>Reds</translation>
+    </message>
+    <message>
+        <source>Naranjas</source>
+        <translation>Oranges</translation>
+    </message>
+    <message>
+        <source>Amarillos</source>
+        <translation>Yellows</translation>
+    </message>
+    <message>
+        <source>Verdes</source>
+        <translation>Greens</translation>
+    </message>
+    <message>
+        <source>Aguamarinas</source>
+        <translation>Aquas</translation>
+    </message>
+    <message>
+        <source>Azules</source>
+        <translation>Blues</translation>
+    </message>
+    <message>
+        <source>Morados</source>
+        <translation>Purples</translation>
+    </message>
+    <message>
+        <source>Magentas</source>
+        <translation>Magentas</translation>
+    </message>
+    <message>
+        <source>Tono</source>
+        <translation>Hue</translation>
+    </message>
+    <message>
+        <source>Luminancia</source>
+        <translation>Luminance</translation>
+    </message>
+    <message>
+        <source>LUT</source>
+        <translation>LUT</translation>
+    </message>
+    <message>
+        <source>Ninguna</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>Cargar…</source>
+        <translation>Load…</translation>
+    </message>
+    <message>
+        <source>Doble clic en un control lo devuelve a su valor neutro.</source>
+        <translation>Double-click a control to return it to its neutral value.</translation>
+    </message>
+    <message>
+        <source>Color animado: los cambios van al keyframe del cabezal</source>
+        <translation>Animated color: changes go to the keyframe at the playhead</translation>
+    </message>
+    <message>
+        <source>Keyframe de color</source>
+        <translation>Color keyframe</translation>
+    </message>
+    <message>
+        <source>Keyframe anterior</source>
+        <translation>Previous keyframe</translation>
+    </message>
+    <message>
+        <source>Quitar keyframe de color en el cabezal</source>
+        <translation>Remove color keyframe at playhead</translation>
+    </message>
+    <message>
+        <source>Añadir keyframe de color en el cabezal</source>
+        <translation>Add color keyframe at playhead</translation>
+    </message>
+    <message>
+        <source>Keyframe siguiente</source>
+        <translation>Next keyframe</translation>
+    </message>
+    <message>
+        <source>Material de cámara</source>
+        <translation>Camera footage</translation>
+    </message>
+    <message>
+        <source>Ninguno (ya es la señal del proyecto)</source>
+        <translation>None (already the project signal)</translation>
+    </message>
+    <message>
+        <source>Convierte el perfil logarítmico de la cámara a la señal del proyecto con OpenColorIO (ACES).</source>
+        <translation>Converts the camera log profile to the project signal with OpenColorIO (ACES).</translation>
+    </message>
+</context>
+<context>
+    <name>CurveEditor</name>
+    <message>
+        <source>General</source>
+        <translation>Master</translation>
+    </message>
+</context>
+<context>
+    <name>EffectsPanel</name>
+    <message>
+        <source>Clave de croma</source>
+        <translation>Chroma key</translation>
+    </message>
+    <message>
+        <source>Quitar un color de fondo</source>
+        <translation>Remove a background color</translation>
+    </message>
+    <message>
+        <source>Color clave</source>
+        <translation>Key color</translation>
+    </message>
+    <message>
+        <source>Haz clic en el visor</source>
+        <translation>Click the viewer</translation>
+    </message>
+    <message>
+        <source>Cuentagotas</source>
+        <translation>Eyedropper</translation>
+    </message>
+    <message>
+        <source>Tolerancia</source>
+        <translation>Tolerance</translation>
+    </message>
+    <message>
+        <source>Suavidad del borde</source>
+        <translation>Edge softness</translation>
+    </message>
+    <message>
+        <source>Quitar derrame de color</source>
+        <translation>Spill suppression</translation>
+    </message>
+    <message>
+        <source>Coloca el clip en una pista superior: lo que se quite deja ver las pistas de debajo.</source>
+        <translation>Place the clip on an upper track: what is removed reveals the tracks below.</translation>
+    </message>
+    <message>
+        <source>Rectángulo</source>
+        <translation>Rectangle</translation>
+    </message>
+    <message>
+        <source>Elipse</source>
+        <translation>Ellipse</translation>
+    </message>
+    <message>
+        <source>Lineal</source>
+        <translation>Linear</translation>
+    </message>
+    <message>
+        <source>Centro X</source>
+        <translation>Center X</translation>
+    </message>
+    <message>
+        <source>Centro Y</source>
+        <translation>Center Y</translation>
+    </message>
+    <message>
+        <source>Ancho</source>
+        <translation>Width</translation>
+    </message>
+    <message>
+        <source>Alto</source>
+        <translation>Height</translation>
+    </message>
+    <message>
+        <source>Rotación</source>
+        <translation>Rotation</translation>
+    </message>
+    <message>
+        <source>Difuminado</source>
+        <translation>Feather</translation>
+    </message>
+    <message>
+        <source>Arrastra la máscara en el visor para moverla; sus valores admiten keyframes.</source>
+        <translation>Drag the mask on the viewer to move it; its values support keyframes.</translation>
+    </message>
+    <message>
+        <source>Forma libre</source>
+        <translation>Freeform</translation>
+    </message>
+    <message>
+        <source>Máscaras</source>
+        <translation>Masks</translation>
+    </message>
+    <message>
+        <source>Añadir</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Sin máscaras: se ve toda la capa.</source>
+        <translation>No masks: the whole layer is visible.</translation>
+    </message>
+    <message>
+        <source>Sumar</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Restar</source>
+        <translation>Subtract</translation>
+    </message>
+    <message>
+        <source>Intersecar</source>
+        <translation>Intersect</translation>
+    </message>
+    <message>
+        <source>Inv.</source>
+        <translation>Inv.</translation>
+    </message>
+    <message>
+        <source>Invertir la máscara</source>
+        <translation>Invert the mask</translation>
+    </message>
+    <message>
+        <source>Quitar la máscara</source>
+        <translation>Remove the mask</translation>
+    </message>
+    <message>
+        <source>Suavizar</source>
+        <translation>Smooth</translation>
+    </message>
+    <message>
+        <source>Esquinas</source>
+        <translation>Corners</translation>
+    </message>
+    <message>
+        <source>En el visor: arrastra los puntos o el centro; doble clic añade un punto y clic derecho en un punto lo quita.</source>
+        <translation>On the viewer: drag the points or the center; double-click adds a point and right-click on a point removes it.</translation>
+    </message>
+</context>
+<context>
     <name>ExportController</name>
     <message>
         <source>codificación</source>
@@ -137,6 +466,18 @@
     <message>
         <source>Cancelar</source>
         <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Profundidad</source>
+        <translation>Bit depth</translation>
+    </message>
+    <message>
+        <source>10 bits (obligatorio en HDR)</source>
+        <translation>10-bit (required for HDR)</translation>
+    </message>
+    <message>
+        <source>10 bits (menos bandas en degradados)</source>
+        <translation>10-bit (less banding in gradients)</translation>
     </message>
 </context>
 <context>
@@ -374,6 +715,90 @@
     <message>
         <source>Separar el audio a una pista</source>
         <translation>Detach audio to a track</translation>
+    </message>
+    <message>
+        <source>Efectos</source>
+        <translation>Effects</translation>
+    </message>
+    <message>
+        <source>Fusión</source>
+        <translation>Blend</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <source>Multiplicar</source>
+        <translation>Multiply</translation>
+    </message>
+    <message>
+        <source>Trama</source>
+        <translation>Screen</translation>
+    </message>
+    <message>
+        <source>Superponer</source>
+        <translation>Overlay</translation>
+    </message>
+    <message>
+        <source>Oscurecer</source>
+        <translation>Darken</translation>
+    </message>
+    <message>
+        <source>Aclarar</source>
+        <translation>Lighten</translation>
+    </message>
+    <message>
+        <source>Sobreexponer color</source>
+        <translation>Color dodge</translation>
+    </message>
+    <message>
+        <source>Subexponer color</source>
+        <translation>Color burn</translation>
+    </message>
+    <message>
+        <source>Luz fuerte</source>
+        <translation>Hard light</translation>
+    </message>
+    <message>
+        <source>Luz suave</source>
+        <translation>Soft light</translation>
+    </message>
+    <message>
+        <source>Diferencia</source>
+        <translation>Difference</translation>
+    </message>
+    <message>
+        <source>Exclusión</source>
+        <translation>Exclusion</translation>
+    </message>
+    <message>
+        <source>Sumar</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Restar</source>
+        <translation>Subtract</translation>
+    </message>
+    <message>
+        <source>Recorte</source>
+        <translation>Crop</translation>
+    </message>
+    <message>
+        <source>Arriba</source>
+        <translation>Top</translation>
+    </message>
+    <message>
+        <source>Abajo</source>
+        <translation>Bottom</translation>
+    </message>
+    <message>
+        <source>Secuencia</source>
+        <translation>Sequence</translation>
+    </message>
+    <message>
+        <source>Abrir clip compuesto</source>
+        <translation>Open compound clip</translation>
     </message>
 </context>
 <context>
@@ -692,8 +1117,16 @@ Do you want to recover it?</translation>
         <translation>Add &amp;title</translation>
     </message>
     <message>
-        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos y transiciones (fase F2).</source>
-        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: multitrack editing with keyframes, titles and transitions (phase F2).</translation>
+        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color y composición (fase F3).</source>
+        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: multitrack editing with keyframes, titles, transitions, color correction and compositing (phase F3).</translation>
+    </message>
+    <message>
+        <source>Crear clip c&amp;ompuesto</source>
+        <translation>Create c&amp;ompound clip</translation>
+    </message>
+    <message>
+        <source>Volver a la secuencia anterior</source>
+        <translation>Back to the previous sequence</translation>
     </message>
 </context>
 <context>
@@ -932,6 +1365,98 @@ Do you want to recover it?</translation>
         <source>Pegar</source>
         <translation>Paste</translation>
     </message>
+    <message>
+        <source>Corrección de color</source>
+        <translation>Color correction</translation>
+    </message>
+    <message>
+        <source>Curva de color</source>
+        <translation>Color curve</translation>
+    </message>
+    <message>
+        <source>No se pudo usar la LUT %1: %2</source>
+        <translation>Could not use the LUT %1: %2</translation>
+    </message>
+    <message>
+        <source>Aplicar LUT</source>
+        <translation>Apply LUT</translation>
+    </message>
+    <message>
+        <source>Restablecer color</source>
+        <translation>Reset color</translation>
+    </message>
+    <message>
+        <source>Corrección de color copiada</source>
+        <translation>Color grade copied</translation>
+    </message>
+    <message>
+        <source>Pegar corrección de color</source>
+        <translation>Paste color grade</translation>
+    </message>
+    <message>
+        <source>Clave de croma</source>
+        <translation>Chroma key</translation>
+    </message>
+    <message>
+        <source>Máscara</source>
+        <translation>Mask</translation>
+    </message>
+    <message>
+        <source>Modo de fusión</source>
+        <translation>Blend mode</translation>
+    </message>
+    <message>
+        <source>Espacio de color del proyecto</source>
+        <translation>Project color space</translation>
+    </message>
+    <message>
+        <source>Principal</source>
+        <translation>Main</translation>
+    </message>
+    <message>
+        <source>Compuesto %1</source>
+        <translation>Compound %1</translation>
+    </message>
+    <message>
+        <source>Crear clip compuesto</source>
+        <translation>Create compound clip</translation>
+    </message>
+    <message>
+        <source>Abrir clip compuesto</source>
+        <translation>Open compound clip</translation>
+    </message>
+    <message>
+        <source>Volver a la secuencia</source>
+        <translation>Back to sequence</translation>
+    </message>
+    <message>
+        <source>Deshacer clip compuesto</source>
+        <translation>Break apart compound clip</translation>
+    </message>
+    <message>
+        <source>Para deshacer un clip compuesto, su velocidad debe ser 1×.</source>
+        <translation>To break apart a compound clip, its speed must be 1×.</translation>
+    </message>
+    <message>
+        <source>Espacio de entrada</source>
+        <translation>Input color space</translation>
+    </message>
+    <message>
+        <source>Keyframe de color</source>
+        <translation>Color keyframe</translation>
+    </message>
+    <message>
+        <source>Añadir máscara</source>
+        <translation>Add mask</translation>
+    </message>
+    <message>
+        <source>Quitar máscara</source>
+        <translation>Remove mask</translation>
+    </message>
+    <message>
+        <source>Forma de la máscara</source>
+        <translation>Mask shape</translation>
+    </message>
 </context>
 <context>
     <name>ProjectFile</name>
@@ -998,6 +1523,26 @@ Do you want to recover it?</translation>
         <source>Al añadir el primer clip a una línea de tiempo vacía, el proyecto adopta su resolución y velocidad automáticamente.</source>
         <translation>When the first clip is added to an empty timeline, the project adopts its resolution and frame rate automatically.</translation>
     </message>
+    <message>
+        <source>Espacio de color</source>
+        <translation>Color space</translation>
+    </message>
+    <message>
+        <source>SDR · Rec.709</source>
+        <translation>SDR · Rec.709</translation>
+    </message>
+    <message>
+        <source>HDR10 · PQ, Rec.2020</source>
+        <translation>HDR10 · PQ, Rec.2020</translation>
+    </message>
+    <message>
+        <source>HLG · Rec.2020</source>
+        <translation>HLG · Rec.2020</translation>
+    </message>
+    <message>
+        <source>En HDR el material SDR se coloca a 203 nits, el visor muestra una conversión a SDR y la exportación es de 10 bits (HEVC, AV1, VP9 o ProRes).</source>
+        <translation>In HDR, SDR footage is placed at 203 nits, the viewer shows a conversion to SDR and the export is 10-bit (HEVC, AV1, VP9 or ProRes).</translation>
+    </message>
 </context>
 <context>
     <name>PropertyRow</name>
@@ -1020,6 +1565,56 @@ Do you want to recover it?</translation>
     <message>
         <source>Restablecer</source>
         <translation>Reset</translation>
+    </message>
+</context>
+<context>
+    <name>ScopeView</name>
+    <message>
+        <source>Sin imagen</source>
+        <translation>No image</translation>
+    </message>
+    <message>
+        <source>R</source>
+        <translation>R</translation>
+    </message>
+    <message>
+        <source>Am</source>
+        <translation>Yl</translation>
+    </message>
+    <message>
+        <source>V</source>
+        <translation>G</translation>
+    </message>
+    <message>
+        <source>Ci</source>
+        <translation>Cy</translation>
+    </message>
+    <message>
+        <source>Az</source>
+        <translation>B</translation>
+    </message>
+    <message>
+        <source>Mg</source>
+        <translation>Mg</translation>
+    </message>
+</context>
+<context>
+    <name>ScopesPanel</name>
+    <message>
+        <source>Forma de onda</source>
+        <translation>Waveform</translation>
+    </message>
+    <message>
+        <source>Desfile RGB</source>
+        <translation>RGB parade</translation>
+    </message>
+    <message>
+        <source>Vectorscopio</source>
+        <translation>Vectorscope</translation>
+    </message>
+    <message>
+        <source>Histograma</source>
+        <translation>Histogram</translation>
     </message>
 </context>
 <context>
@@ -1139,6 +1734,18 @@ Do you want to recover it?</translation>
         <source>Separar audio</source>
         <translation>Detach audio</translation>
     </message>
+    <message>
+        <source>Crear clip compuesto</source>
+        <translation>Create compound clip</translation>
+    </message>
+    <message>
+        <source>Abrir clip compuesto</source>
+        <translation>Open compound clip</translation>
+    </message>
+    <message>
+        <source>Deshacer clip compuesto</source>
+        <translation>Break apart compound clip</translation>
+    </message>
 </context>
 <context>
     <name>TrackHeader</name>
@@ -1223,6 +1830,10 @@ Do you want to recover it?</translation>
     <message>
         <source>Arrastra medios a la línea de tiempo para empezar a editar</source>
         <translation>Drag media to the timeline to start editing</translation>
+    </message>
+    <message>
+        <source>Scopes</source>
+        <translation>Scopes</translation>
     </message>
 </context>
 </TS>

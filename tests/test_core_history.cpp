@@ -106,7 +106,7 @@ TEST_CASE("Ediciones aleatorias mantienen los invariantes y son reversibles", "[
 
     std::vector<Project> states{h.project()};
     for (int step = 0; step < 3000; ++step) {
-        const int op = rnd(0, 17);
+        const int op = rnd(0, 23);
         h.apply("op", [&](Project& p) {
             const auto& tracks = rnd(0, 1) ? p.videoTracks : p.audioTracks;
             const Id track = tracks[size_t(rnd(0, int(tracks.size()) - 1))].id;
@@ -134,7 +134,26 @@ TEST_CASE("Ediciones aleatorias mantienen los invariantes y son reversibles", "[
                 return edit::placeClip(p, track, mediaIds[size_t(rnd(0, 2))], rnd(0, 900), 0, rnd(1, 100), edit::PlaceMode::Insert)
                     != kNoId;
             case 16: return !edit::pasteClips(p, edit::copyClips(p, {clip, anyClip(p)}), rnd(0, 900)).empty();
-            default: return edit::detachAudio(p, clip) != kNoId;
+            case 17: return edit::detachAudio(p, clip) != kNoId;
+            // Operaciones de F3: compuestos, máscaras y color animable.
+            case 18: return rnd(0, 2) == 0 && edit::createCompound(p, {clip, anyClip(p)}, "C") != kNoId;
+            case 19: return !edit::breakCompound(p, clip).empty();
+            case 20: {
+                const Clip* c = p.findClip(clip);
+                return c && c->isCompound() && rnd(0, 1) ? edit::openSequence(p, c->sequenceId) : edit::closeSequence(p);
+            }
+            case 21:
+                return rnd(0, 1) ? edit::addMask(p, clip, MaskShape(rnd(1, 4))) >= 0 : edit::removeMask(p, clip, rnd(0, 2));
+            case 22: {
+                if (rnd(0, 1))
+                    return edit::toggleColorKeyframe(p, clip, rnd(0, 100));
+                ColorGrade g;
+                g.exposure = rnd(-20, 20) / 10.0;
+                return edit::setColorGrade(p, clip, g, rnd(0, 100));
+            }
+            default:
+                return edit::setProperty(p, clip, edit::Property(rnd(int(edit::Property::MaskX), int(edit::Property::MaskFeather))),
+                                         rnd(0, 100), rnd(0, 10) / 10.0, rnd(0, 2));
             }
         });
         std::string why;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Animated.h"
+#include "core/Effects.h"
 #include "media/Time.h"
 
 #include <cstdint>
@@ -24,12 +25,20 @@ struct Rational {
     bool operator==(const Rational&) const = default;
 };
 
+// Espacio de color de trabajo y de salida del proyecto.
+enum class ColorMode {
+    SDR, // Rec.709, gamma BT.1886
+    PQ,  // HDR10: Rec.2020 con PQ (SMPTE ST 2084)
+    HLG, // Rec.2020 con HLG (ARIB STD-B67)
+};
+
 struct ProjectSettings {
     int width = 1920;
     int height = 1080;
     Rational frameRate{30, 1};
     int sampleRate = 48000;
     int channels = 2;
+    ColorMode colorMode = ColorMode::SDR;
 
     // Instante (µs) en que empieza el fotograma `f`.
     TimeUs frameToTime(FramePos f) const;
@@ -66,6 +75,11 @@ struct Transform {
     Animated scale{1.0};
     Animated rotation{0.0}; // grados, sentido horario
     Animated opacity{1.0};
+    // Recorte de cada borde en fracción del ancho/alto de la capa (0 = sin recorte).
+    Animated cropLeft{0.0};
+    Animated cropTop{0.0};
+    Animated cropRight{0.0};
+    Animated cropBottom{0.0};
     bool operator==(const Transform&) const = default;
 };
 
@@ -98,7 +112,8 @@ struct TransitionIn {
 
 struct Clip {
     Id id = kNoId;
-    Id mediaId = kNoId;    // kNoId en los clips generados (títulos)
+    Id mediaId = kNoId;    // kNoId en los clips generados (títulos) y en los compuestos
+    Id sequenceId = kNoId; // clip compuesto: la secuencia que contiene (sourceIn es su instante)
     FramePos start = 0;    // posición en la línea de tiempo
     FramePos duration = 0;
     TimeUs sourceIn = 0;   // instante del medio que se ve/oye en `start`
@@ -114,9 +129,14 @@ struct Clip {
     bool audioDetached = false; // el audio de este clip de video se separó a otra pista
     std::optional<TitleStyle> title;
     TransitionIn transitionIn;
+    AnimatedGrade color;
+    ChromaKey chromaKey;
+    std::vector<Mask> masks; // se combinan en orden (ver MaskMode)
+    BlendMode blend = BlendMode::Normal;
 
     FramePos end() const { return start + duration; }
-    bool isGenerated() const { return title.has_value(); }
+    bool isCompound() const { return sequenceId != kNoId; }
+    bool isGenerated() const { return title.has_value() || isCompound(); }
     bool operator==(const Clip&) const = default;
 };
 
@@ -133,6 +153,15 @@ struct Track {
     bool operator==(const Track&) const = default;
 };
 
+// Secuencia guardada: el contenido de un clip compuesto o, mientras se edita uno, la principal.
+struct Sequence {
+    Id id = kNoId;
+    std::string name;
+    std::vector<Track> videoTracks;
+    std::vector<Track> audioTracks;
+    bool operator==(const Sequence&) const = default;
+};
+
 struct Project {
     ProjectSettings settings;
     std::vector<MediaItem> media;
@@ -140,6 +169,13 @@ struct Project {
     std::vector<Track> videoTracks;
     // Pistas de audio: A1, A2...
     std::vector<Track> audioTracks;
+    // Las pistas de arriba son las de la secuencia que se está editando (`activeSequence`); las
+    // demás se guardan en `sequences`. La principal (`mainSequence`) es la que se exporta.
+    std::vector<Sequence> sequences;
+    Id mainSequence = kNoId;
+    Id activeSequence = kNoId;
+    std::string activeName;       // nombre de la secuencia activa
+    std::vector<Id> sequencePath; // secuencias abiertas antes de la activa (para volver)
     Id nextId = 1;
 
     static Project createDefault();
@@ -162,6 +198,25 @@ struct Project {
     Clip* findClip(Id clipId) { return locateClip(clipId).clip(); }
     const Clip* findClip(Id clipId) const;
     const Track* trackOfClip(Id clipId) const;
+
+    const Sequence* findSequence(Id id) const;
+    // Pistas de una secuencia: las activas si es la que se edita; nullptr si no existe.
+    const std::vector<Track>* videoTracksOf(Id sequence) const;
+    const std::vector<Track>* audioTracksOf(Id sequence) const;
+    FramePos sequenceDuration(Id sequence) const;
+    std::string sequenceName(Id sequence) const;
+    // Todas las pistas: las activas y las de las secuencias guardadas.
+    template <typename F>
+    void forEachTrack(F&& f)
+    {
+        for (auto* list : {&videoTracks, &audioTracks})
+            for (Track& t : *list)
+                f(t);
+        for (Sequence& seq : sequences)
+            for (auto* list : {&seq.videoTracks, &seq.audioTracks})
+                for (Track& t : *list)
+                    f(t);
+    }
 
     FramePos duration() const; // final del último clip
     TimeUs durationTime() const { return settings.frameToTime(duration()); }

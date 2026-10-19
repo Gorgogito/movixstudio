@@ -3,10 +3,14 @@ qt_add_executable(MovixStudio WIN32
     LanguageManager.h LanguageManager.cpp
     PlayerForeign.h
     VideoView.h VideoView.cpp
+    ScopeFeed.h
+    ScopeView.h ScopeView.cpp
+    EffectNames.h
+    ColorWheelProvider.h
     ThumbnailProvider.h ThumbnailProvider.cpp
     Waveform.h Waveform.cpp
     TimelineModels.h TimelineModels.cpp
-    ProjectController.h ProjectController.cpp
+    ProjectController.h ProjectController.cpp ProjectControllerColor.cpp
     ExportController.h ExportController.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
@@ -49,6 +53,12 @@ qt_add_qml_module(MovixStudio
         qml/PropertyRow.qml
         qml/LibraryPanel.qml
         qml/TransformOverlay.qml
+        qml/ScopesPanel.qml
+        qml/ColorPanel.qml
+        qml/ColorWheel.qml
+        qml/CurveEditor.qml
+        qml/EffectsPanel.qml
+        qml/SliderRow.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
@@ -60,7 +70,7 @@ target_link_libraries(MovixStudio PRIVATE
 # Español = idioma fuente (cadenas del código); inglés = traducción.
 qt_add_translations(MovixStudio
     TS_FILES ${PROJECT_SOURCE_DIR}/i18n/movixstudio_en.ts
-    SOURCE_TARGETS MovixStudio movix_playback movix_core movix_export movix_render
+    SOURCE_TARGETS MovixStudio movix_playback movix_core movix_color movix_export movix_render
     RESOURCE_PREFIX /i18n
     LUPDATE_OPTIONS -no-obsolete -locations none
 )
@@ -73,6 +83,8 @@ add_custom_command(TARGET MovixStudio POST_BUILD
 # sola carpeta plana, como es habitual en Windows (CMAKE_INSTALL_BINDIR = "." en el nivel superior).
 install(TARGETS MovixStudio RUNTIME DESTINATION .)
 install(FILES ${FFMPEG_RUNTIME_DLLS} DESTINATION .)
+# DLL de las bibliotecas de vcpkg (OpenColorIO y sus dependencias).
+install(FILES $<TARGET_RUNTIME_DLLS:MovixStudio> DESTINATION .)
 install(FILES ${PROJECT_SOURCE_DIR}/LICENSE DESTINATION .)
 qt_generate_deploy_qml_app_script(TARGET MovixStudio OUTPUT_SCRIPT deploy_script NO_TRANSLATIONS)
 install(SCRIPT ${deploy_script})

@@ -1,5 +1,6 @@
 #include "playback/TimelinePlayer.h"
 
+#include "render/MaskRenderer.h"
 #include "render/TitleRenderer.h"
 
 #include <QLoggingCategory>
@@ -111,6 +112,7 @@ void TimelinePlayer::videoLoop()
 {
     engine::VideoSources sources(m_options.hardwareDecoding);
     sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
+    sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
     for (;;) {
         std::unique_lock lock(m_videoMutex);
         m_videoCv.wait(lock, [this] {
@@ -222,6 +224,12 @@ TimeUs TimelinePlayer::liveClockLocked() const
         return t;
     }
     return m_anchorPos + std::chrono::duration_cast<std::chrono::microseconds>(now - m_anchorTime).count();
+}
+
+std::shared_ptr<const engine::FrameBundle> TimelinePlayer::displayedFrame()
+{
+    std::lock_guard lock(m_videoMutex);
+    return m_displayed;
 }
 
 std::shared_ptr<const engine::FrameBundle> TimelinePlayer::frameForPresentation()

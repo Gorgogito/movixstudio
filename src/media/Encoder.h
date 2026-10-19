@@ -16,6 +16,10 @@ struct VideoEncoderSettings {
     int quality = 23;              // CRF/CQ/QP según el códec (menor = mejor)
     int64_t bitRate = 0;           // > 0: tasa de bits objetivo en lugar de calidad constante
     std::string preset;            // vacío = valor recomendado para el códec
+    bool input16 = false;          // writeVideo recibe RGBA de 16 bits por canal (little endian)
+    bool tenBit = false;           // codificar a 10 bits (falla si el códec no lo admite)
+    // Señal de la imagen: SDR Rec.709, o HDR Rec.2020 con PQ (HDR10) o HLG.
+    enum class Signal { SDR, PQ, HLG } signal = Signal::SDR;
 };
 
 struct AudioEncoderSettings {
@@ -49,7 +53,7 @@ public:
     Encoder& operator=(const Encoder&) = delete;
 
     bool open(const EncoderSettings& settings, std::string* error = nullptr);
-    // Siguiente fotograma de video (RGBA de 8 bits, `stride` bytes por fila).
+    // Siguiente fotograma de video (RGBA de 8 bits, o de 16 con input16; `stride` bytes por fila).
     bool writeVideo(const uint8_t* rgba, int stride);
     // Audio intercalado al formato de AudioEncoderSettings.
     bool writeAudio(const float* samples, int frames);

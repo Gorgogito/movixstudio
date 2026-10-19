@@ -25,10 +25,14 @@ public:
     OffscreenRenderer();
     ~OffscreenRenderer();
 
-    bool init(int width, int height, QString* error = nullptr);
-    // Compone el fotograma y deja en `rgba` width×height×4 bytes (filas de arriba abajo).
+    // `deep`: destino en coma flotante; render() entrega entonces RGBA de 16 bits por canal.
+    bool init(int width, int height, QString* error = nullptr, bool deep = false);
+    // Compone el fotograma y deja en `rgba` las filas de arriba abajo: width×height×4 bytes, o
+    // width×height×4 valores de 16 bits (little endian) si se inició con `deep`.
     bool render(const engine::FrameBundle& bundle, std::vector<uint8_t>& rgba);
+    bool isDeep() const { return m_deep; }
     QString backendName() const;
+    int lastPassCount() const; // pasadas de GPU del último fotograma (para pruebas)
 
 private:
     std::unique_ptr<QRhi> m_rhi;
@@ -38,6 +42,7 @@ private:
     std::unique_ptr<Compositor> m_compositor;
     int m_width = 0;
     int m_height = 0;
+    bool m_deep = false;
 };
 
 } // namespace movix::render

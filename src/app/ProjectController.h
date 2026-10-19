@@ -14,6 +14,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <memory>
+#include <optional>
 
 // Controlador del proyecto abierto: une la interfaz con el núcleo (historial, ediciones, archivo),
 // mantiene sincronizados los modelos y el reproductor, y se ocupa del autoguardado.
@@ -86,6 +87,10 @@ public:
     Q_INVOKABLE bool save();
     Q_INVOKABLE bool saveAs(const QUrl& url);
     Q_INVOKABLE void setProjectSettings(int width, int height, int fpsNum, int fpsDen);
+    // Espacio de color: "sdr" (Rec.709), "pq" (HDR10, Rec.2020) o "hlg" (Rec.2020).
+    Q_PROPERTY(QString colorMode READ colorMode NOTIFY settingsChanged)
+    QString colorMode() const;
+    Q_INVOKABLE void setColorMode(const QString& mode);
     Q_INVOKABLE void checkRecovery();
     Q_INVOKABLE void recoverAutosave();
     Q_INVOKABLE void discardAutosave();
@@ -132,6 +137,56 @@ public:
     Q_INVOKABLE void detachAudio(qint64 clipId);
     Q_INVOKABLE void setTrackVolume(qint64 trackId, double volume);
     Q_INVOKABLE QVariantList titlePresets() const;
+
+    // --- Color (F3) ---
+    // Corrección completa del clip: valores básicos, ruedas [r, g, b, master], curvas [[x, y]...],
+    // hsl [[tono, saturación, luminancia] × 8], lutPath/lutName/lutIntensity e "identity".
+    Q_INVOKABLE QVariantMap colorGrade(qint64 clipId) const;
+    // key: "exposure", "contrast"..., "lift.r", "gamma.master", "hsl.3.saturation", "lutIntensity".
+    Q_INVOKABLE void setColorValue(qint64 clipId, const QString& key, double value);
+    // Mueve una rueda ("lift", "gamma", "gain") de una vez (r, g, b sin tocar su master).
+    Q_INVOKABLE void setColorWheel(qint64 clipId, const QString& wheel, double r, double g, double b);
+    // channel: "master", "red", "green", "blue"; points: [[x, y], ...].
+    Q_INVOKABLE void setColorCurve(qint64 clipId, const QString& channel, const QVariantList& points);
+    Q_INVOKABLE bool setColorLut(qint64 clipId, const QUrl& file);
+    // Espacios de cámara de OpenColorIO: [{name, family}]; "" quita la transformación de entrada.
+    Q_INVOKABLE QVariantList ocioInputSpaces() const;
+    Q_INVOKABLE void setColorInputSpace(qint64 clipId, const QString& space);
+    // section: "basic", "wheels", "curves", "hsl", "lut" o "all".
+    Q_INVOKABLE void resetColor(qint64 clipId, const QString& section);
+    Q_INVOKABLE void toggleColorKeyframe(qint64 clipId);
+    Q_INVOKABLE void copyColor(qint64 clipId);
+    Q_INVOKABLE void pasteColor(); // a todos los clips de video seleccionados
+    Q_PROPERTY(bool canPasteColor READ canPasteColor NOTIFY clipboardChanged)
+    bool canPasteColor() const { return m_colorClipboard.has_value(); }
+
+    // --- Croma, máscara y fusión (F3) ---
+    // Cambia los campos presentes de {enabled, color, tolerance, softness, spill}.
+    Q_INVOKABLE void setChromaKey(qint64 clipId, const QVariantMap& values);
+    // Toma como color clave el del clip en (u, v), coordenadas de la propia capa (0..1).
+    Q_INVOKABLE bool pickKeyColor(qint64 clipId, double u, double v);
+    // Máscaras (shape: "rectangle", "ellipse", "linear", "path"; mode: "add", "subtract", "intersect").
+    // Sus valores animables son las propiedades "mask.<índice>.x" (y, width, height, rotation, feather).
+    Q_INVOKABLE int addMask(qint64 clipId, const QString& shape);
+    Q_INVOKABLE void removeMask(qint64 clipId, int index);
+    Q_INVOKABLE void setMaskShape(qint64 clipId, int index, const QString& shape);
+    Q_INVOKABLE void setMaskOptions(qint64 clipId, int index, const QString& mode, bool invert);
+    // points: [[x, y, inX, inY, outX, outY], ...] en el sistema de la máscara.
+    Q_INVOKABLE void setMaskPoints(qint64 clipId, int index, const QVariantList& points);
+    // Puntos de una máscara de forma libre con tangentes suaves (Catmull-Rom) o con esquinas.
+    Q_INVOKABLE QVariantList smoothMaskPoints(const QVariantList& points, bool smooth) const;
+    Q_INVOKABLE void setBlendMode(qint64 clipId, const QString& mode);
+
+    // --- Clips compuestos ---
+    // Nombres de las secuencias abiertas, de la principal a la activa (para la ruta de navegación).
+    Q_PROPERTY(QStringList sequencePath READ sequencePath NOTIFY timelineChanged)
+    Q_PROPERTY(bool inCompound READ inCompound NOTIFY timelineChanged)
+    QStringList sequencePath() const;
+    bool inCompound() const { return !project().sequencePath.empty(); }
+    Q_INVOKABLE void createCompound();              // con los clips seleccionados
+    Q_INVOKABLE void openCompound(qint64 clipId);    // editar su secuencia
+    Q_INVOKABLE void openSequenceLevel(int level);   // volver a un nivel de la ruta (0 = principal)
+    Q_INVOKABLE void breakCompound(qint64 clipId);   // devolver su contenido a la línea de tiempo
 
     // --- Portapapeles e inserción ---
     Q_INVOKABLE void copySelection();
@@ -201,5 +256,6 @@ private:
     QStringList m_importErrors;
     int m_importOrder = 0;
     movix::core::edit::Clipboard m_clipboard;
+    std::optional<movix::core::AnimatedGrade> m_colorClipboard;
     bool m_insertMode = false;
 };

@@ -14,13 +14,15 @@ namespace movix::core {
 // Las rutas de los medios se guardan absolutas y relativas al proyecto; al abrir se usa la
 // absoluta si existe y, si no, la relativa (permite mover la carpeta del proyecto completa).
 // Versión 2 (F2): velocidad, transformación y volumen animables, fundidos, títulos, transiciones.
-inline constexpr int kProjectFormatVersion = 2;
+// Versión 3 (F3): recorte, corrección de color (con LUT .cube), croma, máscara y modo de fusión.
+// Versión 4: corrección de color con keyframes, varias máscaras (y de forma libre), clips compuestos.
+inline constexpr int kProjectFormatVersion = 4;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {
     std::optional<Project> project;
     QString error;
-    QStringList missingMedia; // medios cuyo archivo no se encontró (el proyecto se abre igualmente)
+    QStringList missingMedia; // medios o LUT cuyo archivo no se encontró (el proyecto se abre igualmente)
 };
 
 QByteArray serializeProject(const Project& project, const QString& projectFilePath);

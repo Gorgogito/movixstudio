@@ -78,6 +78,8 @@ public:
 
     // --- Seguro desde cualquier hilo (lo llama el hilo de render) ---
     std::shared_ptr<const engine::FrameBundle> frameForPresentation();
+    // Último fotograma mostrado, sin efectos sobre el ritmo (p. ej. para muestrear un color).
+    std::shared_ptr<const engine::FrameBundle> displayedFrame();
     TimeUs clockUs() const;
 
 signals:

@@ -109,6 +109,7 @@ void ExportController::start(const QVariantMap& s)
     settings.includeAudio = s.value("includeAudio", true).toBool();
     settings.audioCodec = codec ? codec->audioCodec : "aac";
     settings.audioBitRate = s.value("audioKbps", 192).toLongLong() * 1000;
+    settings.tenBit = s.value("tenBit", false).toBool();
 
     m_cancel = false;
     m_running = true;

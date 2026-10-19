@@ -25,8 +25,21 @@ struct CropRect {
     double bottom = 1.0;
 };
 
+// Máscara evaluada en un fotograma (ver core::Mask).
+struct LayerMask {
+    MaskShape shape = MaskShape::None;
+    bool invert = false;
+    double x = 0.5, y = 0.5, width = 0.6, height = 0.6, rotation = 0.0, feather = 0.02;
+    MaskMode mode = MaskMode::Add;
+    std::vector<PathPoint> points; // solo en las de forma libre
+    bool operator==(const LayerMask&) const = default;
+};
+
 struct VideoLayer {
     Id clipId = kNoId;
+    // Identifica la aparición concreta del clip (dentro de un compuesto, la del compuesto y la
+    // del clip): un lector de medios por aparición.
+    std::uint64_t instance = 0;
     Id mediaId = kNoId;
     const MediaItem* media = nullptr;  // nullptr en títulos
     const TitleStyle* title = nullptr; // solo en títulos
@@ -35,7 +48,20 @@ struct VideoLayer {
     LayerTransform transform;
     double opacity = 1.0;
     CropRect crop;
+    // Corrección de color: `grade` (nullptr si no hay) mezclada con `gradeTo` en la proporción
+    // `gradeMix` entre dos keyframes de color.
+    const ColorGrade* grade = nullptr;
+    const ColorGrade* gradeTo = nullptr;
+    double gradeMix = 0.0;
+    ChromaKey chromaKey;
+    std::vector<LayerMask> masks;
+    BlendMode blend = BlendMode::Normal;
+    // Clip compuesto: capas de su secuencia en el fotograma que corresponde (de abajo arriba).
+    bool compound = false;
+    std::vector<VideoLayer> nested;
 };
+
+inline constexpr int kMaxNesting = 8; // profundidad máxima de clips compuestos que se evalúa
 
 // Capas visibles en el fotograma `frame`, de abajo arriba (dentro de una transición, la entrante
 // va encima de la saliente). Omite pistas ocultas y clips desactivados.
@@ -43,6 +69,7 @@ std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame);
 
 struct AudioSegment {
     Id clipId = kNoId;
+    std::uint64_t instance = 0; // ver VideoLayer::instance
     const MediaItem* media = nullptr;
     TimeUs timelineStart = 0; // intersección del clip con el intervalo pedido
     TimeUs timelineEnd = 0;

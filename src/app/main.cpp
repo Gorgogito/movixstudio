@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Colaboradores de MovixStudio
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "ColorWheelProvider.h"
 #include "LanguageManager.h"
 #include "ThumbnailProvider.h"
 
@@ -29,6 +30,7 @@ int main(int argc, char* argv[])
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("thumbs"), new ThumbnailProvider); // el motor toma la propiedad
+    engine.addImageProvider(QStringLiteral("colorwheel"), new ColorWheelProvider);
     LanguageManager language(&engine);
     LanguageManager::setInstance(&language);
     language.loadSaved();

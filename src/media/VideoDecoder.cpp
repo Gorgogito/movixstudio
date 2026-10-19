@@ -87,6 +87,7 @@ void VideoDecoder::close()
 bool VideoDecoder::open(const std::string& path, const VideoDecoderOptions& options, std::string* error)
 {
     close();
+    m_options = options;
     auto fail = [&](const std::string& msg) {
         if (error)
             *error = msg;
@@ -272,19 +273,28 @@ std::shared_ptr<VideoFrame> VideoDecoder::convert(AVFrame* frame, TimeUs pts)
     out->duration = frameDur(frame);
     out->colorSpace = mapColorSpace(frame->colorspace, src->width, src->height);
     out->fullRange = frame->color_range == AVCOL_RANGE_JPEG || isFullRangeFormat(src->format);
+    out->transfer = frame->color_trc == AVCOL_TRC_SMPTE2084     ? Transfer::PQ
+                    : frame->color_trc == AVCOL_TRC_ARIB_STD_B67 ? Transfer::HLG
+                                                                 : Transfer::SDR;
 
+    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(src->format));
+    const bool deep = m_options.highBitDepth && desc && desc->comp[0].depth > 8;
+    out->format = deep ? PixelFormat::P016 : PixelFormat::NV12;
+    const int bytes = deep ? 2 : 1;
     const int w = out->width, h = out->height;
-    const int uvRow = out->chromaWidth() * 2, ch = out->chromaHeight();
-    out->y.resize(static_cast<size_t>(w) * h);
+    const int yRow = w * bytes, uvRow = out->chromaWidth() * 2 * bytes, ch = out->chromaHeight();
+    out->y.resize(static_cast<size_t>(yRow) * h);
     out->uv.resize(static_cast<size_t>(uvRow) * ch);
+    const AVPixelFormat direct = deep ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
+    const bool sameLayout = src->format == direct || (deep && src->format == AV_PIX_FMT_P016LE);
 
-    if (src->format == AV_PIX_FMT_NV12) {
+    if (sameLayout) {
         for (int row = 0; row < h; ++row)
-            std::memcpy(out->y.data() + static_cast<size_t>(row) * w, src->data[0] + static_cast<ptrdiff_t>(row) * src->linesize[0], w);
+            std::memcpy(out->y.data() + static_cast<size_t>(row) * yRow, src->data[0] + static_cast<ptrdiff_t>(row) * src->linesize[0], yRow);
         for (int row = 0; row < ch; ++row)
             std::memcpy(out->uv.data() + static_cast<size_t>(row) * uvRow, src->data[1] + static_cast<ptrdiff_t>(row) * src->linesize[1], uvRow);
     } else {
-        m_sws = sws_getCachedContext(m_sws, w, h, static_cast<AVPixelFormat>(src->format), w, h, AV_PIX_FMT_NV12,
+        m_sws = sws_getCachedContext(m_sws, w, h, static_cast<AVPixelFormat>(src->format), w, h, direct,
                                      SWS_BILINEAR, nullptr, nullptr, nullptr);
         if (!m_sws)
             return nullptr;
@@ -293,7 +303,7 @@ std::shared_ptr<VideoFrame> VideoDecoder::convert(AVFrame* frame, TimeUs pts)
         const int* coeffs = sws_getCoefficients(SWS_CS_DEFAULT);
         sws_setColorspaceDetails(m_sws, coeffs, full, coeffs, full, 0, 1 << 16, 1 << 16);
         uint8_t* dst[4] = {out->y.data(), out->uv.data(), nullptr, nullptr};
-        int dstStride[4] = {w, uvRow, 0, 0};
+        int dstStride[4] = {yRow, uvRow, 0, 0};
         sws_scale(m_sws, src->data, src->linesize, 0, h, dst, dstStride);
     }
     return out;

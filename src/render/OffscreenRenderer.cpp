@@ -5,6 +5,10 @@
 #include <QCoreApplication>
 #include <rhi/qrhi.h>
 
+#include <QFloat16>
+
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace movix::render {
@@ -21,10 +25,11 @@ OffscreenRenderer::~OffscreenRenderer()
     m_rhi.reset();
 }
 
-bool OffscreenRenderer::init(int width, int height, QString* error)
+bool OffscreenRenderer::init(int width, int height, QString* error, bool deep)
 {
     m_width = width;
     m_height = height;
+    m_deep = deep;
 #ifdef Q_OS_WIN
     QRhiD3D11InitParams params;
     m_rhi.reset(QRhi::create(QRhi::D3D11, &params));
@@ -37,7 +42,7 @@ bool OffscreenRenderer::init(int width, int height, QString* error)
         return false;
     }
 
-    m_texture.reset(m_rhi->newTexture(QRhiTexture::RGBA8, QSize(width, height), 1,
+    m_texture.reset(m_rhi->newTexture(deep ? QRhiTexture::RGBA16F : QRhiTexture::RGBA8, QSize(width, height), 1,
                                       QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
     if (!m_texture->create()) {
         if (error)
@@ -67,17 +72,31 @@ bool OffscreenRenderer::render(const engine::FrameBundle& bundle, std::vector<ui
     // Si la salida tiene otra relación de aspecto que el proyecto, el lienzo se centra con bandas.
     const double aspect = bundle.canvasHeight > 0 ? double(bundle.canvasWidth) / bundle.canvasHeight : double(m_width) / m_height;
     m_compositor->prepare(bundle, updates, size, Compositor::fitRect(QSizeF(size), aspect));
-    cb->beginPass(m_target.get(), Qt::black, {1.0f, 0}, updates);
-    m_compositor->draw(cb, size);
-
     QRhiReadbackResult result;
     QRhiResourceUpdateBatch* readback = m_rhi->nextResourceUpdateBatch();
     readback->readBackTexture(QRhiReadbackDescription(m_texture.get()), &result);
-    cb->endPass(readback);
+    m_compositor->render(cb, m_target.get(), Qt::black, updates, readback);
     // En un fotograma fuera de pantalla, endOffscreenFrame espera a que la GPU termine.
     if (m_rhi->endOffscreenFrame() != QRhi::FrameOpSuccess)
         return false;
 
+    if (m_deep) { // medios flotantes → enteros de 16 bits
+        const size_t values = size_t(m_width) * size_t(m_height) * 4;
+        if (size_t(result.data.size()) < values * sizeof(qfloat16))
+            return false;
+        rgba.resize(values * 2);
+        const auto* half = reinterpret_cast<const qfloat16*>(result.data.constData());
+        auto* out = reinterpret_cast<uint16_t*>(rgba.data());
+        const size_t rowValues = size_t(m_width) * 4;
+        for (int row = 0; row < m_height; ++row) {
+            const int srcRow = m_rhi->isYUpInFramebuffer() ? m_height - 1 - row : row;
+            for (size_t i = 0; i < rowValues; ++i) {
+                const float v = std::clamp(float(half[size_t(srcRow) * rowValues + i]), 0.0f, 1.0f);
+                out[size_t(row) * rowValues + i] = uint16_t(std::lround(v * 65535.0f));
+            }
+        }
+        return true;
+    }
     const size_t rowBytes = size_t(m_width) * 4;
     rgba.resize(rowBytes * size_t(m_height));
     const auto* src = reinterpret_cast<const uint8_t*>(result.data.constData());
@@ -90,6 +109,11 @@ bool OffscreenRenderer::render(const engine::FrameBundle& bundle, std::vector<ui
         std::memcpy(rgba.data(), src, rgba.size());
     }
     return true;
+}
+
+int OffscreenRenderer::lastPassCount() const
+{
+    return m_compositor ? m_compositor->lastPassCount() : 0;
 }
 
 QString OffscreenRenderer::backendName() const

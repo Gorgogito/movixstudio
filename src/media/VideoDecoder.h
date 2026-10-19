@@ -11,10 +11,12 @@ struct SwsContext;
 namespace movix::media {
 
 struct VideoDecoderOptions {
-    bool hardware = true; // intentar D3D11VA (Windows) y, si falla, usar CPU
+    bool hardware = true;      // intentar D3D11VA (Windows) y, si falla, usar CPU
+    bool highBitDepth = false; // fuentes de más de 8 bits en P016 (si no, siempre NV12 de 8 bits)
 };
 
-// Decodificador de video síncrono: un demuxer propio por instancia, salida NV12 de 8 bits.
+// Decodificador de video síncrono: un demuxer propio por instancia, salida NV12 de 8 bits (o P016
+// para fuentes de 10 bits o más si se pide).
 // No es thread-safe; cada hilo de reproducción posee su propio decodificador.
 class VideoDecoder {
 public:
@@ -56,6 +58,7 @@ private:
     FramePtr m_swFrame;
     FramePtr m_pending;          // fotograma ya decodificado por seek() pendiente de entregar
     SwsContext* m_sws = nullptr;
+    VideoDecoderOptions m_options;
     AVBufferRef* m_hwDevice = nullptr;
     int m_hwPixFmt = -1;         // AVPixelFormat del frame hardware
     int m_streamIndex = -1;
