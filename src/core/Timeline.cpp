@@ -286,6 +286,7 @@ void collectAudio(const Project& p, const std::vector<Track>& vtracks, const std
             seg.timelineEnd = to;
             seg.sourceStart = sourceTimeAtTime(s, c, seg.timelineStart);
             seg.speed = c.speed;
+            seg.denoise = c.denoise;
             seg.gainStart = gainAt(seg.timelineStart);
             seg.gainEnd = gainAt(seg.timelineEnd);
             segments.push_back(seg);

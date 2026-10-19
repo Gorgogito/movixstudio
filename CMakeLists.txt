@@ -25,11 +25,12 @@ if(WIN32)
     set(CMAKE_INSTALL_BINDIR ".")
 endif()
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickControls2 ShaderTools LinguistTools Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Quick QuickControls2 ShaderTools LinguistTools Test)
 qt_standard_project_setup(REQUIRES 6.8 I18N_SOURCE_LANGUAGE es I18N_TRANSLATED_LANGUAGES en)
 
 find_package(FFmpeg REQUIRED COMPONENTS avformat avcodec avutil swscale swresample avfilter)
 find_path(MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
+include(OnnxRuntime)
 
 add_subdirectory(src)
 

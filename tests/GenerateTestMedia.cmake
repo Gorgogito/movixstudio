@@ -67,3 +67,31 @@ make_media(half_alpha.png
 set(ext .wav)
 make_media(tone_44k_mono.wav
     -f lavfi -i "sine=f=440:r=44100:d=3" -c:a pcm_s16le)
+
+# 7) Voz con ruido: la voz de prueba (tests/data) con ruido blanco constante, 48 kHz mono.
+set(ext .wav)
+make_media(speech_noisy.wav
+    -i "${CMAKE_CURRENT_LIST_DIR}/data/speech_es.flac"
+    -f lavfi -i "anoisesrc=color=white:amplitude=0.03:r=48000:seed=7"
+    -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:normalize=0,aresample=48000"
+    -ac 1 -c:a pcm_s16le)
+
+# 8) Escenas: tres planos de 2 s (patrón en movimiento, barras, Mandelbrot en zoom) a 720p30.
+#    Cortes exactos en 2 s y 4 s; dentro de cada plano hay movimiento que no es un corte.
+set(ext .mp4)
+make_media(scenes_720p30.mp4
+    -f lavfi -i "testsrc2=s=1280x720:r=30:d=2"
+    -f lavfi -i "smptehdbars=s=1280x720:r=30:d=2"
+    -f lavfi -i "mandelbrot=s=1280x720:r=30,trim=duration=2"
+    -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p"
+    -c:v libx264 -preset veryfast -g 30)
+
+# 9) Escenas con música: los tres planos de (8) con un bombo a 120 BPM (pulsos en 0,25 + 0,5·k s).
+set(ext .mp4)
+make_media(scenes_beats.mp4
+    -f lavfi -i "testsrc2=s=1280x720:r=30:d=2"
+    -f lavfi -i "smptehdbars=s=1280x720:r=30:d=2"
+    -f lavfi -i "mandelbrot=s=1280x720:r=30,trim=duration=2"
+    -f lavfi -i "aevalsrc='0.8*sin(2*PI*60*t)*exp(-mod(t-0.25\,0.5)*14)*gte(t\,0.25)':s=48000:d=6"
+    -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p"
+    -c:v libx264 -preset veryfast -g 30 -c:a aac -b:a 128k)

@@ -3,9 +3,17 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Estado: fase F3 completada** — corrección de color animable, OpenColorIO, HDR, croma, máscaras,
-> modos de fusión, clips compuestos y scopes, sobre la edición multipista de F2. Consulta la [hoja de ruta](docs/ROADMAP.md) para lo que viene
-> (IA local de audio y texto…) y lo que queda pendiente.
+> **Estado: fase F4 completada** — IA local de audio y texto sobre el color y la composición de F3.
+> Consulta la [hoja de ruta](docs/ROADMAP.md) para lo que viene (IA visual) y lo que queda pendiente.
+
+**Novedades de F4** — todo se ejecuta en el equipo; el audio no sale de él
+- Subtítulos automáticos con Whisper (Tiny, Base, Small o Large v3 Turbo) en una pista editable;
+  importar, exportar y **traducir** subtítulos (español ↔ inglés, Opus-MT).
+- Pestaña Texto: la transcripción de la línea de tiempo; borrar palabras corta el video.
+- Eliminar silencios (Silero VAD) y **reducción de ruido** por clip (RNNoise) con intensidad.
+- **Texto a voz** con Kokoro (5 voces, español e inglés) y **separación de voz y música** (HTDemucs).
+- **Marcar los pulsos** de la música como marcadores y **dividir un clip en escenas**.
+- Gestor de modelos con descarga verificada (SHA-256); el trabajo pesado corre en un proceso aparte.
 
 **Novedades de F3**
 - Pestaña Color en el inspector: ajustes básicos, ruedas de sombras/medios/luces, curvas general y
@@ -86,6 +94,9 @@ src/
   render/    movix_render    compositor GPU (Qt RHI) compartido por visor y exportación
   export/    movix_export    exportación (compositor fuera de pantalla + mezcla + codificador)
   playback/  movix_playback  reproductor de la línea de tiempo y salida de audio (miniaudio)
+  ai/        movix_ai        modelos de IA (catálogo, descarga), cliente del proceso de IA, Whisper, VAD,
+                             Kokoro, Opus-MT, HTDemucs (ONNX Runtime), ritmo y escenas
+  aiworker/  movix-ai-worker proceso que ejecuta los trabajos de IA (JSON por stdin/stdout)
   app/       MovixStudio     interfaz Qt Quick, modelos, miniaturas, formas de onda, controladores
 tests/       Catch2 + medios sintéticos generados con FFmpeg
 i18n/        traducciones (el español es el idioma fuente)
@@ -95,7 +106,7 @@ El núcleo no depende de la interfaz: cada edición es una función pura sobre e
 historial guarda instantáneas (deshacer exacto por construcción) y el reproductor y la exportación
 trabajan sobre instantáneas inmutables.
 
-Tecnologías: C++20 · Qt 6.8 (Qt Quick, RHI) · FFmpeg 9 · OpenColorIO 2.6 · miniaudio · CMake + Ninja · vcpkg · Catch2.
+Tecnologías: C++20 · Qt 6.8 (Qt Quick, RHI) · FFmpeg 9 · OpenColorIO 2.6 · whisper.cpp 1.8 (ggml) · ONNX Runtime 1.31 · eSpeak NG 1.52 · SentencePiece · miniaudio · CMake + Ninja · vcpkg · Catch2.
 
 ## Compilar (Windows)
 
@@ -117,10 +128,14 @@ Diagnóstico de la reproducción: `$env:QT_LOGGING_RULES = "movix.player.stats.d
 
 ## Pruebas
 
-`ctest --preset debug` genera los medios sintéticos y ejecuta 91 casos (Debug y Release). Además de
-los de F0–F2, los de F3 comparan la GPU con una referencia en la CPU (corrección de color, croma,
-cada modo de fusión, máscaras, conversiones HDR) y comprueban LUT `.cube`, curvas, scopes, OCIO,
-clips compuestos, la exportación HDR10 y el `.mxproj` v4:
+`ctest --preset debug` genera los medios sintéticos, descarga una vez los modelos de prueba
+(Whisper Base, Silero VAD, RNNoise, Kokoro, Opus-MT y HTDemucs, ~800 MB verificados con SHA-256, en
+`build/test-models`) y ejecuta 102 casos
+(Debug y Release). Además de los de F0–F2, los de F3 comparan la GPU con una referencia en la CPU
+(corrección de color, croma, cada modo de fusión, máscaras, conversiones HDR) y comprueban LUT
+`.cube`, curvas, scopes, OCIO, clips compuestos y la exportación HDR10; los de F4 transcriben voz
+real (tiempos por palabra dentro de ±0,15 s), detectan sus tramos de voz, usan el proceso de IA
+(cola, cancelación, errores) y verifican subtítulos, SRT, silencios y cortes por texto:
 
 | Área | Qué se verifica |
 |---|---|
@@ -131,6 +146,7 @@ clips compuestos, la exportación HDR10 y el `.mxproj` v4:
 | Exportación | Fidelidad frente a la fuente (PSNR), sincronía A/V tras exportar, cada códec disponible, cambio de resolución/aspecto, cancelación |
 | Reproductor | Tiempo real, fotograma correcto, pausa/búsqueda/paso, 60 fps a 60 Hz sin descartes, varios clips y huecos, edición en plena reproducción, solo audio, proyecto vacío |
 | Modelos de la UI | 600 ediciones aleatorias validadas con `QAbstractItemModelTester` |
+| IA (F4) | Whisper sobre voz sintetizada (idioma, palabras, tiempos), Silero VAD, proceso de IA con cola/cancelación/caída, descarga multiarchivo verificada, subtítulos y SRT, silencios y cortes por tramos, RNNoise (−15 dB de ruido sin desfase), ritmo a 92/120/150 BPM (±35 ms), cortes de escena exactos, Kokoro → Whisper (ida y vuelta), traducción es↔en, HTDemucs (voz/percusión separadas, correlación > 0,8), integración con los controladores reales |
 
 ## Licencia
 

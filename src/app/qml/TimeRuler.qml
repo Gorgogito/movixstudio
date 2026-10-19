@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import MovixStudio
 
 // Regla de tiempo con marcas adaptadas al zoom. Pulsar o arrastrar mueve el cabezal.
@@ -69,6 +70,50 @@ Rectangle {
                 color: Theme.textMuted
                 font.family: Theme.monoFont
                 font.pixelSize: 10
+            }
+        }
+    }
+
+    // Marcadores: triángulo en la regla (clic derecho lo quita).
+    Repeater {
+        model: ruler.project.markers
+        delegate: Item {
+            id: marker
+            required property var modelData
+            x: modelData.frame * ruler.pxPerFrame - ruler.contentX - 5
+            visible: x > -10 && x < ruler.width
+            width: 10
+            height: ruler.height
+            z: 2
+            Canvas {
+                anchors.bottom: parent.bottom
+                width: 10
+                height: 9
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    ctx.fillStyle = marker.modelData.color
+                    ctx.beginPath()
+                    ctx.moveTo(0, 0)
+                    ctx.lineTo(10, 0)
+                    ctx.lineTo(5, 9)
+                    ctx.closePath()
+                    ctx.fill()
+                }
+            }
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton)
+                        ruler.project.removeMarker(marker.modelData.frame)
+                    else
+                        ruler.seekRequested(marker.modelData.frame)
+                }
+                ToolTip.visible: containsMouse && marker.modelData.label !== ""
+                ToolTip.text: marker.modelData.label
+                hoverEnabled: true
             }
         }
     }

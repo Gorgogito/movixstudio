@@ -57,7 +57,10 @@ Rectangle {
             color: Theme.text
             font.pixelSize: Theme.fontNormal
             font.bold: true
+            elide: Text.ElideRight
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 1 // sin ancho implícito: el nombre largo se recorta, no empuja los botones
             Layout.leftMargin: 6
         }
         Toggle {

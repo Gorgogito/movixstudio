@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Project.h"
+#include "core/Transcript.h"
 
 #include <optional>
 #include <vector>
@@ -94,6 +95,7 @@ bool resetProperty(Project& p, Id clipId, Property prop, int maskIndex = 0);
 bool setClipSpeed(Project& p, Id clipId, double speed);
 bool setFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 bool setAudioFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
+bool setDenoise(Project& p, Id clipId, double amount); // 0..1; solo clips con audio
 // Transición desde el clip anterior contiguo. TransitionType::None la quita.
 bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration);
 bool setTitleStyle(Project& p, Id clipId, const TitleStyle& style);
@@ -147,6 +149,24 @@ bool closeSequence(Project& p);
 bool renameSequence(Project& p, Id sequence, const std::string& name);
 // ¿Contiene `sequence` (directa o indirectamente) a `target`?
 bool sequenceContains(const Project& p, Id sequence, Id target);
+
+// --- Transcripción y subtítulos ---
+bool setTranscript(Project& p, Id mediaId, TranscriptRef transcript); // nullptr la quita
+// Crea una pista de video encima de todas con un título por subtítulo (redondeados a fotogramas,
+// sin solaparse) colocados en el tercio inferior. Devuelve el id de la pista.
+Id addSubtitleTrack(Project& p, const std::vector<Cue>& cues, const TitleStyle& style, const std::string& name);
+
+// Elimina tramos de la línea de tiempo en todas las pistas desbloqueadas y cierra los huecos (lo
+// posterior se adelanta, de modo que video y audio siguen sincronizados). Los tramos se ordenan
+// y se fusionan. Devuelve los fotogramas eliminados (0 = sin cambios).
+FramePos removeRanges(Project& p, std::vector<FrameRange> ranges);
+
+// --- Marcadores (de la secuencia activa) ---
+// Añade marcadores en los fotogramas (no repite los que ya existen). Devuelve cuántos añadió.
+int addMarkers(Project& p, const std::vector<FramePos>& frames, const std::string& label, std::uint32_t color = 0xFFFFC266);
+bool removeMarker(Project& p, FramePos frame);
+// Quita los marcadores con esa etiqueta (todos si está vacía).
+bool clearMarkers(Project& p, const std::string& label = {});
 
 // Clip de la pista que ocupa el fotograma `f`, o nullptr.
 const Clip* clipAt(const Track& track, FramePos f);

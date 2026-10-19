@@ -48,6 +48,13 @@ ApplicationWindow {
         }
     }
 
+    AiController {
+        id: ai
+        project: project
+        onErrorOccurred: (message) => banner.show(message, true)
+        onNotice: (message) => banner.show(message, false)
+    }
+
     readonly property TimelinePlayer activePlayer: viewer.activePlayer
 
     Component.onCompleted: {
@@ -107,7 +114,7 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Undo]; onActivated: project.undo() }
     Shortcut { sequences: ["Ctrl+Y", "Ctrl+Shift+Z"]; onActivated: project.redo() }
     Shortcut { sequences: ["Ctrl+B", "S"]; onActivated: { viewer.showTimeline(); project.splitAtPlayhead() } }
-    Shortcut { sequence: "Delete"; onActivated: project.deleteSelection(false) }
+    Shortcut { sequence: "Delete"; onActivated: library.wordSelectionActive ? library.deleteWordSelection() : project.deleteSelection(false) }
     Shortcut { sequence: "Shift+Delete"; onActivated: project.deleteSelection(true) }
     Shortcut { sequence: "Ctrl+A"; onActivated: project.selectAll() }
     Shortcut { sequences: [StandardKey.Copy]; onActivated: project.copySelection() }
@@ -115,6 +122,9 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Paste]; onActivated: { viewer.showTimeline(); project.paste() } }
     Shortcut { sequence: "T"; onActivated: { viewer.showTimeline(); project.addTitle(0) } }
     Shortcut { sequence: "Escape"; onActivated: project.clearSelection() }
+    Shortcut { sequence: "Ctrl+M"; onActivated: project.addMarker() }
+    Shortcut { sequence: "Alt+Right"; onActivated: project.jumpToMarker(true) }
+    Shortcut { sequence: "Alt+Left"; onActivated: project.jumpToMarker(false) }
     Shortcut { sequence: "Space"; onActivated: window.activePlayer.togglePlayPause() }
     Shortcut { sequence: "K"; onActivated: window.activePlayer.pause() }
     Shortcut { sequence: "L"; onActivated: window.activePlayer.play() }
@@ -182,6 +192,9 @@ ApplicationWindow {
             MenuItem { text: qsTr("Seleccionar &todo") + "\tCtrl+A"; onTriggered: project.selectAll() }
             MenuItem { text: qsTr("Añadir pista de &video"); onTriggered: project.addTrack("video") }
             MenuItem { text: qsTr("Añadir pista de &audio"); onTriggered: project.addTrack("audio") }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Añadir &marcador") + "\tCtrl+M"; onTriggered: project.addMarker() }
+            MenuItem { text: qsTr("Quitar los marcadores"); enabled: project.markers.length > 0; onTriggered: project.clearMarkers() }
         }
         Menu {
             title: qsTr("&Reproducción")
@@ -213,6 +226,38 @@ ApplicationWindow {
             }
         }
         Menu {
+            title: qsTr("&IA")
+            MenuItem {
+                text: qsTr("Generar &subtítulos…")
+                enabled: !ai.busy && project.durationFrames > 0
+                onTriggered: {
+                    subtitlesDialog.createTrack = true
+                    subtitlesDialog.open()
+                }
+            }
+            MenuItem {
+                text: qsTr("&Transcribir para editar por texto…")
+                enabled: !ai.busy && project.durationFrames > 0
+                onTriggered: {
+                    subtitlesDialog.createTrack = false
+                    subtitlesDialog.open()
+                }
+            }
+            MenuItem { text: qsTr("Eliminar si&lencios…"); enabled: !ai.busy && project.durationFrames > 0; onTriggered: silenceDialog.open() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Marcar los &pulsos de la música"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.markBeats() }
+            MenuItem { text: qsTr("Dividir en &escenas"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.splitScenes() }
+            MenuItem { text: qsTr("Separar &voz y música"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.separateVoice() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Te&xto a voz…"); enabled: !ai.busy; onTriggered: ttsDialog.open() }
+            MenuItem { text: qsTr("T&raducir subtítulos…"); enabled: !ai.busy && project.durationFrames > 0; onTriggered: translateDialog.open() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("&Importar subtítulos (SRT)…"); onTriggered: srtImportDialog.open() }
+            MenuItem { text: qsTr("&Exportar subtítulos (SRT)…"); enabled: project.durationFrames > 0 && ai.hasSubtitleTrack(); onTriggered: srtExportDialog.open() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("&Modelos de IA…"); onTriggered: modelsDialog.open() }
+        }
+        Menu {
             title: qsTr("Ay&uda")
             MenuItem { text: qsTr("&Acerca de MovixStudio"); onTriggered: aboutDialog.open() }
         }
@@ -228,9 +273,16 @@ ApplicationWindow {
             orientation: Qt.Horizontal
 
             LibraryPanel {
+                id: library
                 SplitView.preferredWidth: 320
                 SplitView.minimumWidth: 220
                 project: project
+                ai: ai
+                onTranscribeRequested: {
+                    subtitlesDialog.createTrack = false
+                    subtitlesDialog.open()
+                }
+                onTimelineRequested: viewer.showTimeline()
                 onImportRequested: importDialog.open()
                 onPreviewRequested: (mediaId) => {
                     project.previewMedia(mediaId)
@@ -251,6 +303,7 @@ ApplicationWindow {
                 SplitView.preferredWidth: 320
                 SplitView.minimumWidth: 260
                 project: project
+                ai: ai
                 onSettingsRequested: settingsDialog.open()
             }
         }
@@ -368,6 +421,32 @@ ApplicationWindow {
 
     ExportDialog { id: exportDialog; project: project }
     ProjectSettingsDialog { id: settingsDialog; project: project }
+    SubtitlesDialog { id: subtitlesDialog; ai: ai }
+    ModelsDialog { id: modelsDialog; ai: ai }
+    SilenceDialog { id: silenceDialog; ai: ai }
+    TtsDialog { id: ttsDialog; ai: ai }
+    TranslateDialog { id: translateDialog; ai: ai }
+    FileDialog {
+        id: srtImportDialog
+        title: qsTr("Importar subtítulos")
+        nameFilters: [qsTr("Subtítulos SubRip") + " (*.srt)", qsTr("Todos los archivos") + " (*)"]
+        onAccepted: ai.importSrt(selectedFile)
+    }
+    FileDialog {
+        id: srtExportDialog
+        title: qsTr("Exportar subtítulos")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "srt"
+        nameFilters: [qsTr("Subtítulos SubRip") + " (*.srt)"]
+        onAccepted: ai.exportSrt(selectedFile)
+    }
+
+    AiStatus {
+        ai: ai
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+    }
 
     Dialog {
         id: aboutDialog
@@ -393,14 +472,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.text
-                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color y composición (fase F3).")
+                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición y subtítulos automáticos con IA local (fase F4).")
             }
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall + 1
-                text: qsTr("Distribuido bajo la Licencia Pública General de GNU, versión 3 o posterior. Usa Qt (LGPLv3), FFmpeg (GPL) y miniaudio (dominio público).")
+                text: qsTr("Distribuido bajo la Licencia Pública General de GNU, versión 3 o posterior. Usa Qt (LGPLv3), FFmpeg (GPL), miniaudio (dominio público), OpenColorIO (BSD), whisper.cpp (MIT), ONNX Runtime (MIT), eSpeak NG (GPLv3) y SentencePiece (Apache 2.0). Los modelos de IA se descargan aparte, cada uno con su licencia.")
             }
         }
     }

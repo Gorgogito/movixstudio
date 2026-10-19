@@ -1,6 +1,7 @@
 #pragma once
 
 #include "media/AudioDecoder.h"
+#include "media/AudioFilter.h"
 #include "media/TempoFilter.h"
 
 #include <string>
@@ -17,7 +18,8 @@ public:
 
     // Suma `frames` muestras de salida que empiezan en el instante `t` del medio, reproducido a
     // `speed`, con una ganancia que va de `gainStart` a `gainEnd`. Fuera del medio hay silencio.
-    void mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out);
+    // `denoise` (0..1) aplica la reducción de ruido (RNNoise) si hay modelo (media::denoiseModel()).
+    void mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out, double denoise = 0.0);
 
     int seekCount() const { return m_seeks; }
 
@@ -42,6 +44,12 @@ private:
     int m_seeks = 0;
     media::AudioChunk m_chunk;
     std::vector<float> m_scratch;
+
+    // Reducción de ruido entre el decodificador y el FIFO (se reinicia con cada búsqueda).
+    void configureDenoise(double amount);
+    media::Denoiser m_denoiser;
+    bool m_denoiseOn = false;
+    std::vector<float> m_denoised;
 
     media::TempoFilter m_tempo;
     double m_tempoSpeed = 0.0;     // 0 = sin inicializar

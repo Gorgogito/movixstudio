@@ -12,6 +12,7 @@ qt_add_executable(MovixStudio WIN32
     TimelineModels.h TimelineModels.cpp
     ProjectController.h ProjectController.cpp ProjectControllerColor.cpp
     ExportController.h ExportController.cpp
+    AiController.h AiController.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
 target_compile_definitions(MovixStudio PRIVATE MOVIX_VERSION="${PROJECT_VERSION}")
@@ -59,18 +60,25 @@ qt_add_qml_module(MovixStudio
         qml/CurveEditor.qml
         qml/EffectsPanel.qml
         qml/SliderRow.qml
+        qml/SubtitlesDialog.qml
+        qml/ModelsDialog.qml
+        qml/AiStatus.qml
+        qml/TranscriptPanel.qml
+        qml/SilenceDialog.qml
+        qml/TtsDialog.qml
+        qml/TranslateDialog.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
 
 target_link_libraries(MovixStudio PRIVATE
-    movix_core movix_engine movix_render movix_export movix_playback
+    movix_core movix_engine movix_render movix_export movix_playback movix_ai
     Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2)
 
 # Español = idioma fuente (cadenas del código); inglés = traducción.
 qt_add_translations(MovixStudio
     TS_FILES ${PROJECT_SOURCE_DIR}/i18n/movixstudio_en.ts
-    SOURCE_TARGETS MovixStudio movix_playback movix_core movix_color movix_export movix_render
+    SOURCE_TARGETS MovixStudio movix_playback movix_core movix_color movix_export movix_render movix_ai
     RESOURCE_PREFIX /i18n
     LUPDATE_OPTIONS -no-obsolete -locations none
 )

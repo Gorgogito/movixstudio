@@ -11,6 +11,7 @@ namespace {
 // Un salto hacia delante menor que esto se resuelve descartando muestras en vez de buscar.
 constexpr TimeUs kMaxSkipAhead = 500'000;
 constexpr int kTempoBlock = 1024;
+constexpr TimeUs kDenoisePreroll = 300'000;
 } // namespace
 
 bool AudioReader::open(const std::string& path, int sampleRate, int channels, std::string* error)
@@ -23,18 +24,61 @@ bool AudioReader::open(const std::string& path, int sampleRate, int channels, st
     m_consumed = 0;
     m_eof = false;
     m_tempoSpeed = 0.0;
+    m_denoiseOn = false;
     return m_decoder.open(path, sampleRate, channels, error);
 }
 
-void AudioReader::seekTo(TimeUs t)
+void AudioReader::configureDenoise(double amount)
 {
-    ++m_seeks;
-    m_decoder.seek(std::max<TimeUs>(0, t));
+    const std::string model = amount > 0.001 ? media::denoiseModel() : std::string();
+    const bool want = !model.empty();
+    if (want == m_denoiseOn && (!want || (m_denoiser.amount() == std::clamp(amount, 0.0, 1.0) && m_denoiser.model() == model)))
+        return;
+    m_denoiseOn = want && m_denoiser.init(m_rate, m_channels, model, amount);
+    // Lo ya decodificado se procesó con otro ajuste: se vuelve a leer desde donde toque.
     m_fifo.clear();
     m_fifoRead = 0;
     m_basePts = kNoTime;
     m_consumed = 0;
     m_eof = false;
+    m_tempoBase = kNoTime;
+}
+
+void AudioReader::seekTo(TimeUs t)
+{
+    ++m_seeks;
+    t = std::max<TimeUs>(0, t);
+    m_fifo.clear();
+    m_fifoRead = 0;
+    m_basePts = kNoTime;
+    m_consumed = 0;
+    m_eof = false;
+    if (!m_denoiseOn) {
+        m_decoder.seek(t);
+        return;
+    }
+    // La red de RNNoise necesita contexto: se arranca un poco antes y se descarta lo anterior a `t`.
+    m_denoiser.reset();
+    const TimeUs from = std::max<TimeUs>(0, t - kDenoisePreroll);
+    m_decoder.seek(from);
+    int64_t discard = (t - from) * m_rate / kUsPerSecond; // frames de salida previos a `t`
+    while (discard > 0) {
+        if (!m_decoder.read(m_chunk))
+            break;
+        m_denoised.clear();
+        m_denoiser.process(m_chunk.samples.data(), m_chunk.frames, m_denoised);
+        const int64_t frames = int64_t(m_denoised.size()) / m_channels;
+        const int64_t drop = std::min(frames, discard);
+        discard -= drop;
+        if (drop < frames) {
+            m_basePts = t;
+            m_fifo.insert(m_fifo.end(), m_denoised.begin() + std::ptrdiff_t(drop * m_channels), m_denoised.end());
+        }
+    }
+    if (discard > 0) // el medio terminó antes de llegar a `t`
+        m_eof = true;
+    else if (m_basePts == kNoTime)
+        m_basePts = t;
 }
 
 bool AudioReader::fill(int frames)
@@ -42,6 +86,11 @@ bool AudioReader::fill(int frames)
     while (available() < frames && !m_eof) {
         if (!m_decoder.read(m_chunk)) {
             m_eof = true;
+            if (m_denoiseOn) { // la cola retenida por el filtro
+                m_denoised.clear();
+                m_denoiser.flush(m_denoised);
+                m_fifo.insert(m_fifo.end(), m_denoised.begin(), m_denoised.end());
+            }
             break;
         }
         if (m_basePts == kNoTime) {
@@ -53,7 +102,13 @@ bool AudioReader::fill(int frames)
             m_fifo.erase(m_fifo.begin(), m_fifo.begin() + std::ptrdiff_t(m_fifoRead * size_t(m_channels)));
             m_fifoRead = 0;
         }
-        m_fifo.insert(m_fifo.end(), m_chunk.samples.begin(), m_chunk.samples.end());
+        if (m_denoiseOn) {
+            m_denoised.clear();
+            m_denoiser.process(m_chunk.samples.data(), m_chunk.frames, m_denoised);
+            m_fifo.insert(m_fifo.end(), m_denoised.begin(), m_denoised.end());
+        } else {
+            m_fifo.insert(m_fifo.end(), m_chunk.samples.begin(), m_chunk.samples.end());
+        }
     }
     return available() >= frames;
 }
@@ -139,10 +194,11 @@ void AudioReader::readTempo(TimeUs t, int frames, double speed, float* dst)
     }
 }
 
-void AudioReader::mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out)
+void AudioReader::mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out, double denoise)
 {
     if (!m_decoder.isOpen() || frames <= 0)
         return;
+    configureDenoise(denoise);
     m_scratch.resize(size_t(frames) * size_t(m_channels));
     if (std::abs(speed - 1.0) < 1e-9)
         readSource(t, frames, m_scratch.data());

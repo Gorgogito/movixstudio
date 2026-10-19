@@ -80,6 +80,9 @@ public:
 
     const movix::core::Project& project() const { return m_history.project(); }
     std::shared_ptr<const movix::core::Project> snapshot() const { return m_snapshot; }
+    // Edición desde otros controladores (IA): se registra en el historial como cualquier otra.
+    bool applyEdit(const QString& text, const std::function<bool(movix::core::Project&)>& edit) { return apply(text, edit); }
+    QSet<movix::core::Id> selectedClips() const { return m_selection; }
 
     // --- Proyecto ---
     Q_INVOKABLE void newProject();
@@ -128,6 +131,16 @@ public:
     // --- Velocidad, fundidos, transiciones, títulos, audio ---
     Q_INVOKABLE void setClipSpeed(qint64 clipId, double speed);
     Q_INVOKABLE void setFades(qint64 clipId, double inSeconds, double outSeconds, bool audio);
+    Q_INVOKABLE void setDenoise(qint64 clipId, double amount);
+
+    // --- Marcadores ---
+    // [{frame, label, color}] de la secuencia activa.
+    Q_PROPERTY(QVariantList markers READ markers NOTIFY timelineChanged)
+    QVariantList markers() const;
+    Q_INVOKABLE void addMarker();                       // en el cabezal
+    Q_INVOKABLE void removeMarker(qint64 frame);
+    Q_INVOKABLE void clearMarkers();
+    Q_INVOKABLE void jumpToMarker(bool forward);
     // type: "none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft".
     Q_INVOKABLE bool setTransition(qint64 clipId, const QString& type, double seconds);
     // Aplica una transición en el corte más cercano a `frame` en la pista de la fila `trackRow`.

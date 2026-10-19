@@ -125,11 +125,61 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - Pendientes de F2 que siguen abiertos: *speed ramping*, interpolación de keyframes en la interfaz,
   animaciones de texto, atajos configurables, proxies, copia cero, selección por recuadro.
 
-## F4 — IA de audio y texto (local)
+## F4 — IA de audio y texto (local) 🚧
 
-Proceso `ai-worker`, gestor de modelos; subtítulos con Whisper (whisper.cpp), edición por texto,
-eliminación de silencios (Silero VAD), reducción de ruido (DeepFilterNet/RNNoise), separación de voz
-(Demucs), detección de beats y escenas, TTS (Kokoro), traducción (Opus-MT).
+- [x] Proceso `movix-ai-worker` aparte (un fallo o falta de memoria no cierra el editor): JSON por
+      líneas en stdin/stdout, cola de trabajos, progreso, cancelación y detección de caídas
+- [x] Gestor de modelos: catálogo con tamaño, licencia y SHA-256; descarga verificada sobre la
+      marcha (`.part` → renombrado solo si coincide); carpeta en `%LOCALAPPDATA%\MovixStudio\models`
+- [x] whisper.cpp 1.8 con el backend de CPU de ggml en variantes (SSE4.2…AVX-512) elegidas en tiempo
+      de ejecución (*overlay port* de vcpkg): AVX2 en el equipo de desarrollo, ~6× más rápido que la
+      compilación genérica
+- [x] Transcripción con marcas por palabra (DTW sobre las cabezas de alineamiento del modelo) y
+      bordes ajustados a los tramos de voz de Silero VAD; idioma automático o elegido; se guarda en
+      el medio (`.mxproj` v5) y se reutiliza
+- [x] Subtítulos automáticos: palabras llevadas a la línea de tiempo a través de los clips
+      (recortes, velocidad, pistas silenciadas, audio separado, compuestos), agrupadas por pausas,
+      frases, duración y longitud, en líneas equilibradas; pista de títulos editable; SRT
+      importar/exportar
+- [x] Edición por texto: pestaña Texto con las palabras de la línea de tiempo; borrar palabras corta
+      ese tramo en todas las pistas desbloqueadas cerrando el hueco (sincronía intacta)
+- [x] Eliminar silencios con Silero VAD: silencio mínimo, margen y umbral configurables
+- [x] Reducción de ruido por clip con RNNoise (filtro `arnndn` de FFmpeg) con intensidad ajustable,
+      en reproducción y exportación, sin desfase (el retardo de 10 ms se compensa y cada búsqueda
+      precalienta la red 0,3 s)
+- [x] Detección de ritmo (flujo espectral por bandas, tempo por autocorrelación y pulsos por
+      programación dinámica): marca los pulsos de la música como marcadores
+- [x] Marcadores en la línea de tiempo (por secuencia, en el `.mxproj`, con imán, Ctrl+M, Alt+←/→)
+- [x] Detección de escenas (luz, color y composición con umbral adaptativo): divide el clip en sus
+      planos
+- [x] Texto a voz con Kokoro 82M (ONNX) y eSpeak NG (fonemas): 3 voces en español y 2 en inglés
+- [x] Traducción de subtítulos español ↔ inglés con Opus-MT (Marian en ONNX + SentencePiece)
+- [x] Separación de voz y música con HTDemucs v4 (ONNX): dos pistas nuevas alineadas con el clip
+- [x] ONNX Runtime 1.31 (CPU, MIT) descargado y verificado por CMake; eSpeak NG compilado con un
+      *overlay port* de vcpkg
+
+### Correcciones que salieron de las pruebas
+
+- El ggml de vcpkg se compila sin AVX (`GGML_NATIVE=OFF`, todo apagado): la transcripción tardaba
+  34 s para 10 s de audio. El *overlay port* compila todas las variantes y carga la mejor.
+- Las marcas de tiempo por token de Whisper se desviaban hasta 1 s (palabras dentro de silencios);
+  DTW + el ajuste a la voz las dejan a menos de 0,15 s.
+- Un subtítulo de 84 caracteres no siempre cabe en 2×42 cortando por palabras: el corte de
+  subtítulos comprueba el reparto real en líneas.
+- `TapHandler` no da los modificadores del clic (Mayús+clic en la transcripción): se usa `MouseArea`.
+- RNNoise retrasa su salida 480 muestras: sin compensarlo, la voz filtrada iba 10 ms tarde.
+- El flujo espectral por bins daba mucho más peso a la caja que al bombo y el tempo salía a la
+  mitad (150 → 75 BPM); por bandas logarítmicas, y sumando los retardos vecinos, sale el correcto.
+- `setFrameRate` solo convertía las pistas de la secuencia activa: los clips compuestos quedaban con
+  los fotogramas de la velocidad anterior.
+
+### Limitaciones conocidas
+
+- La IA se ejecuta en la CPU. La GPU (DirectML o CUDA) queda pendiente de decidir: el paquete de
+  DirectML incluye un redistribuible propietario de Microsoft.
+- El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
+  menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*).
+- La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
 
 ## F5 — IA visual (local)
 

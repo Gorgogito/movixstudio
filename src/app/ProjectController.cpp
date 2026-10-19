@@ -665,6 +665,54 @@ void ProjectController::setFades(qint64 clipId, double inSeconds, double outSeco
           QStringLiteral("fade:%1:%2").arg(clipId).arg(audio));
 }
 
+QVariantList ProjectController::markers() const
+{
+    QVariantList list;
+    for (const Marker& m : project().markers)
+        list.append(QVariantMap{{"frame", qint64(m.frame)},
+                                {"label", QString::fromStdString(m.label)},
+                                {"color", QColor::fromRgba(QRgb(m.color))}});
+    return list;
+}
+
+void ProjectController::addMarker()
+{
+    const FramePos frame = m_player->positionFrame();
+    apply(tr("Añadir marcador"), [&](Project& p) { return edit::addMarkers(p, {frame}, {}) > 0; });
+}
+
+void ProjectController::removeMarker(qint64 frame)
+{
+    apply(tr("Quitar marcador"), [&](Project& p) { return edit::removeMarker(p, frame); });
+}
+
+void ProjectController::clearMarkers()
+{
+    apply(tr("Quitar los marcadores"), [&](Project& p) { return edit::clearMarkers(p); });
+}
+
+void ProjectController::jumpToMarker(bool forward)
+{
+    const FramePos now = m_player->positionFrame();
+    std::optional<FramePos> target;
+    for (const Marker& m : project().markers) {
+        if (forward && m.frame > now) {
+            target = m.frame;
+            break;
+        }
+        if (!forward && m.frame < now)
+            target = m.frame;
+    }
+    if (target)
+        m_player->seekFrame(*target);
+}
+
+void ProjectController::setDenoise(qint64 clipId, double amount)
+{
+    apply(tr("Reducción de ruido"), [&](Project& p) { return edit::setDenoise(p, Id(clipId), amount); },
+          QStringLiteral("denoise:%1").arg(clipId));
+}
+
 bool ProjectController::setTransition(qint64 clipId, const QString& type, double seconds)
 {
     const FramePos frames = project().settings.framesIn(fromSeconds(std::max(0.0, seconds)));
@@ -893,6 +941,7 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
         {"fadeIn", toSeconds(s.frameToTime(c->fadeIn))},
         {"fadeOut", toSeconds(s.frameToTime(c->fadeOut))},
         {"audioFadeIn", toSeconds(s.frameToTime(c->audioFadeIn))},
+        {"denoise", c->denoise},
         {"audioFadeOut", toSeconds(s.frameToTime(c->audioFadeOut))},
         {"hasCut", hasCut},
         {"transition", QLatin1String(kTransitionNames[int(c->transitionIn.type)])},
@@ -932,6 +981,8 @@ QVariantList ProjectController::snapPoints(const QVariantList& excludeClipIds) c
     for (const QVariant& v : excludeClipIds)
         exclude.insert(Id(v.toLongLong()));
     QSet<qint64> points{0, m_player->positionFrame()};
+    for (const Marker& m : project().markers)
+        points.insert(m.frame);
     for (const auto* list : {&project().videoTracks, &project().audioTracks})
         for (const auto& t : *list)
             for (const auto& c : t.clips)

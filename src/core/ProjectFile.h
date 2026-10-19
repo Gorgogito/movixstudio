@@ -3,6 +3,7 @@
 #include "core/Project.h"
 
 #include <QByteArray>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -16,7 +17,8 @@ namespace movix::core {
 // Versión 2 (F2): velocidad, transformación y volumen animables, fundidos, títulos, transiciones.
 // Versión 3 (F3): recorte, corrección de color (con LUT .cube), croma, máscara y modo de fusión.
 // Versión 4: corrección de color con keyframes, varias máscaras (y de forma libre), clips compuestos.
-inline constexpr int kProjectFormatVersion = 4;
+// Versión 5 (F4): transcripción de los medios, reducción de ruido por clip, marcadores.
+inline constexpr int kProjectFormatVersion = 5;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {
@@ -27,6 +29,10 @@ struct LoadResult {
 
 QByteArray serializeProject(const Project& project, const QString& projectFilePath);
 LoadResult deserializeProject(const QByteArray& json, const QString& projectFilePath);
+
+// Transcripción en JSON (la usan el archivo de proyecto y el proceso de IA).
+QJsonObject transcriptToJson(const Transcript& t);
+Transcript transcriptFromJson(const QJsonObject& o);
 
 // Escritura atómica: o se guarda completo o el archivo anterior queda intacto.
 bool saveProjectFile(const Project& project, const QString& path, QString* error = nullptr);

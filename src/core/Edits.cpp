@@ -421,7 +421,7 @@ bool openSequence(Project& p, Id sequence)
         return false;
     Sequence target = std::move(*it);
     p.sequences.erase(it);
-    Sequence current{p.activeSequence, p.activeName, std::move(p.videoTracks), std::move(p.audioTracks)};
+    Sequence current{p.activeSequence, p.activeName, std::move(p.videoTracks), std::move(p.audioTracks), std::move(p.markers)};
     // Volver a una secuencia del camino lo recorta; abrir otra nueva lo alarga.
     auto back = std::find(p.sequencePath.begin(), p.sequencePath.end(), sequence);
     if (back != p.sequencePath.end())
@@ -431,6 +431,7 @@ bool openSequence(Project& p, Id sequence)
     p.sequences.push_back(std::move(current));
     p.videoTracks = std::move(target.videoTracks);
     p.audioTracks = std::move(target.audioTracks);
+    p.markers = std::move(target.markers);
     p.activeSequence = target.id;
     p.activeName = std::move(target.name);
     normalize(p);
@@ -496,8 +497,18 @@ bool setFrameRate(Project& p, Rational rate)
     p.settings.frameRate = rate;
     const TimeUs half = p.settings.frameDuration() / 2;
     auto convert = [&](FramePos f) { return p.settings.timeToFrame(old.frameToTime(f) + half); };
-    for (auto* list : {&p.videoTracks, &p.audioTracks}) {
-        for (auto& t : *list) {
+    // Todas las secuencias (también las de los clips compuestos) y sus marcadores.
+    auto convertMarkers = [&](std::vector<Marker>& markers) {
+        for (Marker& m : markers)
+            m.frame = convert(m.frame);
+        markers.erase(std::unique(markers.begin(), markers.end(), [](const Marker& a, const Marker& b) { return a.frame == b.frame; }),
+                      markers.end());
+    };
+    convertMarkers(p.markers);
+    for (Sequence& seq : p.sequences)
+        convertMarkers(seq.markers);
+    p.forEachTrack([&](Track& t) {
+        {
             for (auto& c : t.clips) {
                 const FramePos start = convert(c.start);
                 const FramePos end = convert(c.end());
@@ -517,7 +528,7 @@ bool setFrameRate(Project& p, Rational rate)
                 if (t.clips[i].start < t.clips[i - 1].end())
                     t.clips[i].start = t.clips[i - 1].end();
         }
-    }
+    });
     normalize(p);
     return true;
 }
@@ -676,6 +687,122 @@ Id placeTitle(Project& p, Id trackId, FramePos start, FramePos duration, const T
     c.duration = duration;
     c.title = style;
     return placePrepared(p, *t, std::move(c), mode);
+}
+
+int addMarkers(Project& p, const std::vector<FramePos>& frames, const std::string& label, std::uint32_t color)
+{
+    int added = 0;
+    for (FramePos f : frames) {
+        if (f < 0)
+            continue;
+        auto it = std::lower_bound(p.markers.begin(), p.markers.end(), f, [](const Marker& m, FramePos v) { return m.frame < v; });
+        if (it != p.markers.end() && it->frame == f)
+            continue;
+        p.markers.insert(it, Marker{f, label, color});
+        ++added;
+    }
+    return added;
+}
+
+bool removeMarker(Project& p, FramePos frame)
+{
+    return std::erase_if(p.markers, [&](const Marker& m) { return m.frame == frame; }) > 0;
+}
+
+bool clearMarkers(Project& p, const std::string& label)
+{
+    return std::erase_if(p.markers, [&](const Marker& m) { return label.empty() || m.label == label; }) > 0;
+}
+
+bool setDenoise(Project& p, Id clipId, double amount)
+{
+    Clip* c = p.findClip(clipId);
+    if (!c || c->title || c->isCompound())
+        return false;
+    const MediaItem* m = p.findMedia(c->mediaId);
+    amount = std::clamp(amount, 0.0, 1.0);
+    if (!m || !m->hasAudio || c->denoise == amount)
+        return false;
+    c->denoise = amount;
+    return true;
+}
+
+bool setTranscript(Project& p, Id mediaId, TranscriptRef transcript)
+{
+    MediaItem* m = p.findMedia(mediaId);
+    if (!m || m->transcript == transcript)
+        return false;
+    m->transcript = std::move(transcript);
+    return true;
+}
+
+Id addSubtitleTrack(Project& p, const std::vector<Cue>& cues, const TitleStyle& style, const std::string& name)
+{
+    const Id trackId = addTrack(p, TrackKind::Video);
+    if (!name.empty())
+        p.findTrack(trackId)->name = name;
+    const TimeUs half = p.settings.frameDuration() / 2;
+    FramePos previousEnd = 0;
+    for (const Cue& cue : cues) {
+        const FramePos start = std::max(previousEnd, p.settings.timeToFrame(cue.start + half));
+        const FramePos end = std::max(start + 1, p.settings.timeToFrame(cue.end + half));
+        TitleStyle s = style;
+        s.text = cue.text;
+        const Id clipId = placeTitle(p, trackId, start, end - start, s);
+        if (Clip* c = p.findClip(clipId))
+            c->transform.y = Animated(kSubtitleOffsetY);
+        previousEnd = end;
+    }
+    return trackId;
+}
+
+FramePos removeRanges(Project& p, std::vector<FrameRange> ranges)
+{
+    std::erase_if(ranges, [](const FrameRange& r) { return r.end <= std::max<FramePos>(r.start, 0); });
+    std::sort(ranges.begin(), ranges.end(), [](const FrameRange& a, const FrameRange& b) { return a.start < b.start; });
+    std::vector<FrameRange> merged;
+    for (FrameRange r : ranges) {
+        r.start = std::max<FramePos>(r.start, 0);
+        if (!merged.empty() && r.start <= merged.back().end)
+            merged.back().end = std::max(merged.back().end, r.end);
+        else
+            merged.push_back(r);
+    }
+
+    FramePos removed = 0;
+    // De derecha a izquierda: así los tramos pendientes no se desplazan.
+    for (auto r = merged.rbegin(); r != merged.rend(); ++r) {
+        bool changed = false;
+        for (auto* list : {&p.videoTracks, &p.audioTracks}) {
+            for (Track& t : *list) {
+                if (t.locked)
+                    continue;
+                for (FramePos cut : {r->start, r->end})
+                    if (const Clip* c = clipAt(t, cut); c && c->start < cut)
+                        splitClip(p, c->id, cut);
+                const auto before = t.clips.size();
+                std::erase_if(t.clips, [&](const Clip& c) { return c.start >= r->start && c.end() <= r->end; });
+                changed |= t.clips.size() != before;
+                for (Clip& c : t.clips)
+                    if (c.start >= r->end) {
+                        c.start -= r->end - r->start;
+                        changed = true;
+                    }
+            }
+        }
+        // Los marcadores del tramo desaparecen y los posteriores se adelantan con los clips.
+        std::erase_if(p.markers, [&](const Marker& m) { return m.frame >= r->start && m.frame < r->end; });
+        for (Marker& m : p.markers)
+            if (m.frame >= r->end) {
+                m.frame -= r->end - r->start;
+                changed = true;
+            }
+        if (changed)
+            removed += r->end - r->start;
+    }
+    if (removed > 0)
+        normalize(p);
+    return removed;
 }
 
 bool moveClips(Project& p, const std::vector<Id>& clipIds, FramePos delta, int trackOffset)
@@ -1212,6 +1339,7 @@ Id detachAudio(Project& p, Id clipId)
     audio.volume = source.volume;
     audio.audioFadeIn = source.audioFadeIn;
     audio.audioFadeOut = source.audioFadeOut;
+    audio.denoise = source.denoise;
     insertSorted(*target, audio);
 
     Clip* original = p.findClip(clipId); // la inserción pudo reubicar vectores de otras pistas

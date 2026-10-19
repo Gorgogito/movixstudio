@@ -3,13 +3,20 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import MovixStudio
 
-// Biblioteca con pestañas: medios del proyecto, plantillas de título y transiciones.
+// Biblioteca con pestañas: medios del proyecto, plantillas de título, transiciones y transcripción.
 Rectangle {
     id: library
 
     required property ProjectController project
+    required property AiController ai
     signal importRequested()
     signal previewRequested(var mediaId)
+    signal transcribeRequested()
+    signal timelineRequested()
+
+    // Hay palabras seleccionadas en la transcripción visible (la tecla Supr las corta).
+    readonly property bool wordSelectionActive: current === 3 && transcript.hasSelection
+    function deleteWordSelection() { transcript.deleteSelection() }
 
     color: Theme.surface
 
@@ -96,6 +103,7 @@ Rectangle {
             Tab { text: qsTr("Medios"); active: library.current === 0; onClicked: library.current = 0 }
             Tab { text: qsTr("Títulos"); active: library.current === 1; onClicked: library.current = 1 }
             Tab { text: qsTr("Transiciones"); active: library.current === 2; onClicked: library.current = 2 }
+            Tab { text: qsTr("Texto"); active: library.current === 3; onClicked: library.current = 3 }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
 
@@ -187,6 +195,14 @@ Rectangle {
                     }
                 }
                 Item { Layout.fillHeight: true }
+            }
+
+            TranscriptPanel {
+                id: transcript
+                ai: library.ai
+                project: library.project
+                onTranscribeRequested: library.transcribeRequested()
+                onSeekRequested: library.timelineRequested()
             }
         }
     }

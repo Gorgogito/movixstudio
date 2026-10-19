@@ -1,0 +1,11 @@
+{
+  "name": "espeak-ng",
+  "version": "1.52.0",
+  "description": "eSpeak NG: sintetizador y fonetizador de texto (MovixStudio lo usa para pasar texto a fonemas IPA)",
+  "homepage": "https://github.com/espeak-ng/espeak-ng",
+  "license": "GPL-3.0-or-later",
+  "supports": "windows & x64",
+  "dependencies": [
+    { "name": "vcpkg-cmake", "host": true }
+  ]
+}

@@ -77,6 +77,7 @@ struct AudioSegment {
     double speed = 1.0;
     float gainStart = 1.0f;   // ganancia total al principio y al final del tramo (rampa lineal)
     float gainEnd = 1.0f;
+    double denoise = 0.0;     // reducción de ruido del clip (0..1)
 };
 
 // Tramos de audio que suenan en [t0, t1): clips de pistas de audio y el audio de los clips de

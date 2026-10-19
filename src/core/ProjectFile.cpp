@@ -9,6 +9,8 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#include <cmath>
+
 namespace movix::core {
 
 namespace {
@@ -311,6 +313,8 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
             {"audioFades", QJsonArray{qint64(c.audioFadeIn), qint64(c.audioFadeOut)}},
             {"audioDetached", c.audioDetached},
         };
+        if (c.denoise > 0)
+            o["denoise"] = c.denoise;
         if (c.title)
             o["title"] = titleToJson(*c.title);
         if (c.transitionIn.active())
@@ -386,6 +390,7 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         clip.audioFadeIn = c["audioFades"].toArray().at(0).toInteger();
         clip.audioFadeOut = c["audioFades"].toArray().at(1).toInteger();
         clip.audioDetached = c["audioDetached"].toBool();
+        clip.denoise = std::clamp(c["denoise"].toDouble(0.0), 0.0, 1.0);
         if (c.contains("title"))
             clip.title = titleFromJson(c["title"].toObject());
         if (c.contains("transitionIn")) {
@@ -420,6 +425,54 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
 
 } // namespace
 
+// Cada palabra es [inicio µs, fin µs, texto, confianza] para que el archivo no crezca de más.
+QJsonObject transcriptToJson(const Transcript& t)
+{
+    QJsonArray words;
+    for (const TranscriptWord& w : t.words)
+        words.append(QJsonArray{qint64(w.start), qint64(w.end), QString::fromStdString(w.text),
+                                std::round(double(w.probability) * 1000.0) / 1000.0});
+    return QJsonObject{{"language", QString::fromStdString(t.language)},
+                       {"model", QString::fromStdString(t.model)},
+                       {"words", words}};
+}
+
+Transcript transcriptFromJson(const QJsonObject& o)
+{
+    Transcript t;
+    t.language = o["language"].toString().toStdString();
+    t.model = o["model"].toString().toStdString();
+    for (const QJsonValue& v : o["words"].toArray()) {
+        const QJsonArray a = v.toArray();
+        TranscriptWord w;
+        w.start = a.at(0).toInteger();
+        w.end = a.at(1).toInteger();
+        w.text = a.at(2).toString().toStdString();
+        w.probability = float(a.at(3).toDouble(1.0));
+        t.words.push_back(std::move(w));
+    }
+    return t;
+}
+
+static QJsonArray markersToJson(const std::vector<Marker>& markers)
+{
+    QJsonArray list;
+    for (const Marker& m : markers)
+        list.append(QJsonArray{qint64(m.frame), QString::fromStdString(m.label), argb(m.color)});
+    return list;
+}
+
+static std::vector<Marker> markersFromJson(const QJsonValue& v)
+{
+    std::vector<Marker> markers;
+    for (const QJsonValue& e : v.toArray()) {
+        const QJsonArray a = e.toArray();
+        markers.push_back({a.at(0).toInteger(), a.at(1).toString().toStdString(), argbFromJson(a.at(2), 0xFFFFC266)});
+    }
+    std::sort(markers.begin(), markers.end(), [](const Marker& a, const Marker& b) { return a.frame < b.frame; });
+    return markers;
+}
+
 QByteArray serializeProject(const Project& p, const QString& projectFilePath)
 {
     const QDir projectDir = QFileInfo(projectFilePath).absoluteDir();
@@ -440,6 +493,11 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
             {"frameRate", m.frameRate},
             {"isStill", m.isStill},
         });
+        if (m.transcript) {
+            QJsonObject o = media.last().toObject();
+            o["transcript"] = transcriptToJson(*m.transcript);
+            media.replace(media.size() - 1, o);
+        }
     }
     QJsonArray video, audio;
     for (const Track& t : p.videoTracks)
@@ -453,7 +511,11 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
             sv.append(trackToJson(t, projectDir));
         for (const Track& t : seq.audioTracks)
             sa.append(trackToJson(t, projectDir));
-        sequences.append(QJsonObject{{"id", qint64(seq.id)}, {"name", QString::fromStdString(seq.name)}, {"videoTracks", sv}, {"audioTracks", sa}});
+        sequences.append(QJsonObject{{"id", qint64(seq.id)},
+                                     {"name", QString::fromStdString(seq.name)},
+                                     {"videoTracks", sv},
+                                     {"audioTracks", sa},
+                                     {"markers", markersToJson(seq.markers)}});
     }
     QJsonArray path;
     for (Id id : p.sequencePath)
@@ -476,6 +538,7 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
         {"media", media},
         {"videoTracks", video},
         {"audioTracks", audio},
+        {"markers", markersToJson(p.markers)},
         // Las pistas de arriba son las de la secuencia activa; el resto, en "sequences".
         {"activeSequence", QJsonObject{{"id", qint64(p.activeSequence)}, {"name", QString::fromStdString(p.activeName)}}},
         {"mainSequence", qint64(p.mainSequence)},
@@ -537,12 +600,15 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
         m.height = o["height"].toInt();
         m.frameRate = o["frameRate"].toDouble();
         m.isStill = o["isStill"].toBool();
+        if (o.contains("transcript"))
+            m.transcript = std::make_shared<const Transcript>(transcriptFromJson(o["transcript"].toObject()));
         p.media.push_back(m);
     }
     for (const QJsonValue& v : root["videoTracks"].toArray())
         p.videoTracks.push_back(trackFromJson(v.toObject(), TrackKind::Video, projectDir, result.missingMedia));
     for (const QJsonValue& v : root["audioTracks"].toArray())
         p.audioTracks.push_back(trackFromJson(v.toObject(), TrackKind::Audio, projectDir, result.missingMedia));
+    p.markers = markersFromJson(root["markers"]);
     for (const QJsonValue& v : root["sequences"].toArray()) {
         const QJsonObject o = v.toObject();
         Sequence seq;
@@ -552,6 +618,7 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
             seq.videoTracks.push_back(trackFromJson(t.toObject(), TrackKind::Video, projectDir, result.missingMedia));
         for (const QJsonValue& t : o["audioTracks"].toArray())
             seq.audioTracks.push_back(trackFromJson(t.toObject(), TrackKind::Audio, projectDir, result.missingMedia));
+        seq.markers = markersFromJson(o["markers"]);
         p.sequences.push_back(std::move(seq));
     }
     if (root.contains("activeSequence")) {

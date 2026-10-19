@@ -11,6 +11,7 @@ add_library(movix_media STATIC
     Encoder.h Encoder.cpp
     FrameConvert.h FrameConvert.cpp
     ImageDecoder.h ImageDecoder.cpp
+    AudioFilter.h AudioFilter.cpp
     TempoFilter.h TempoFilter.cpp
 )
 

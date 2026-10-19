@@ -5,6 +5,7 @@
 #include "media/Time.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -51,6 +52,29 @@ struct ProjectSettings {
 };
 
 // Archivo importado en el proyecto (la "biblioteca de medios").
+struct TranscriptWord {
+    TimeUs start = 0;
+    TimeUs end = 0;
+    std::string text;         // sin espacios alrededor; incluye la puntuación pegada a la palabra
+    float probability = 1.0f; // confianza del reconocedor (0..1)
+    bool operator==(const TranscriptWord&) const = default;
+};
+
+// Transcripción del audio de un medio, en tiempos del medio (ver core/Transcript.h).
+struct Transcript {
+    std::string language; // código ISO 639-1 detectado o pedido ("es", "en"...)
+    std::string model;    // modelo que la generó (informativo)
+    std::vector<TranscriptWord> words; // ordenadas por `start`
+    bool operator==(const Transcript&) const = default;
+};
+
+// Referencia compartida e inmutable que se compara por contenido.
+struct TranscriptRef : std::shared_ptr<const Transcript> {
+    using std::shared_ptr<const Transcript>::shared_ptr;
+    TranscriptRef(std::shared_ptr<const Transcript> p) : std::shared_ptr<const Transcript>(std::move(p)) {}
+    bool operator==(const TranscriptRef& o) const { return get() == o.get() || (get() && o.get() && *get() == *o.get()); }
+};
+
 struct MediaItem {
     Id id = kNoId;
     std::string path;      // ruta absoluta UTF-8
@@ -62,6 +86,8 @@ struct MediaItem {
     int height = 0;
     double frameRate = 0.0;
     bool isStill = false;  // imagen fija: sin duración propia, se puede alargar sin límite
+    // Transcripción del audio (inmutable y compartida: las instantáneas del historial no la copian).
+    TranscriptRef transcript;
     bool operator==(const MediaItem&) const = default;
 };
 
@@ -127,6 +153,7 @@ struct Clip {
     FramePos audioFadeIn = 0;
     FramePos audioFadeOut = 0;
     bool audioDetached = false; // el audio de este clip de video se separó a otra pista
+    double denoise = 0.0;       // reducción de ruido del audio (0 = ninguna, 1 = máxima)
     std::optional<TitleStyle> title;
     TransitionIn transitionIn;
     AnimatedGrade color;
@@ -153,12 +180,21 @@ struct Track {
     bool operator==(const Track&) const = default;
 };
 
+// Marcador de la línea de tiempo (p. ej. los pulsos detectados en la música).
+struct Marker {
+    FramePos frame = 0;
+    std::string label;
+    std::uint32_t color = 0xFFFFC266; // ARGB
+    bool operator==(const Marker&) const = default;
+};
+
 // Secuencia guardada: el contenido de un clip compuesto o, mientras se edita uno, la principal.
 struct Sequence {
     Id id = kNoId;
     std::string name;
     std::vector<Track> videoTracks;
     std::vector<Track> audioTracks;
+    std::vector<Marker> markers; // ordenados por fotograma, sin repetir
     bool operator==(const Sequence&) const = default;
 };
 
@@ -169,6 +205,7 @@ struct Project {
     std::vector<Track> videoTracks;
     // Pistas de audio: A1, A2...
     std::vector<Track> audioTracks;
+    std::vector<Marker> markers; // de la secuencia activa, ordenados por fotograma
     // Las pistas de arriba son las de la secuencia que se está editando (`activeSequence`); las
     // demás se guardan en `sequences`. La principal (`mainSequence`) es la que se exporta.
     std::vector<Sequence> sequences;

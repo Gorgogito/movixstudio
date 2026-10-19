@@ -12,6 +12,7 @@ Rectangle {
     id: inspector
 
     required property ProjectController project
+    property AiController ai: null
     signal settingsRequested()
 
     property var info: ({})
@@ -401,6 +402,24 @@ Rectangle {
                             seconds: inspector.info.audioFadeOut ?? 0
                             onEdited: (v) => inspector.project.setFades(inspector.info.clipId, inspector.info.audioFadeIn, v, true)
                         }
+                    }
+                    SliderRow {
+                        label: qsTr("Reducción de ruido")
+                        from: 0
+                        to: 1
+                        suffix: " %"
+                        value: inspector.info.denoise ?? 0
+                        enabled: inspector.ai && inspector.ai.denoiseAvailable
+                        onMoved: (v) => inspector.project.setDenoise(inspector.info.clipId, v)
+                        onReleased: inspector.project.endInteraction()
+                    }
+                    Button {
+                        visible: inspector.ai !== null && !inspector.ai.denoiseAvailable
+                        enabled: !inspector.ai || !inspector.ai.busy
+                        Layout.fillWidth: true
+                        text: qsTr("Descargar el modelo de reducción de ruido (0,3 MB)")
+                        focusPolicy: Qt.NoFocus
+                        onClicked: inspector.ai.downloadModel("rnnoise-speech")
                     }
                     RowLayout {
                         SmallLabel { text: qsTr("Volumen de la pista %1").arg(inspector.info.track ?? ""); Layout.fillWidth: true }

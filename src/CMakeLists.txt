@@ -5,5 +5,7 @@ add_subdirectory(engine)
 add_subdirectory(render)
 add_subdirectory(export)
 add_subdirectory(playback)
+add_subdirectory(ai)
+add_subdirectory(aiworker)
 add_subdirectory(app)
 

@@ -221,7 +221,7 @@ void AudioMixer::mix(const core::Project& project, int64_t samplePos, int frames
         const TimeUs offset = sampleToTime(samplePos + first) - seg.timelineStart;
         const TimeUs sourceTime = seg.sourceStart + (seg.speed == 1.0 ? offset : TimeUs(double(offset) * seg.speed));
         e.reader->mixInto(sourceTime, int(last - first), seg.speed, seg.gainStart, seg.gainEnd,
-                          out + size_t(first) * size_t(m_channels));
+                          out + size_t(first) * size_t(m_channels), seg.denoise);
     }
     evictLeastRecentlyUsed(m_readers, m_maxOpen);
 }
