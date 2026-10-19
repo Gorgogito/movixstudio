@@ -15,19 +15,121 @@ namespace {
 
 const QString kFormatName = QStringLiteral("movixstudio-project");
 
+// Nombres estables de los enumerados en el archivo (no dependen del orden en el código).
+const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
+const char* const kInterpolationNames[] = {"linear", "hold", "smooth"};
+
+template <typename E, size_t N>
+E enumFromName(const QString& name, const char* const (&names)[N], E fallback)
+{
+    for (size_t i = 0; i < N; ++i)
+        if (name == QLatin1String(names[i]))
+            return E(i);
+    return fallback;
+}
+
+// Un valor constante se guarda como número; uno animado, con su lista de keyframes.
+QJsonValue animatedToJson(const Animated& a)
+{
+    if (!a.isAnimated())
+        return a.value;
+    QJsonArray keys;
+    for (const Keyframe& k : a.keys)
+        keys.append(QJsonArray{qint64(k.frame), k.value, QLatin1String(kInterpolationNames[int(k.interp)])});
+    return QJsonObject{{"value", a.value}, {"keys", keys}};
+}
+
+Animated animatedFromJson(const QJsonValue& v, double fallback)
+{
+    if (v.isDouble())
+        return Animated(v.toDouble());
+    Animated a(fallback);
+    if (!v.isObject())
+        return a;
+    const QJsonObject o = v.toObject();
+    a.value = o["value"].toDouble(fallback);
+    for (const QJsonValue& kv : o["keys"].toArray()) {
+        const QJsonArray k = kv.toArray();
+        a.setKey(k.at(0).toInteger(), k.at(1).toDouble(),
+                 enumFromName(k.at(2).toString(), kInterpolationNames, Interpolation::Linear));
+    }
+    return a;
+}
+
+QString argb(std::uint32_t c)
+{
+    return QStringLiteral("#%1").arg(c, 8, 16, QLatin1Char('0'));
+}
+
+std::uint32_t argbFromJson(const QJsonValue& v, std::uint32_t fallback)
+{
+    bool ok = false;
+    const std::uint32_t c = v.toString().mid(1).toUInt(&ok, 16);
+    return ok ? c : fallback;
+}
+
+QJsonObject titleToJson(const TitleStyle& s)
+{
+    return QJsonObject{
+        {"text", QString::fromStdString(s.text)},
+        {"font", QString::fromStdString(s.font)},
+        {"size", s.size},
+        {"color", argb(s.color)},
+        {"bold", s.bold},
+        {"italic", s.italic},
+        {"align", s.align},
+        {"outline", s.outline},
+        {"outlineColor", argb(s.outlineColor)},
+        {"shadow", s.shadow},
+        {"background", argb(s.background)},
+    };
+}
+
+TitleStyle titleFromJson(const QJsonObject& o)
+{
+    TitleStyle s;
+    s.text = o["text"].toString(QString::fromStdString(s.text)).toStdString();
+    s.font = o["font"].toString(QString::fromStdString(s.font)).toStdString();
+    s.size = o["size"].toDouble(s.size);
+    s.color = argbFromJson(o["color"], s.color);
+    s.bold = o["bold"].toBool(s.bold);
+    s.italic = o["italic"].toBool(s.italic);
+    s.align = o["align"].toInt(s.align);
+    s.outline = o["outline"].toDouble(s.outline);
+    s.outlineColor = argbFromJson(o["outlineColor"], s.outlineColor);
+    s.shadow = o["shadow"].toBool(s.shadow);
+    s.background = argbFromJson(o["background"], s.background);
+    return s;
+}
+
 QJsonObject trackToJson(const Track& t)
 {
     QJsonArray clips;
     for (const Clip& c : t.clips) {
-        clips.append(QJsonObject{
+        QJsonObject o{
             {"id", qint64(c.id)},
             {"mediaId", qint64(c.mediaId)},
             {"start", qint64(c.start)},
             {"duration", qint64(c.duration)},
             {"sourceIn", qint64(c.sourceIn)},
-            {"gain", double(c.gain)},
+            {"speed", c.speed},
             {"enabled", c.enabled},
-        });
+            {"volume", animatedToJson(c.volume)},
+            {"transform", QJsonObject{{"x", animatedToJson(c.transform.x)},
+                                      {"y", animatedToJson(c.transform.y)},
+                                      {"scale", animatedToJson(c.transform.scale)},
+                                      {"rotation", animatedToJson(c.transform.rotation)},
+                                      {"opacity", animatedToJson(c.transform.opacity)}}},
+            {"fades", QJsonArray{qint64(c.fadeIn), qint64(c.fadeOut)}},
+            {"audioFades", QJsonArray{qint64(c.audioFadeIn), qint64(c.audioFadeOut)}},
+            {"audioDetached", c.audioDetached},
+        };
+        if (c.title)
+            o["title"] = titleToJson(*c.title);
+        if (c.transitionIn.active())
+            o["transitionIn"] = QJsonObject{{"type", QLatin1String(kTransitionNames[int(c.transitionIn.type)])},
+                                            {"duration", qint64(c.transitionIn.duration)}};
+        clips.append(o);
     }
     return QJsonObject{
         {"id", qint64(t.id)},
@@ -35,6 +137,7 @@ QJsonObject trackToJson(const Track& t)
         {"muted", t.muted},
         {"hidden", t.hidden},
         {"locked", t.locked},
+        {"volume", t.volume},
         {"clips", clips},
     };
 }
@@ -48,6 +151,7 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind)
     t.muted = o["muted"].toBool();
     t.hidden = o["hidden"].toBool();
     t.locked = o["locked"].toBool();
+    t.volume = o["volume"].toDouble(1.0);
     for (const QJsonValue& v : o["clips"].toArray()) {
         const QJsonObject c = v.toObject();
         Clip clip;
@@ -56,8 +160,28 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind)
         clip.start = c["start"].toInteger();
         clip.duration = c["duration"].toInteger();
         clip.sourceIn = c["sourceIn"].toInteger();
-        clip.gain = float(c["gain"].toDouble(1.0));
+        clip.speed = c["speed"].toDouble(1.0);
         clip.enabled = c["enabled"].toBool(true);
+        // Versión 1: el volumen era un número llamado "gain".
+        clip.volume = c.contains("volume") ? animatedFromJson(c["volume"], 1.0) : Animated(c["gain"].toDouble(1.0));
+        const QJsonObject tr = c["transform"].toObject();
+        clip.transform.x = animatedFromJson(tr["x"], 0.0);
+        clip.transform.y = animatedFromJson(tr["y"], 0.0);
+        clip.transform.scale = animatedFromJson(tr["scale"], 1.0);
+        clip.transform.rotation = animatedFromJson(tr["rotation"], 0.0);
+        clip.transform.opacity = animatedFromJson(tr["opacity"], 1.0);
+        clip.fadeIn = c["fades"].toArray().at(0).toInteger();
+        clip.fadeOut = c["fades"].toArray().at(1).toInteger();
+        clip.audioFadeIn = c["audioFades"].toArray().at(0).toInteger();
+        clip.audioFadeOut = c["audioFades"].toArray().at(1).toInteger();
+        clip.audioDetached = c["audioDetached"].toBool();
+        if (c.contains("title"))
+            clip.title = titleFromJson(c["title"].toObject());
+        if (c.contains("transitionIn")) {
+            const QJsonObject ti = c["transitionIn"].toObject();
+            clip.transitionIn.type = enumFromName(ti["type"].toString(), kTransitionNames, TransitionType::None);
+            clip.transitionIn.duration = ti["duration"].toInteger();
+        }
         t.clips.push_back(clip);
     }
     return t;
@@ -83,6 +207,7 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
             {"width", m.width},
             {"height", m.height},
             {"frameRate", m.frameRate},
+            {"isStill", m.isStill},
         });
     }
     QJsonArray video, audio;
@@ -161,6 +286,7 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
         m.width = o["width"].toInt();
         m.height = o["height"].toInt();
         m.frameRate = o["frameRate"].toDouble();
+        m.isStill = o["isStill"].toBool();
         p.media.push_back(m);
     }
     for (const QJsonValue& v : root["videoTracks"].toArray())

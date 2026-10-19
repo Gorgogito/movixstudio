@@ -5,6 +5,7 @@
 #include "engine/MediaImport.h"
 #include "media/MediaInfo.h"
 
+#include <QColor>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -403,7 +404,8 @@ bool ProjectController::placeMedia(qint64 mediaId, qint64 trackId, qint64 frame)
         // medio (otra velocidad), se convierte conservando el instante.
         const TimeUs at = p.settings.frameToTime(std::max<qint64>(0, frame));
         edit::matchSettingsToMedia(p, *p.findMedia(Id(mediaId)));
-        clip = edit::placeClip(p, target, Id(mediaId), p.settings.timeToFrame(at));
+        clip = edit::placeClip(p, target, Id(mediaId), p.settings.timeToFrame(at), 0, 0,
+                               m_insertMode ? edit::PlaceMode::Insert : edit::PlaceMode::Overwrite);
         return clip != kNoId;
     });
     if (ok) {
@@ -450,10 +452,325 @@ void ProjectController::deleteSelection(bool ripple)
     apply(ripple ? tr("Eliminar y cerrar hueco") : tr("Eliminar"), [&](Project& p) { return edit::deleteClips(p, ids, ripple); });
 }
 
-void ProjectController::setClipGain(qint64 clipId, double gain)
+namespace {
+
+std::optional<edit::Property> propertyFromName(const QString& name)
 {
-    apply(tr("Volumen del clip"), [&](Project& p) { return edit::setClipGain(p, Id(clipId), float(gain)); },
-          QStringLiteral("gain:%1").arg(clipId));
+    static const QHash<QString, edit::Property> kMap{
+        {"x", edit::Property::PositionX}, {"y", edit::Property::PositionY}, {"scale", edit::Property::Scale},
+        {"rotation", edit::Property::Rotation}, {"opacity", edit::Property::Opacity}, {"volume", edit::Property::Volume},
+    };
+    auto it = kMap.find(name);
+    return it == kMap.end() ? std::nullopt : std::optional(it.value());
+}
+
+const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
+
+TransitionType transitionFromName(const QString& name)
+{
+    for (int i = 0; i < int(std::size(kTransitionNames)); ++i)
+        if (name == QLatin1String(kTransitionNames[i]))
+            return TransitionType(i);
+    return TransitionType::None;
+}
+
+QString colorName(std::uint32_t argb)
+{
+    return QColor::fromRgba(QRgb(argb)).name(QColor::HexArgb);
+}
+
+std::uint32_t colorValue(const QVariant& v, std::uint32_t fallback)
+{
+    const QColor c(v.toString());
+    return c.isValid() ? std::uint32_t(c.rgba()) : fallback;
+}
+
+} // namespace
+
+FramePos ProjectController::playheadRel(const Clip& c) const
+{
+    return m_player->positionFrame() - c.start;
+}
+
+void ProjectController::setClipProperty(qint64 clipId, const QString& prop, double value)
+{
+    const auto property = propertyFromName(prop);
+    const Clip* c = project().findClip(Id(clipId));
+    if (!property || !c)
+        return;
+    const FramePos rel = playheadRel(*c);
+    // Arrastrar un control agrupa todos los cambios en un único paso de deshacer.
+    apply(tr("Cambiar propiedad del clip"), [&](Project& p) { return edit::setProperty(p, Id(clipId), *property, rel, value); },
+          QStringLiteral("prop:%1:%2").arg(clipId).arg(prop));
+}
+
+void ProjectController::toggleKeyframe(qint64 clipId, const QString& prop)
+{
+    const auto property = propertyFromName(prop);
+    const Clip* c = project().findClip(Id(clipId));
+    if (!property || !c)
+        return;
+    const FramePos rel = playheadRel(*c);
+    apply(tr("Keyframe"), [&](Project& p) { return edit::toggleKeyframe(p, Id(clipId), *property, rel); });
+}
+
+void ProjectController::resetClipProperty(qint64 clipId, const QString& prop)
+{
+    if (const auto property = propertyFromName(prop))
+        apply(tr("Restablecer propiedad"), [&](Project& p) { return edit::resetProperty(p, Id(clipId), *property); });
+}
+
+QVariantMap ProjectController::propertyState(qint64 clipId, const QString& prop) const
+{
+    const auto property = propertyFromName(prop);
+    const Clip* c = project().findClip(Id(clipId));
+    if (!property || !c)
+        return {};
+    const Animated& a = *edit::property(*c, *property);
+    const FramePos rel = playheadRel(*c);
+    bool prev = false, next = false;
+    for (const Keyframe& k : a.keys) {
+        prev = prev || k.frame < rel;
+        next = next || k.frame > rel;
+    }
+    return {{"value", a.at(rel)}, {"animated", a.isAnimated()}, {"keyHere", a.keyAt(rel) != nullptr}, {"hasPrev", prev}, {"hasNext", next}};
+}
+
+QVariantList ProjectController::keyframeFrames(qint64 clipId) const
+{
+    const Clip* c = project().findClip(Id(clipId));
+    QSet<qint64> frames;
+    if (c) {
+        for (auto prop : {edit::Property::PositionX, edit::Property::PositionY, edit::Property::Scale, edit::Property::Rotation,
+                          edit::Property::Opacity, edit::Property::Volume})
+            for (const Keyframe& k : edit::property(*c, prop)->keys)
+                frames.insert(c->start + k.frame);
+    }
+    QVariantList out;
+    for (qint64 f : frames)
+        out.append(f);
+    return out;
+}
+
+void ProjectController::jumpToKeyframe(qint64 clipId, bool forward)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c)
+        return;
+    const qint64 now = m_player->positionFrame();
+    qint64 best = -1;
+    for (const QVariant& v : keyframeFrames(clipId)) {
+        const qint64 f = v.toLongLong();
+        if (forward ? (f > now && (best < 0 || f < best)) : (f < now && (best < 0 || f > best)))
+            best = f;
+    }
+    if (best >= 0) {
+        m_player->pause();
+        m_player->seekFrame(best);
+    }
+}
+
+QVariantMap ProjectController::clipGeometry(qint64 clipId) const
+{
+    const Clip* c = project().findClip(Id(clipId));
+    const Track* t = project().trackOfClip(Id(clipId));
+    if (!c || !t || t->kind != TrackKind::Video)
+        return {};
+    const auto& s = project().settings;
+    // Relación de aspecto propia de la capa: la del medio o, en títulos, la del lienzo.
+    double aspect = double(s.width) / s.height;
+    if (const MediaItem* m = c->title ? nullptr : project().findMedia(c->mediaId); m && m->width > 0 && m->height > 0)
+        aspect = double(m->width) / m->height;
+    const double canvasAspect = double(s.width) / s.height;
+    const double fitW = aspect > canvasAspect ? 1.0 : aspect / canvasAspect; // fracción del ancho del lienzo
+    const double fitH = aspect > canvasAspect ? canvasAspect / aspect : 1.0;
+    const FramePos rel = std::clamp<FramePos>(playheadRel(*c), 0, c->duration - 1);
+    const double scale = c->transform.scale.at(rel);
+    return {{"cx", 0.5 + c->transform.x.at(rel)},   {"cy", 0.5 + c->transform.y.at(rel)}, {"hw", fitW / 2 * scale},
+            {"hh", fitH / 2 * scale},              {"rotation", c->transform.rotation.at(rel)},
+            {"visible", playheadRel(*c) >= 0 && playheadRel(*c) < c->duration}};
+}
+
+void ProjectController::setClipSpeed(qint64 clipId, double speed)
+{
+    apply(tr("Velocidad del clip"), [&](Project& p) { return edit::setClipSpeed(p, Id(clipId), speed); });
+}
+
+void ProjectController::setFades(qint64 clipId, double inSeconds, double outSeconds, bool audio)
+{
+    const auto& s = project().settings;
+    const FramePos in = s.framesIn(fromSeconds(std::max(0.0, inSeconds)));
+    const FramePos out = s.framesIn(fromSeconds(std::max(0.0, outSeconds)));
+    apply(audio ? tr("Fundidos de audio") : tr("Fundidos"),
+          [&](Project& p) { return audio ? edit::setAudioFades(p, Id(clipId), in, out) : edit::setFades(p, Id(clipId), in, out); },
+          QStringLiteral("fade:%1:%2").arg(clipId).arg(audio));
+}
+
+bool ProjectController::setTransition(qint64 clipId, const QString& type, double seconds)
+{
+    const FramePos frames = project().settings.framesIn(fromSeconds(std::max(0.0, seconds)));
+    return apply(tr("Transición"), [&](Project& p) { return edit::setTransition(p, Id(clipId), transitionFromName(type), frames); },
+                 QStringLiteral("transition:%1").arg(clipId));
+}
+
+bool ProjectController::dropTransition(const QString& type, qint64 trackId, qint64 frame)
+{
+    const Track* t = project().findTrack(Id(trackId));
+    if (!t)
+        return false;
+    // Corte (inicio de un clip pegado al anterior) más cercano al punto de soltado.
+    const Clip* best = nullptr;
+    for (size_t i = 1; i < t->clips.size(); ++i) {
+        const Clip& c = t->clips[i];
+        if (t->clips[i - 1].end() != c.start)
+            continue;
+        if (!best || std::llabs(c.start - frame) < std::llabs(best->start - frame))
+            best = &c;
+    }
+    if (!best) {
+        emit notice(tr("Las transiciones se colocan en el corte entre dos clips contiguos de la misma pista."));
+        return false;
+    }
+    const Id id = best->id;
+    const bool ok = setTransition(qint64(id), type, 1.0);
+    if (ok) {
+        m_selection = {id};
+        m_clips.sync(project(), m_selection);
+        emit selectionChanged();
+    }
+    return ok;
+}
+
+QVariantList ProjectController::titlePresets() const
+{
+    return {
+        QVariantMap{{"name", tr("Título")}, {"text", tr("Título")}},
+        QVariantMap{{"name", tr("Rótulo inferior")}, {"text", tr("Nombre Apellido")}},
+        QVariantMap{{"name", tr("Título con fondo")}, {"text", tr("Capítulo 1")}},
+        QVariantMap{{"name", tr("Subtítulo")}, {"text", tr("Texto del subtítulo")}},
+    };
+}
+
+bool ProjectController::addTitle(int preset, qint64 trackId, qint64 frame)
+{
+    TitleStyle style;
+    Transform transform;
+    switch (preset) {
+    case 1: // rótulo inferior a la izquierda
+        style.text = tr("Nombre Apellido").toStdString();
+        style.size = 0.06;
+        style.align = 0;
+        style.background = 0xB0101420;
+        transform.x = -0.22;
+        transform.y = 0.32;
+        break;
+    case 2:
+        style.text = tr("Capítulo 1").toStdString();
+        style.size = 0.1;
+        style.background = 0xC07C6CFF;
+        break;
+    case 3: // subtítulo
+        style.text = tr("Texto del subtítulo").toStdString();
+        style.size = 0.055;
+        style.bold = false;
+        style.outline = 0.08;
+        transform.y = 0.38;
+        break;
+    default:
+        style.text = tr("Título").toStdString();
+        break;
+    }
+    const FramePos at = frame >= 0 ? frame : m_player->positionFrame();
+    const FramePos duration = project().settings.framesIn(5 * kUsPerSecond);
+    // Pista: la indicada o la superior si está libre en ese tramo; si no, una nueva encima de
+    // todo (un título debajo de otro video quedaría tapado).
+    Id target = trackId > 0 ? Id(trackId) : kNoId;
+    Id clip = kNoId;
+    const bool ok = apply(tr("Añadir título"), [&](Project& p) {
+        if (target == kNoId) {
+            const Track& top = p.videoTracks.back();
+            const bool free = std::none_of(top.clips.begin(), top.clips.end(),
+                                           [&](const Clip& c) { return c.start < at + duration && c.end() > at; });
+            target = free && !top.locked ? top.id : edit::addTrack(p, TrackKind::Video);
+        }
+        clip = edit::placeTitle(p, target, at, duration, style, m_insertMode ? edit::PlaceMode::Insert : edit::PlaceMode::Overwrite);
+        if (clip == kNoId)
+            return false;
+        p.findClip(clip)->transform = transform;
+        return true;
+    });
+    if (ok) {
+        m_selection = {clip};
+        m_clips.sync(project(), m_selection);
+        emit selectionChanged();
+    }
+    return ok;
+}
+
+void ProjectController::setTitleStyle(qint64 clipId, const QVariantMap& v)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c || !c->title)
+        return;
+    TitleStyle s = *c->title;
+    if (v.contains("text")) s.text = v["text"].toString().toStdString();
+    if (v.contains("font")) s.font = v["font"].toString().toStdString();
+    if (v.contains("size")) s.size = std::clamp(v["size"].toDouble(), 0.01, 0.5);
+    if (v.contains("color")) s.color = colorValue(v["color"], s.color);
+    if (v.contains("bold")) s.bold = v["bold"].toBool();
+    if (v.contains("italic")) s.italic = v["italic"].toBool();
+    if (v.contains("align")) s.align = std::clamp(v["align"].toInt(), 0, 2);
+    if (v.contains("outline")) s.outline = std::clamp(v["outline"].toDouble(), 0.0, 0.3);
+    if (v.contains("outlineColor")) s.outlineColor = colorValue(v["outlineColor"], s.outlineColor);
+    if (v.contains("shadow")) s.shadow = v["shadow"].toBool();
+    if (v.contains("background")) s.background = v["background"].toString().isEmpty() ? 0 : colorValue(v["background"], s.background);
+    apply(tr("Editar título"), [&](Project& p) { return edit::setTitleStyle(p, Id(clipId), s); }, QStringLiteral("title:%1").arg(clipId));
+}
+
+void ProjectController::detachAudio(qint64 clipId)
+{
+    apply(tr("Separar audio"), [&](Project& p) { return edit::detachAudio(p, Id(clipId)) != kNoId; });
+}
+
+void ProjectController::setTrackVolume(qint64 trackId, double volume)
+{
+    apply(tr("Volumen de la pista"), [&](Project& p) { return edit::setTrackVolume(p, Id(trackId), volume); },
+          QStringLiteral("trackvol:%1").arg(trackId));
+}
+
+void ProjectController::copySelection()
+{
+    m_clipboard = edit::copyClips(project(), std::vector<Id>(m_selection.begin(), m_selection.end()));
+    emit clipboardChanged();
+}
+
+void ProjectController::cutSelection()
+{
+    copySelection();
+    deleteSelection(false);
+}
+
+void ProjectController::paste()
+{
+    if (m_clipboard.empty())
+        return;
+    const FramePos at = m_player->positionFrame();
+    std::vector<Id> created;
+    apply(tr("Pegar"), [&](Project& p) {
+        created = edit::pasteClips(p, m_clipboard, at);
+        return !created.empty();
+    });
+    m_selection = QSet<Id>(created.begin(), created.end());
+    m_clips.sync(project(), m_selection);
+    emit selectionChanged();
+}
+
+void ProjectController::setInsertMode(bool on)
+{
+    if (on == m_insertMode)
+        return;
+    m_insertMode = on;
+    emit insertModeChanged();
 }
 
 void ProjectController::setClipEnabled(qint64 clipId, bool enabled)
@@ -487,20 +804,48 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
     const Clip* c = project().findClip(Id(clipId));
     if (!c)
         return {};
-    const MediaItem* m = project().findMedia(c->mediaId);
+    const MediaItem* m = c->title ? nullptr : project().findMedia(c->mediaId);
     const Track* t = project().trackOfClip(c->id);
-    return {
+    const auto& s = project().settings;
+    const auto& clips = t->clips;
+    const auto idx = size_t(c - clips.data());
+    const bool hasCut = idx > 0 && clips[idx - 1].end() == c->start;
+    QVariantMap info{
         {"clipId", qint64(c->id)},
         {"mediaId", qint64(c->mediaId)},
-        {"name", m ? QString::fromStdString(m->name) : QString()},
+        {"name", c->title ? tr("Título") : m ? QString::fromStdString(m->name) : QString()},
         {"track", t ? QString::fromStdString(t->name) : QString()},
+        {"trackId", qint64(t->id)},
+        {"trackVolume", t->volume},
+        {"isVideoTrack", t->kind == TrackKind::Video},
         {"start", qint64(c->start)},
         {"duration", qint64(c->duration)},
         {"sourceIn", toSeconds(c->sourceIn)},
-        {"gain", double(c->gain)},
+        {"speed", c->speed},
         {"enabled", c->enabled},
-        {"hasAudio", m && m->hasAudio},
+        {"hasAudio", m && m->hasAudio && !(t->kind == TrackKind::Video && c->audioDetached)},
+        {"canDetachAudio", m && m->hasAudio && t->kind == TrackKind::Video && !c->audioDetached},
+        {"isStill", m && m->isStill},
+        {"isTitle", c->title.has_value()},
+        {"fadeIn", toSeconds(s.frameToTime(c->fadeIn))},
+        {"fadeOut", toSeconds(s.frameToTime(c->fadeOut))},
+        {"audioFadeIn", toSeconds(s.frameToTime(c->audioFadeIn))},
+        {"audioFadeOut", toSeconds(s.frameToTime(c->audioFadeOut))},
+        {"hasCut", hasCut},
+        {"transition", QLatin1String(kTransitionNames[int(c->transitionIn.type)])},
+        {"transitionSeconds", toSeconds(s.frameToTime(c->transitionIn.duration))},
+        {"durationSeconds", toSeconds(s.frameToTime(c->duration))},
     };
+    if (c->title) {
+        const TitleStyle& ts = *c->title;
+        info["title"] = QVariantMap{
+            {"text", QString::fromStdString(ts.text)}, {"font", QString::fromStdString(ts.font)}, {"size", ts.size},
+            {"color", colorName(ts.color)}, {"bold", ts.bold}, {"italic", ts.italic}, {"align", ts.align},
+            {"outline", ts.outline}, {"outlineColor", colorName(ts.outlineColor)}, {"shadow", ts.shadow},
+            {"background", ts.background ? colorName(ts.background) : QString()},
+        };
+    }
+    return info;
 }
 
 QVariantList ProjectController::snapPoints(const QVariantList& excludeClipIds) const

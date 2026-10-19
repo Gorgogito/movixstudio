@@ -202,7 +202,7 @@ Rectangle {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: qsTr("Importa videos o audio, o arrástralos aquí desde el explorador.")
+                    text: qsTr("Importa videos, audio o imágenes, o arrástralos aquí desde el explorador.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall + 1
                 }

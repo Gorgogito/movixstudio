@@ -23,6 +23,12 @@ std::optional<core::MediaItem> probeMediaItem(const std::string& path, std::stri
         m.height = info->video->height;
         m.frameRate = info->video->frameRate;
     }
+    if (info->isStill && m.hasVideo) {
+        m.isStill = true;
+        m.duration = 0;
+        m.frameRate = 0;
+        m.hasAudio = false;
+    }
     return m;
 }
 

@@ -3,8 +3,21 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Estado: fase F1 completada** — editor multipista básico con exportación. Consulta la
-> [hoja de ruta](docs/ROADMAP.md) para lo que viene (efectos, títulos, color, IA local…).
+> **Estado: fase F2 completada** — edición multipista con keyframes, títulos, transiciones,
+> velocidad e imágenes. Consulta la [hoja de ruta](docs/ROADMAP.md) para lo que viene (color,
+> composición, IA local…).
+
+**Novedades de F2**
+- Transformación por clip (posición, escala, rotación, opacidad) con keyframes (lineal, mantener,
+  suave), editable en el inspector o arrastrando el recuadro sobre el visor.
+- Títulos con fuente, tamaño, color, negrita/cursiva, alineación, contorno, sombra y fondo, a partir
+  de cuatro plantillas; imágenes fijas (PNG/JPEG/WebP… con transparencia).
+- Transiciones en los cortes: disolver, fundido a negro, barridos, empujes y deslizamiento (con
+  fundido cruzado de audio de potencia constante).
+- Velocidad por clip de 0,25× a 8× con el audio conservando el tono; fundidos de video y de audio;
+  volumen animable por clip y volumen por pista; separar el audio de un clip de video.
+- Modo inserción, copiar/cortar/pegar en el cabezal.
+- Exportación en cadena de tres hilos (decodificar → componer → codificar): ~94 fps en 1080p60 con NVENC.
 
 ## Qué se puede hacer hoy
 

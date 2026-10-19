@@ -110,7 +110,8 @@ class ClipListModel : public SyncingListModel {
     QML_UNCREATABLE("Lo crea ProjectController")
 public:
     enum Role { IdRole = Qt::UserRole + 1, TrackIdRole, TrackRowRole, StartRole, DurationRole, MediaIdRole, NameRole, PathRole,
-                SourceInRole, MediaDurationRole, KindRole, HasAudioRole, HasVideoRole, EnabledRole, GainRole, SelectedRole };
+                SourceInRole, MediaDurationRole, KindRole, HasAudioRole, HasVideoRole, EnabledRole, GainRole, SelectedRole,
+                IsTitleRole, IsStillRole, SpeedRole, TransitionRole, FadeInRole, FadeOutRole };
     using SyncingListModel::SyncingListModel;
 
     int rowCount(const QModelIndex& = {}) const override { return int(m_items.size()); }
@@ -127,7 +128,7 @@ private:
         QString name;
         QString path;
         qint64 mediaDuration;
-        bool hasAudio, hasVideo, selected;
+        bool hasAudio, hasVideo, selected, isStill;
         bool operator==(const Item&) const = default;
     };
     std::vector<Item> m_items;

@@ -17,6 +17,9 @@ std::optional<MediaInfo> probe(const std::string& path, std::string* error)
     MediaInfo info;
     info.path = path;
     info.container = fmt->iformat->long_name ? fmt->iformat->long_name : fmt->iformat->name;
+    info.formatName = fmt->iformat->name;
+    // Las imágenes las abren los demuxers "image2" o "<formato>_pipe" (png_pipe, jpeg_pipe...).
+    info.isStill = info.formatName == "image2" || (info.formatName.size() > 5 && info.formatName.ends_with("_pipe"));
     info.duration = fmt->duration == AV_NOPTS_VALUE ? 0 : fmt->duration;
     info.bitRate = fmt->bit_rate;
 

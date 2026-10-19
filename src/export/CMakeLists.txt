@@ -1,5 +1,6 @@
 # movix_export: exportación de la línea de tiempo a archivo (composición GPU + mezcla + codificación).
 add_library(movix_export STATIC
+    BoundedQueue.h
     Exporter.h Exporter.cpp
 )
 

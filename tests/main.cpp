@@ -1,10 +1,12 @@
 #include <catch2/catch_session.hpp>
 
-#include <QCoreApplication>
+#include <QGuiApplication>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <timeapi.h>
+#include <crtdbg.h>
+#include <cstdlib>
 #endif
 
 extern "C" {
@@ -15,8 +17,19 @@ int main(int argc, char* argv[])
 {
 #ifdef _WIN32
     timeBeginPeriod(1); // esperas de ~1 ms para muestrear el reproductor como un bucle de render real
+#ifdef _DEBUG
+    // Las aserciones de la CRT de depuración van a la consola en vez de abrir un diálogo
+    // (un diálogo bloquea la ejecución desatendida de las pruebas).
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
-    QCoreApplication app(argc, argv); // el reproductor usa temporizadores y señales de Qt
+#endif
+    // Aplicación gráfica sin ventanas: los títulos necesitan las fuentes del sistema (QPainter).
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication app(argc, argv);
     av_log_set_level(AV_LOG_ERROR);
     const int result = Catch::Session().run(argc, argv);
 #ifdef _WIN32

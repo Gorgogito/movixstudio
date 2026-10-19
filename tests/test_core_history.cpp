@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <random>
 
 using namespace movix;
@@ -70,14 +71,14 @@ TEST_CASE("Estado guardado y agrupación de ediciones continuas", "[core][histor
 
     // Arrastrar el volumen: muchas ediciones con la misma clave → un único paso de deshacer.
     for (float g : {0.9f, 0.8f, 0.7f, 0.5f})
-        h.apply("Volumen", [&](Project& p) { return edit::setClipGain(p, clip, g); }, "gain");
+        h.apply("Volumen", [&](Project& p) { return edit::setProperty(p, clip, edit::Property::Volume, 0, g); }, "gain");
     CHECK_FALSE(h.isClean());
     h.breakMerge();
     REQUIRE(h.undo());
-    CHECK(h.project().findClip(clip)->gain == 1.0f);
+    CHECK(h.project().findClip(clip)->volume.value == 1.0f);
     CHECK(h.isClean()); // volver al estado guardado lo marca como limpio
     REQUIRE(h.redo());
-    CHECK(h.project().findClip(clip)->gain == 0.5f);
+    CHECK(h.project().findClip(clip)->volume.value == 0.5f);
 }
 
 TEST_CASE("Ediciones aleatorias mantienen los invariantes y son reversibles", "[core][history][fuzz]")
@@ -105,7 +106,7 @@ TEST_CASE("Ediciones aleatorias mantienen los invariantes y son reversibles", "[
 
     std::vector<Project> states{h.project()};
     for (int step = 0; step < 3000; ++step) {
-        const int op = rnd(0, 9);
+        const int op = rnd(0, 17);
         h.apply("op", [&](Project& p) {
             const auto& tracks = rnd(0, 1) ? p.videoTracks : p.audioTracks;
             const Id track = tracks[size_t(rnd(0, int(tracks.size()) - 1))].id;
@@ -122,7 +123,18 @@ TEST_CASE("Ediciones aleatorias mantienen los invariantes y son reversibles", "[
             case 6: return edit::deleteClips(p, {clip}, rnd(0, 1) == 1);
             case 7: return edit::setTrackLocked(p, track, rnd(0, 3) == 0);
             case 8: return rnd(0, 4) == 0 && edit::addTrack(p, rnd(0, 1) ? TrackKind::Video : TrackKind::Audio) != kNoId;
-            default: return edit::setClipGain(p, clip, float(rnd(0, 20)) / 10.0f);
+            case 9: return edit::setProperty(p, clip, edit::Property::Volume, rnd(-10, 100), float(rnd(0, 20)) / 10.0f);
+            // Operaciones de F2.
+            case 10: return edit::setClipSpeed(p, clip, std::array{0.25, 0.5, 1.0, 1.5, 2.0, 4.0}[size_t(rnd(0, 5))]);
+            case 11: return edit::setFades(p, clip, rnd(0, 60), rnd(0, 60)) || edit::setAudioFades(p, clip, rnd(0, 60), rnd(0, 60));
+            case 12: return edit::setTransition(p, clip, TransitionType(rnd(0, 7)), rnd(0, 60));
+            case 13: return edit::placeTitle(p, track, rnd(0, 900), rnd(1, 200), TitleStyle{}, edit::PlaceMode(rnd(0, 1))) != kNoId;
+            case 14: return edit::toggleKeyframe(p, clip, edit::Property(rnd(0, 5)), rnd(0, 100));
+            case 15:
+                return edit::placeClip(p, track, mediaIds[size_t(rnd(0, 2))], rnd(0, 900), 0, rnd(1, 100), edit::PlaceMode::Insert)
+                    != kNoId;
+            case 16: return !edit::pasteClips(p, edit::copyClips(p, {clip, anyClip(p)}), rnd(0, 900)).empty();
+            default: return edit::detachAudio(p, clip) != kNoId;
             }
         });
         std::string why;

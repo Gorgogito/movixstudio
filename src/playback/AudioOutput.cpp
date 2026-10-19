@@ -47,6 +47,8 @@ struct AudioOutput::Impl {
     SteadyClock::time_point lastCallback{};
     int lastCallbackFrames = 0;
     mutable TimeUs lastClock = kNoTime;
+    mutable TimeUs smoothPos = kNoTime; // reloj suavizado (ver clock())
+    mutable SteadyClock::time_point smoothAt{};
     std::atomic<float> volume{1.0f};
 
     static void callback(ma_device* device, void* output, const void*, ma_uint32 frames)
@@ -220,6 +222,7 @@ void AudioOutput::reset(TimeUs position)
     d->endOfStream = false;
     d->lastCallbackFrames = 0;
     d->lastClock = kNoTime;
+    d->smoothPos = kNoTime;
 }
 
 void AudioOutput::setPlaying(bool playing)
@@ -251,9 +254,29 @@ TimeUs AudioOutput::clock() const
         t += std::clamp<TimeUs>(elapsed, 0, block) - block;
     }
     t -= d->latency;
-    t = std::max(t, d->basePts);
+    // Tras una búsqueda a `resetPosition`, el primer bloque empieza en la muestra entera anterior
+    // (hasta una muestra antes): el reloj no debe informar de un instante anterior al pedido.
+    t = std::max({t, d->basePts, d->resetPosition});
+
+    // Suavizado: los callbacks llegan a intervalos irregulares (periodos de 10–40 ms según el
+    // dispositivo), así que la posición medida avanza a saltos. Se sigue un reloj continuo que
+    // avanza con el tiempo real y se corrige poco a poco hacia la medida; si se aleja mucho
+    // (búsqueda, falta de datos), se ajusta de golpe.
+    const auto now = SteadyClock::now();
+    if (d->playing && d->lastCallbackFrames > 0 && d->smoothPos != kNoTime) {
+        TimeUs predicted =
+            d->smoothPos + std::chrono::duration_cast<std::chrono::microseconds>(now - d->smoothAt).count();
+        const TimeUs error = t - predicted;
+        if (std::llabs(error) > 80'000)
+            predicted = t;
+        else
+            predicted += error / 10;
+        t = predicted;
+    }
+    d->smoothPos = t;
+    d->smoothAt = now;
     if (d->lastClock != kNoTime && t < d->lastClock)
-        t = d->lastClock; // nunca retroceder por fluctuaciones entre callbacks
+        t = d->lastClock; // nunca retroceder
     d->lastClock = t;
     return t;
 }

@@ -26,6 +26,7 @@ QtObject {
     readonly property color clipVideoDark: "#343E99"
     readonly property color clipAudio: "#1E8A68"
     readonly property color clipAudioDark: "#166650"
+    readonly property color clipTitle: "#7A4AB0"
     readonly property color clipSelected: "#FFC266"
     readonly property color playhead: "#FF5C8A"
     readonly property color snapGuide: "#FFC266"

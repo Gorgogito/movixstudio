@@ -1,5 +1,7 @@
 #include "engine/Sources.h"
 
+#include "media/ImageDecoder.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -19,8 +21,53 @@ void evictLeastRecentlyUsed(Map& readers, size_t maxOpen)
 
 } // namespace
 
-std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLayer& layer)
+std::shared_ptr<media::VideoFrame> loadStill(const std::string& path, std::string* error)
 {
+    return media::decodeImageRgba(path, error);
+}
+
+void VideoSources::clear()
+{
+    m_readers.clear();
+    m_stills.clear();
+    m_titleCache.clear();
+}
+
+std::shared_ptr<const media::VideoFrame> VideoSources::still(const std::string& path)
+{
+    auto it = m_stills.find(path);
+    if (it != m_stills.end())
+        return it->second;
+    auto frame = loadStill(path);
+    if (m_stills.size() > 64)
+        m_stills.clear(); // límite simple de memoria
+    m_stills[path] = frame;
+    return frame;
+}
+
+std::shared_ptr<const media::VideoFrame> VideoSources::title(const core::TitleStyle& style, int w, int h)
+{
+    if (!m_titles)
+        return nullptr;
+    for (const CachedTitle& c : m_titleCache)
+        if (c.width == w && c.height == h && c.style == style)
+            return c.frame;
+    auto frame = m_titles->render(style, w, h);
+    if (m_titleCache.size() > 32)
+        m_titleCache.erase(m_titleCache.begin());
+    m_titleCache.push_back({style, w, h, frame});
+    return frame;
+}
+
+std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLayer& layer, int canvasWidth, int canvasHeight)
+{
+    if (layer.title)
+        return title(*layer.title, canvasWidth, canvasHeight);
+    if (!layer.media)
+        return nullptr;
+    if (layer.media->isStill)
+        return still(layer.media->path);
+
     Entry& e = m_readers[layer.clipId];
     e.lastUse = ++m_tick;
     if (!e.reader || e.path != layer.media->path) {
@@ -41,8 +88,10 @@ FrameBundle VideoSources::build(const core::Project& project, core::FramePos fra
     bundle.canvasWidth = project.settings.width;
     bundle.canvasHeight = project.settings.height;
     for (const core::VideoLayer& layer : core::videoLayersAt(project, frame)) {
-        if (auto f = this->frame(layer))
-            bundle.layers.push_back({layer.clipId, layer.trackIndex, std::move(f)});
+        if (layer.opacity <= 0.0)
+            continue; // invisible: no hace falta decodificar
+        if (auto f = this->frame(layer, bundle.canvasWidth, bundle.canvasHeight))
+            bundle.layers.push_back({layer.clipId, layer.trackIndex, std::move(f), layer.transform, layer.opacity, layer.crop});
     }
     return bundle;
 }
@@ -76,8 +125,10 @@ void AudioMixer::mix(const core::Project& project, int64_t samplePos, int frames
         if (e.failed)
             continue;
         // Instante del medio que corresponde a la primera muestra cubierta.
-        const TimeUs sourceTime = seg.sourceStart + (sampleToTime(samplePos + first) - seg.timelineStart);
-        e.reader->mixInto(sourceTime, int(last - first), seg.gain, out + size_t(first) * size_t(m_channels));
+        const TimeUs offset = sampleToTime(samplePos + first) - seg.timelineStart;
+        const TimeUs sourceTime = seg.sourceStart + (seg.speed == 1.0 ? offset : TimeUs(double(offset) * seg.speed));
+        e.reader->mixInto(sourceTime, int(last - first), seg.speed, seg.gainStart, seg.gainEnd,
+                          out + size_t(first) * size_t(m_channels));
     }
     evictLeastRecentlyUsed(m_readers, m_maxOpen);
 }

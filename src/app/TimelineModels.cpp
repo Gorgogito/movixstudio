@@ -137,8 +137,14 @@ QVariant ClipListModel::data(const QModelIndex& index, int role) const
     case HasAudioRole: return i.hasAudio;
     case HasVideoRole: return i.hasVideo;
     case EnabledRole: return i.clip.enabled;
-    case GainRole: return double(i.clip.gain);
+    case GainRole: return i.clip.volume.isAnimated() ? -1.0 : i.clip.volume.value; // -1: animado
     case SelectedRole: return i.selected;
+    case IsTitleRole: return i.clip.title.has_value();
+    case IsStillRole: return i.isStill;
+    case SpeedRole: return i.clip.speed;
+    case TransitionRole: return i.clip.transitionIn.active() ? qint64(i.clip.transitionIn.duration) : qint64(0);
+    case FadeInRole: return qint64(i.clip.fadeIn);
+    case FadeOutRole: return qint64(i.clip.fadeOut);
     }
     return {};
 }
@@ -149,7 +155,8 @@ QHash<int, QByteArray> ClipListModel::roleNames() const
             {DurationRole, "duration"}, {MediaIdRole, "mediaId"}, {NameRole, "name"}, {PathRole, "path"},
             {SourceInRole, "sourceIn"}, {MediaDurationRole, "mediaDuration"}, {KindRole, "kind"},
             {HasAudioRole, "hasAudio"}, {HasVideoRole, "hasVideo"}, {EnabledRole, "clipEnabled"}, {GainRole, "gain"},
-            {SelectedRole, "selected"}};
+            {SelectedRole, "selected"}, {IsTitleRole, "isTitle"}, {IsStillRole, "isStill"}, {SpeedRole, "speed"},
+            {TransitionRole, "transitionFrames"}, {FadeInRole, "fadeIn"}, {FadeOutRole, "fadeOut"}};
 }
 
 void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
@@ -159,10 +166,14 @@ void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
         for (int ti = 0; ti < int(tracks.size()); ++ti) {
             const Track& t = tracks[size_t(ti)];
             for (const Clip& c : t.clips) {
-                const MediaItem* m = project.findMedia(c.mediaId);
-                next.push_back({c, t.id, TrackListModel::displayRow(project, kind, ti), kind,
-                                m ? QString::fromStdString(m->name) : QString(), m ? QString::fromStdString(m->path) : QString(),
-                                m ? qint64(m->duration) : 0, m && m->hasAudio, m && m->hasVideo, selection.contains(c.id)});
+                const MediaItem* m = c.title ? nullptr : project.findMedia(c.mediaId);
+                // Los títulos se identifican por su texto (primera línea).
+                const QString name = c.title ? QString::fromStdString(c.title->text).section(QLatin1Char('\n'), 0, 0)
+                                             : m ? QString::fromStdString(m->name) : QString();
+                const bool audio = m && m->hasAudio && !(kind == TrackKind::Video && c.audioDetached);
+                next.push_back({c, t.id, TrackListModel::displayRow(project, kind, ti), kind, name,
+                                m ? QString::fromStdString(m->path) : QString(), m ? qint64(m->duration) : 0, audio,
+                                c.title.has_value() || (m && m->hasVideo), selection.contains(c.id), m && m->isStill});
             }
         }
     };

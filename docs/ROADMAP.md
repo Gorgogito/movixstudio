@@ -40,12 +40,37 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - Los mensajes de error del motor de medios aún no son traducibles.
 - La carpeta distribuible ocupa ~250 MB (sin depurar plugins de Qt ni reducir FFmpeg).
 
-## F2 — Edición completa
+## F2 — Edición completa ✅
 
-Transformaciones (posición, escala, rotación, recorte) y opacidad con keyframes, transiciones,
-velocidad y *speed ramping*, títulos y texto animado, fundidos y mezcla de audio por pista, imágenes
-fijas, modo inserción y audio separado, copiar/pegar, atajos configurables, proxies automáticos,
-decodificación de copia cero y exportación en paralelo.
+- [x] Valores animables con keyframes (lineal, mantener, suave) que se mueven con el clip
+- [x] Transformación (posición, escala, rotación, opacidad) en el compositor y sobre el visor
+- [x] Fundidos de video y audio; volumen animable por clip y volumen por pista
+- [x] Velocidad constante por clip (0,25×–8×), audio con tono conservado (atempo)
+- [x] Transiciones entre clips contiguos: disolver, fundido a negro, barridos, empujes, deslizar
+- [x] Títulos (QPainter) e imágenes fijas con transparencia (capas RGBA)
+- [x] Separar audio, modo inserción, copiar/cortar/pegar
+- [x] Formato `.mxproj` v2 (abre los v1)
+- [x] Exportación en cadena de tres hilos
+- [x] 62 casos de prueba en Debug y Release, prueba aleatoria con 18 operaciones
+
+### Correcciones que salieron de las pruebas
+
+- `setTransition` con clips de un fotograma llamaba a `std::clamp` con límites invertidos.
+- El reloj de audio se suaviza (sigue el tiempo real y se corrige hacia el audio): con dispositivos
+  de periodo largo o irregular el video avanzaba a saltos. Tras una búsqueda no informa de un
+  instante anterior al pedido.
+- La prueba de cadencia usa el dispositivo de audio real y una espera precisa (el virtual y
+  `sleep_until` dependen de la resolución del temporizador de Windows).
+
+### Pendiente (pasa a F3 o posterior)
+
+- *Speed ramping* (velocidad variable) y reproducción inversa.
+- Elegir la interpolación de un keyframe desde la interfaz (el núcleo y el archivo ya la admiten).
+- Recorte (crop) como propiedad del clip; animaciones de texto predefinidas.
+- Atajos configurables y proxies automáticos.
+- Decodificación de copia cero y conversión RGBA→YUV en la GPU para exportar (hoy la composición
+  y esa conversión limitan a ~94 fps en 1080p60).
+- Selección por recuadro y edición de varios clips a la vez en el inspector.
 
 ## F3 — Color y composición
 

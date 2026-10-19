@@ -1,6 +1,7 @@
 #include "core/Project.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 
 namespace movix::core {
@@ -138,23 +139,53 @@ bool Project::validate(std::string* why) const
             if ((list == &videoTracks) != (t.kind == TrackKind::Video))
                 return fail("Pista en la lista equivocada: " + t.name);
             FramePos prevEnd = 0;
+            const Clip* prev = nullptr;
             for (const auto& c : t.clips) {
+                const std::string cid = std::to_string(c.id);
                 if (!useId(c.id))
-                    return fail("Id de clip repetido o inválido: " + std::to_string(c.id));
-                if (c.duration <= 0 || c.start < 0 || c.sourceIn < 0)
-                    return fail("Clip con posición o duración inválida: " + std::to_string(c.id));
+                    return fail("Id de clip repetido o inválido: " + cid);
+                if (c.duration <= 0 || c.start < 0 || c.sourceIn < 0 || c.speed <= 0)
+                    return fail("Clip con posición, duración o velocidad inválida: " + cid);
                 if (c.start < prevEnd)
                     return fail("Clips solapados o desordenados en " + t.name);
+                if (c.fadeIn < 0 || c.fadeOut < 0 || c.fadeIn + c.fadeOut > c.duration || c.audioFadeIn < 0 || c.audioFadeOut < 0
+                    || c.audioFadeIn + c.audioFadeOut > c.duration)
+                    return fail("Fundidos más largos que el clip: " + cid);
+                if (c.transitionIn.active()) {
+                    if (!prev || prev->end() != c.start)
+                        return fail("Transición sin clip anterior contiguo: " + cid);
+                    if (c.transitionIn.duration > std::min(prev->duration, c.duration))
+                        return fail("Transición más larga que sus clips: " + cid);
+                }
                 prevEnd = c.end();
+                prev = &c;
+                if (c.title) {
+                    if (t.kind != TrackKind::Video || c.mediaId != kNoId)
+                        return fail("Título fuera de una pista de video: " + cid);
+                    continue;
+                }
                 const MediaItem* m = findMedia(c.mediaId);
                 if (!m)
-                    return fail("Clip sin medio: " + std::to_string(c.id));
+                    return fail("Clip sin medio: " + cid);
                 if ((t.kind == TrackKind::Video && !m->hasVideo) || (t.kind == TrackKind::Audio && !m->hasAudio))
                     return fail("Medio incompatible con la pista " + t.name);
             }
         }
     }
     return true;
+}
+
+TimeUs sourceTimeAt(const ProjectSettings& s, const Clip& c, FramePos frame)
+{
+    return sourceTimeAtTime(s, c, s.frameToTime(frame));
+}
+
+TimeUs sourceTimeAtTime(const ProjectSettings& s, const Clip& c, TimeUs t)
+{
+    const TimeUs offset = t - s.frameToTime(c.start);
+    if (c.speed == 1.0)
+        return c.sourceIn + offset;
+    return c.sourceIn + static_cast<TimeUs>(std::llround(double(offset) * c.speed));
 }
 
 std::string trackKindName(TrackKind kind)

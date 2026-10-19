@@ -157,6 +157,10 @@
         <source>Error al componer el fotograma %1.</source>
         <translation>Error compositing frame %1.</translation>
     </message>
+    <message>
+        <source>La exportación se interrumpió.</source>
+        <translation>The export was interrupted.</translation>
+    </message>
 </context>
 <context>
     <name>Inspector</name>
@@ -185,10 +189,6 @@
         <translation>Duration</translation>
     </message>
     <message>
-        <source>Desde el medio</source>
-        <translation>Media in-point</translation>
-    </message>
-    <message>
         <source>Clip activo</source>
         <translation>Clip enabled</translation>
     </message>
@@ -200,17 +200,12 @@
         <source>Volumen</source>
         <translation>Volume</translation>
     </message>
-    <message>
-        <source>Silencio</source>
-        <translation>Silent</translation>
-    </message>
-    <message>
-        <source>Restablecer (0 dB)</source>
-        <translation>Reset (0 dB)</translation>
-    </message>
     <message numerus="yes">
         <source>%n clips seleccionados</source>
-        <translation><numerusform>%n clip selected</numerusform><numerusform>%n clips selected</numerusform></translation>
+        <translation>
+            <numerusform>%n clip selected</numerusform>
+            <numerusform>%n clips selected</numerusform>
+        </translation>
     </message>
     <message>
         <source>Proyecto</source>
@@ -235,6 +230,201 @@
     <message>
         <source>Selecciona un clip de la línea de tiempo para ver y cambiar sus propiedades.</source>
         <translation>Select a clip in the timeline to view and change its properties.</translation>
+    </message>
+    <message>
+        <source>Título</source>
+        <translation>Title</translation>
+    </message>
+    <message>
+        <source>Escribe el texto del título</source>
+        <translation>Type the title text</translation>
+    </message>
+    <message>
+        <source>Tamaño</source>
+        <translation>Size</translation>
+    </message>
+    <message>
+        <source>Negrita</source>
+        <translation>Bold</translation>
+    </message>
+    <message>
+        <source>Cursiva</source>
+        <translation>Italic</translation>
+    </message>
+    <message>
+        <source>Izquierda</source>
+        <translation>Left</translation>
+    </message>
+    <message>
+        <source>Centro</source>
+        <translation>Center</translation>
+    </message>
+    <message>
+        <source>Derecha</source>
+        <translation>Right</translation>
+    </message>
+    <message>
+        <source>Color</source>
+        <translation>Color</translation>
+    </message>
+    <message>
+        <source>Contorno</source>
+        <translation>Outline</translation>
+    </message>
+    <message>
+        <source>Sombra</source>
+        <translation>Shadow</translation>
+    </message>
+    <message>
+        <source>Fondo</source>
+        <translation>Background</translation>
+    </message>
+    <message>
+        <source>Transformación</source>
+        <translation>Transform</translation>
+    </message>
+    <message>
+        <source>Posición X</source>
+        <translation>Position X</translation>
+    </message>
+    <message>
+        <source>Posición Y</source>
+        <translation>Position Y</translation>
+    </message>
+    <message>
+        <source>Escala</source>
+        <translation>Scale</translation>
+    </message>
+    <message>
+        <source>Rotación</source>
+        <translation>Rotation</translation>
+    </message>
+    <message>
+        <source>Opacidad</source>
+        <translation>Opacity</translation>
+    </message>
+    <message>
+        <source>Fundidos</source>
+        <translation>Fades</translation>
+    </message>
+    <message>
+        <source>Entrada</source>
+        <translation>In</translation>
+    </message>
+    <message>
+        <source>Salida</source>
+        <translation>Out</translation>
+    </message>
+    <message>
+        <source>Velocidad</source>
+        <translation>Speed</translation>
+    </message>
+    <message>
+        <source>El audio conserva el tono a cualquier velocidad.</source>
+        <translation>Audio keeps its pitch at any speed.</translation>
+    </message>
+    <message>
+        <source>Transición de entrada</source>
+        <translation>Incoming transition</translation>
+    </message>
+    <message>
+        <source>Ninguna</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>Disolver</source>
+        <translation>Dissolve</translation>
+    </message>
+    <message>
+        <source>Fundido a negro</source>
+        <translation>Dip to black</translation>
+    </message>
+    <message>
+        <source>Barrido a la izquierda</source>
+        <translation>Wipe left</translation>
+    </message>
+    <message>
+        <source>Barrido a la derecha</source>
+        <translation>Wipe right</translation>
+    </message>
+    <message>
+        <source>Empujar a la izquierda</source>
+        <translation>Push left</translation>
+    </message>
+    <message>
+        <source>Empujar a la derecha</source>
+        <translation>Push right</translation>
+    </message>
+    <message>
+        <source>Deslizar</source>
+        <translation>Slide</translation>
+    </message>
+    <message>
+        <source>Fundido de entrada</source>
+        <translation>Fade in</translation>
+    </message>
+    <message>
+        <source>Fundido de salida</source>
+        <translation>Fade out</translation>
+    </message>
+    <message>
+        <source>Volumen de la pista %1</source>
+        <translation>Track %1 volume</translation>
+    </message>
+    <message>
+        <source>Separar el audio a una pista</source>
+        <translation>Detach audio to a track</translation>
+    </message>
+</context>
+<context>
+    <name>LibraryPanel</name>
+    <message>
+        <source>Medios</source>
+        <translation>Media</translation>
+    </message>
+    <message>
+        <source>Títulos</source>
+        <translation>Titles</translation>
+    </message>
+    <message>
+        <source>Transiciones</source>
+        <translation>Transitions</translation>
+    </message>
+    <message>
+        <source>Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal.</source>
+        <translation>Drag a title to the timeline or double-click to add it at the playhead.</translation>
+    </message>
+    <message>
+        <source>Arrastra una transición al corte entre dos clips contiguos de la misma pista.</source>
+        <translation>Drag a transition onto the cut between two adjacent clips on the same track.</translation>
+    </message>
+    <message>
+        <source>Disolver</source>
+        <translation>Dissolve</translation>
+    </message>
+    <message>
+        <source>Fundido a negro</source>
+        <translation>Dip to black</translation>
+    </message>
+    <message>
+        <source>Barrido ←</source>
+        <translation>Wipe ←</translation>
+    </message>
+    <message>
+        <source>Barrido →</source>
+        <translation>Wipe →</translation>
+    </message>
+    <message>
+        <source>Empujar ←</source>
+        <translation>Push ←</translation>
+    </message>
+    <message>
+        <source>Empujar →</source>
+        <translation>Push →</translation>
+    </message>
+    <message>
+        <source>Deslizar</source>
+        <translation>Slide</translation>
     </message>
 </context>
 <context>
@@ -482,8 +672,28 @@ Do you want to recover it?</translation>
         <translation>Discard</translation>
     </message>
     <message>
-        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: editor multipista básico (fase F1).</source>
-        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: basic multitrack editor (phase F1).</translation>
+        <source>Co&amp;piar</source>
+        <translation>&amp;Copy</translation>
+    </message>
+    <message>
+        <source>Cor&amp;tar</source>
+        <translation>Cu&amp;t</translation>
+    </message>
+    <message>
+        <source>Pe&amp;gar en el cabezal</source>
+        <translation>&amp;Paste at playhead</translation>
+    </message>
+    <message>
+        <source>Modo &amp;inserción</source>
+        <translation>&amp;Insert mode</translation>
+    </message>
+    <message>
+        <source>Añadir tít&amp;ulo</source>
+        <translation>Add &amp;title</translation>
+    </message>
+    <message>
+        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos y transiciones (fase F2).</source>
+        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development build: multitrack editing with keyframes, titles and transitions (phase F2).</translation>
     </message>
 </context>
 <context>
@@ -517,12 +727,12 @@ Do you want to recover it?</translation>
         <translation>Remove from project</translation>
     </message>
     <message>
-        <source>Importa videos o audio, o arrástralos aquí desde el explorador.</source>
-        <translation>Import video or audio, or drag files here from the file explorer.</translation>
-    </message>
-    <message>
         <source>Importar medios…</source>
         <translation>Import media…</translation>
+    </message>
+    <message>
+        <source>Importa videos, audio o imágenes, o arrástralos aquí desde el explorador.</source>
+        <translation>Import video, audio or images, or drag files here from the file explorer.</translation>
     </message>
 </context>
 <context>
@@ -545,9 +755,12 @@ Do you want to recover it?</translation>
     <message numerus="yes">
         <source>No se encontraron %n archivos de medios:
 %1</source>
-        <translation><numerusform>%n media file was not found:
-%1</numerusform><numerusform>%n media files were not found:
-%1</numerusform></translation>
+        <translation>
+            <numerusform>%n media file was not found:
+%1</numerusform>
+            <numerusform>%n media files were not found:
+%1</numerusform>
+        </translation>
     </message>
     <message>
         <source>No se pudo guardar el proyecto: %1</source>
@@ -600,10 +813,6 @@ Do you want to recover it?</translation>
         <translation>Delete</translation>
     </message>
     <message>
-        <source>Volumen del clip</source>
-        <translation>Clip volume</translation>
-    </message>
-    <message>
         <source>Activar clip</source>
         <translation>Enable clip</translation>
     </message>
@@ -642,6 +851,86 @@ Do you want to recover it?</translation>
     <message>
         <source>Desbloquear pista</source>
         <translation>Unlock track</translation>
+    </message>
+    <message>
+        <source>Cambiar propiedad del clip</source>
+        <translation>Change clip property</translation>
+    </message>
+    <message>
+        <source>Keyframe</source>
+        <translation>Keyframe</translation>
+    </message>
+    <message>
+        <source>Restablecer propiedad</source>
+        <translation>Reset property</translation>
+    </message>
+    <message>
+        <source>Velocidad del clip</source>
+        <translation>Clip speed</translation>
+    </message>
+    <message>
+        <source>Fundidos de audio</source>
+        <translation>Audio fades</translation>
+    </message>
+    <message>
+        <source>Fundidos</source>
+        <translation>Fades</translation>
+    </message>
+    <message>
+        <source>Transición</source>
+        <translation>Transition</translation>
+    </message>
+    <message>
+        <source>Las transiciones se colocan en el corte entre dos clips contiguos de la misma pista.</source>
+        <translation>Transitions go on the cut between two adjacent clips on the same track.</translation>
+    </message>
+    <message>
+        <source>Título</source>
+        <translation>Title</translation>
+    </message>
+    <message>
+        <source>Rótulo inferior</source>
+        <translation>Lower third</translation>
+    </message>
+    <message>
+        <source>Nombre Apellido</source>
+        <translation>First Last</translation>
+    </message>
+    <message>
+        <source>Título con fondo</source>
+        <translation>Title with background</translation>
+    </message>
+    <message>
+        <source>Capítulo 1</source>
+        <translation>Chapter 1</translation>
+    </message>
+    <message>
+        <source>Subtítulo</source>
+        <translation>Subtitle</translation>
+    </message>
+    <message>
+        <source>Texto del subtítulo</source>
+        <translation>Subtitle text</translation>
+    </message>
+    <message>
+        <source>Añadir título</source>
+        <translation>Add title</translation>
+    </message>
+    <message>
+        <source>Editar título</source>
+        <translation>Edit title</translation>
+    </message>
+    <message>
+        <source>Separar audio</source>
+        <translation>Detach audio</translation>
+    </message>
+    <message>
+        <source>Volumen de la pista</source>
+        <translation>Track volume</translation>
+    </message>
+    <message>
+        <source>Pegar</source>
+        <translation>Paste</translation>
     </message>
 </context>
 <context>
@@ -711,6 +1000,29 @@ Do you want to recover it?</translation>
     </message>
 </context>
 <context>
+    <name>PropertyRow</name>
+    <message>
+        <source>Keyframe anterior</source>
+        <translation>Previous keyframe</translation>
+    </message>
+    <message>
+        <source>Quitar keyframe en el cabezal</source>
+        <translation>Remove keyframe at playhead</translation>
+    </message>
+    <message>
+        <source>Añadir keyframe en el cabezal</source>
+        <translation>Add keyframe at playhead</translation>
+    </message>
+    <message>
+        <source>Keyframe siguiente</source>
+        <translation>Next keyframe</translation>
+    </message>
+    <message>
+        <source>Restablecer</source>
+        <translation>Reset</translation>
+    </message>
+</context>
+<context>
     <name>Timeline</name>
     <message>
         <source>Deshacer: %1 (Ctrl+Z)</source>
@@ -764,6 +1076,14 @@ Do you want to recover it?</translation>
         <source>Ajustar todo a la vista (Mayús+Z)</source>
         <translation>Fit everything in view (Shift+Z)</translation>
     </message>
+    <message>
+        <source>Insertar</source>
+        <translation>Insert</translation>
+    </message>
+    <message>
+        <source>Modo inserción: al soltar, los clips posteriores se desplazan en lugar de sobrescribirse</source>
+        <translation>Insert mode: when dropping, later clips shift instead of being overwritten</translation>
+    </message>
 </context>
 <context>
     <name>TimelineClip</name>
@@ -798,6 +1118,26 @@ Do you want to recover it?</translation>
     <message>
         <source>Ir al inicio del clip</source>
         <translation>Go to clip start</translation>
+    </message>
+    <message>
+        <source>Copiar</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>Cortar</source>
+        <translation>Cut</translation>
+    </message>
+    <message>
+        <source>Pegar en el cabezal</source>
+        <translation>Paste at playhead</translation>
+    </message>
+    <message>
+        <source>Velocidad</source>
+        <translation>Speed</translation>
+    </message>
+    <message>
+        <source>Separar audio</source>
+        <translation>Detach audio</translation>
     </message>
 </context>
 <context>

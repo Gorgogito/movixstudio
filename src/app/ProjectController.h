@@ -2,6 +2,7 @@
 
 #include "ExportController.h"
 #include "TimelineModels.h"
+#include "core/Edits.h"
 #include "core/History.h"
 #include "playback/TimelinePlayer.h"
 
@@ -103,8 +104,44 @@ public:
     Q_INVOKABLE qint64 trimClip(qint64 clipId, bool startEdge, qint64 frame);
     Q_INVOKABLE void splitAtPlayhead();
     Q_INVOKABLE void deleteSelection(bool ripple);
-    Q_INVOKABLE void setClipGain(qint64 clipId, double gain);
     Q_INVOKABLE void setClipEnabled(qint64 clipId, bool enabled);
+
+    // --- Propiedades animables (evaluadas en el cabezal) ---
+    // prop: "x", "y", "scale", "rotation", "opacity", "volume".
+    Q_INVOKABLE void setClipProperty(qint64 clipId, const QString& prop, double value);
+    Q_INVOKABLE void toggleKeyframe(qint64 clipId, const QString& prop);
+    Q_INVOKABLE void resetClipProperty(qint64 clipId, const QString& prop);
+    // {value, animated, keyHere, hasPrev, hasNext} de la propiedad en el cabezal.
+    Q_INVOKABLE QVariantMap propertyState(qint64 clipId, const QString& prop) const;
+    // Lleva el cabezal al keyframe anterior/siguiente de cualquier propiedad del clip.
+    Q_INVOKABLE void jumpToKeyframe(qint64 clipId, bool forward);
+    // Fotogramas (relativos a la línea de tiempo) con keyframes en el clip: para dibujarlos.
+    Q_INVOKABLE QVariantList keyframeFrames(qint64 clipId) const;
+    // Geometría del clip en el cabezal, en fracciones del lienzo: {cx, cy, hw, hh, rotation}.
+    Q_INVOKABLE QVariantMap clipGeometry(qint64 clipId) const;
+
+    // --- Velocidad, fundidos, transiciones, títulos, audio ---
+    Q_INVOKABLE void setClipSpeed(qint64 clipId, double speed);
+    Q_INVOKABLE void setFades(qint64 clipId, double inSeconds, double outSeconds, bool audio);
+    // type: "none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft".
+    Q_INVOKABLE bool setTransition(qint64 clipId, const QString& type, double seconds);
+    // Aplica una transición en el corte más cercano a `frame` en la pista de la fila `trackRow`.
+    Q_INVOKABLE bool dropTransition(const QString& type, qint64 trackId, qint64 frame);
+    Q_INVOKABLE bool addTitle(int preset, qint64 trackId = -1, qint64 frame = -1);
+    Q_INVOKABLE void setTitleStyle(qint64 clipId, const QVariantMap& style);
+    Q_INVOKABLE void detachAudio(qint64 clipId);
+    Q_INVOKABLE void setTrackVolume(qint64 trackId, double volume);
+    Q_INVOKABLE QVariantList titlePresets() const;
+
+    // --- Portapapeles e inserción ---
+    Q_INVOKABLE void copySelection();
+    Q_INVOKABLE void cutSelection();
+    Q_INVOKABLE void paste();
+    Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+    Q_PROPERTY(bool insertMode READ insertMode WRITE setInsertMode NOTIFY insertModeChanged)
+    bool canPaste() const { return !m_clipboard.empty(); }
+    bool insertMode() const { return m_insertMode; }
+    void setInsertMode(bool on);
     Q_INVOKABLE void endInteraction();
     Q_INVOKABLE void addTrack(const QString& kind);
     Q_INVOKABLE void removeTrack(qint64 trackId);
@@ -134,8 +171,11 @@ signals:
     void errorOccurred(const QString& message);
     void notice(const QString& message);
     void recoveryAvailable(const QString& when);
+    void clipboardChanged();
+    void insertModeChanged();
 
 private:
+    movix::core::FramePos playheadRel(const movix::core::Clip& c) const;
     bool apply(const QString& text, const std::function<bool(movix::core::Project&)>& edit, const QString& mergeKey = {});
     void refresh();
     void resetTo(movix::core::Project project, const QUrl& url);
@@ -160,4 +200,6 @@ private:
     std::vector<std::pair<int, movix::core::MediaItem>> m_imported; // (orden, medio)
     QStringList m_importErrors;
     int m_importOrder = 0;
+    movix::core::edit::Clipboard m_clipboard;
+    bool m_insertMode = false;
 };

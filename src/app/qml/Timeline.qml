@@ -160,6 +160,16 @@ Rectangle {
                     icon.color: timeline.snapping ? Theme.clipSelected : Theme.textMuted
                     onClicked: timeline.snapping = !timeline.snapping
                 }
+                Button {
+                    text: qsTr("Insertar")
+                    checkable: true
+                    checked: timeline.project.insertMode
+                    focusPolicy: Qt.NoFocus
+                    onToggled: timeline.project.insertMode = checked
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: qsTr("Modo inserción: al soltar, los clips posteriores se desplazan en lugar de sobrescribirse")
+                }
                 Item { Layout.fillWidth: true }
                 IconButton { iconName: "film"; size: 32; tip: qsTr("Añadir pista de video"); onClicked: timeline.project.addTrack("video") }
                 IconButton { iconName: "music"; size: 32; tip: qsTr("Añadir pista de audio"); onClicked: timeline.project.addTrack("audio") }
@@ -289,7 +299,7 @@ Rectangle {
                     id: drop
                     width: view.contentWidth
                     height: view.contentHeight
-                    keys: ["application/x-movix-media"]
+                    keys: ["application/x-movix-media", "application/x-movix-title", "application/x-movix-transition"]
                     property real frame: -1
                     property int row: -1
                     onPositionChanged: (d) => {
@@ -306,10 +316,14 @@ Rectangle {
                         timeline.snapGuideFrame = -1
                     }
                     onDropped: (d) => {
-                        const mediaId = Number(d.getDataAsString("application/x-movix-media"))
                         const trackId = timeline.trackIdAtRow(row)
-                        if (trackId >= 0)
-                            timeline.project.placeMedia(mediaId, trackId, frame)
+                        if (d.formats.indexOf("application/x-movix-transition") >= 0)
+                            timeline.project.dropTransition(d.getDataAsString("application/x-movix-transition"), trackId, frame)
+                        else if (d.formats.indexOf("application/x-movix-title") >= 0)
+                            timeline.project.addTitle(Number(d.getDataAsString("application/x-movix-title")),
+                                                      row < timeline.project.videoTrackCount ? trackId : -1, frame)
+                        else if (trackId >= 0)
+                            timeline.project.placeMedia(Number(d.getDataAsString("application/x-movix-media")), trackId, frame)
                         timeline.activated()
                         frame = -1
                         timeline.snapGuideFrame = -1

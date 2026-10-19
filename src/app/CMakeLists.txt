@@ -46,6 +46,9 @@ qt_add_qml_module(MovixStudio
         qml/TimelineClip.qml
         qml/ExportDialog.qml
         qml/ProjectSettingsDialog.qml
+        qml/PropertyRow.qml
+        qml/LibraryPanel.qml
+        qml/TransformOverlay.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
@@ -64,18 +67,12 @@ qt_add_translations(MovixStudio
 
 # Para ejecutar desde el directorio de compilación: DLL de FFmpeg junto al ejecutable.
 add_custom_command(TARGET MovixStudio POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FFmpeg::avformat> $<TARGET_FILE:FFmpeg::avcodec> $<TARGET_FILE:FFmpeg::avutil>
-        $<TARGET_FILE:FFmpeg::swscale> $<TARGET_FILE:FFmpeg::swresample>
-        $<TARGET_FILE_DIR:MovixStudio>)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} $<TARGET_FILE_DIR:MovixStudio>)
 
 # Instalación autocontenida (cmake --install): ejecutable, Qt, plugins QML y FFmpeg en una
 # sola carpeta plana, como es habitual en Windows (CMAKE_INSTALL_BINDIR = "." en el nivel superior).
 install(TARGETS MovixStudio RUNTIME DESTINATION .)
-install(FILES
-    $<TARGET_FILE:FFmpeg::avformat> $<TARGET_FILE:FFmpeg::avcodec> $<TARGET_FILE:FFmpeg::avutil>
-    $<TARGET_FILE:FFmpeg::swscale> $<TARGET_FILE:FFmpeg::swresample>
-    DESTINATION .)
+install(FILES ${FFMPEG_RUNTIME_DLLS} DESTINATION .)
 install(FILES ${PROJECT_SOURCE_DIR}/LICENSE DESTINATION .)
 qt_generate_deploy_qml_app_script(TARGET MovixStudio OUTPUT_SCRIPT deploy_script NO_TRANSLATIONS)
 install(SCRIPT ${deploy_script})

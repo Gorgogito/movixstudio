@@ -1,12 +1,17 @@
 #include "export/Exporter.h"
 
+#include "export/BoundedQueue.h"
+
 #include "engine/Sources.h"
 #include "render/OffscreenRenderer.h"
+#include "render/TitleRenderer.h"
 
 #include <QCoreApplication>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <thread>
 
 namespace movix::exporting {
 
@@ -61,78 +66,143 @@ bool Exporter::run(const core::Project& project, const ExportSettings& s, const 
     if (!encoder.open(es, &encError))
         return fail(QString::fromStdString(encError));
 
-    engine::VideoSources sources(s.hardwareDecoding);
+    // Cadena en tres hilos: decodificar → componer (este hilo, dueño de la GPU) → codificar.
+    // La velocidad la marca la etapa más lenta en lugar de la suma de las tres.
+    using Clock = std::chrono::steady_clock;
+    auto ms = [](Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+
+    struct Decoded {
+        int64_t index;
+        engine::FrameBundle bundle;
+    };
+    struct Encoded {
+        std::vector<uint8_t> rgba;
+        std::vector<float> audio;
+        int audioFrames = 0;
+    };
+    BoundedQueue<Decoded> decoded(4);
+    BoundedQueue<Encoded> toEncode(3);
+    BoundedQueue<std::vector<uint8_t>> spare(4); // buffers RGBA reciclados
+    std::atomic<bool> stop{false};
+    std::atomic<int64_t> encodedFrames{0};
+    std::atomic<double> decodeTotal{0}, encodeTotal{0};
+    std::string encodeError;
+
+    std::thread decoder([&] {
+        engine::VideoSources sources(s.hardwareDecoding);
+        sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
+        for (int64_t j = 0; j < total && !stop.load(); ++j) {
+            const auto a = Clock::now();
+            engine::FrameBundle bundle = sources.build(project, project.settings.timeToFrame(t0 + out.frameToTime(j)));
+            decodeTotal = decodeTotal + ms(a, Clock::now());
+            if (!decoded.push({j, std::move(bundle)}))
+                break;
+        }
+        decoded.close();
+    });
+    std::thread encoderThread([&] {
+        while (auto job = toEncode.pop()) {
+            if (stop.load())
+                break; // cancelada o con error: no tiene sentido codificar lo pendiente
+            const auto a = Clock::now();
+            bool ok = encoder.writeVideo(job->rgba.data(), s.width * 4);
+            if (ok && job->audioFrames > 0)
+                ok = encoder.writeAudio(job->audio.data(), job->audioFrames);
+            encodeTotal = encodeTotal + ms(a, Clock::now());
+            if (!ok) {
+                encodeError = encoder.lastError();
+                stop = true;
+                break;
+            }
+            ++encodedFrames;
+            spare.tryPush(std::move(job->rgba));
+        }
+        // Al salir, nadie más produce para esta etapa: desbloquear al productor si esperaba.
+        toEncode.close();
+    });
+
     engine::AudioMixer mixer(s.sampleRate, 2);
-    constexpr int kAudioBlock = 1024;
-    std::vector<float> audio(size_t(kAudioBlock) * 2);
     int64_t audioPos = t0 * s.sampleRate / kUsPerSecond;
     const int64_t audioEnd = t1 * s.sampleRate / kUsPerSecond;
-    std::vector<uint8_t> rgba;
-
-    using Clock = std::chrono::steady_clock;
     const auto started = Clock::now();
-    double decodeTotal = 0, renderTotal = 0, encodeTotal = 0, audioTotal = 0;
+    double renderTotal = 0, audioTotal = 0;
     ExportProgress p;
     p.framesTotal = total;
+    QString failure;
 
-    for (int64_t j = 0; j < total; ++j) {
+    while (auto item = decoded.pop()) {
         if (cancel.load()) {
-            encoder.abort();
             m_cancelled = true;
-            return fail(QCoreApplication::translate("Exporter", "Exportación cancelada."));
+            failure = QCoreApplication::translate("Exporter", "Exportación cancelada.");
+            break;
         }
-        const TimeUs t = t0 + out.frameToTime(j);
-        auto mark = Clock::now();
-        auto lap = [&](double& accumulator) {
-            const auto now = Clock::now();
-            accumulator += std::chrono::duration<double, std::milli>(now - mark).count();
-            mark = now;
-        };
-        const engine::FrameBundle bundle = sources.build(project, project.settings.timeToFrame(t));
-        lap(decodeTotal);
-        const bool rendered = renderer.render(bundle, rgba);
-        lap(renderTotal);
-        if (!rendered) {
-            encoder.abort();
-            return fail(QCoreApplication::translate("Exporter", "Error al componer el fotograma %1.").arg(j));
+        if (stop.load())
+            break;
+        Encoded job;
+        job.rgba = spare.tryPop().value_or(std::vector<uint8_t>{});
+        const auto a = Clock::now();
+        if (!renderer.render(item->bundle, job.rgba)) {
+            failure = QCoreApplication::translate("Exporter", "Error al componer el fotograma %1.").arg(item->index);
+            break;
         }
-        const bool encoded = encoder.writeVideo(rgba.data(), s.width * 4);
-        lap(encodeTotal);
-        if (!encoded) {
-            encoder.abort();
-            return fail(QString::fromStdString(encoder.lastError()));
-        }
-
+        const auto b = Clock::now();
+        renderTotal += ms(a, b);
         if (s.includeAudio) {
-            // Audio hasta el final de este fotograma, en bloques.
-            const int64_t target = std::min(audioEnd, (t0 + out.frameToTime(j + 1)) * s.sampleRate / kUsPerSecond);
-            while (audioPos < target) {
-                const int n = int(std::min<int64_t>(kAudioBlock, target - audioPos));
-                mixer.mix(project, audioPos, n, audio.data());
-                for (size_t i = 0; i < size_t(n) * 2; ++i)
-                    audio[i] = std::clamp(audio[i], -1.0f, 1.0f);
-                if (!encoder.writeAudio(audio.data(), n)) {
-                    encoder.abort();
-                    return fail(QString::fromStdString(encoder.lastError()));
-                }
-                audioPos += n;
-            }
-            lap(audioTotal);
+            // Audio hasta el final de este fotograma.
+            const int64_t target = std::min(audioEnd, (t0 + out.frameToTime(item->index + 1)) * s.sampleRate / kUsPerSecond);
+            job.audioFrames = int(std::max<int64_t>(0, target - audioPos));
+            job.audio.resize(size_t(job.audioFrames) * 2);
+            if (job.audioFrames > 0)
+                mixer.mix(project, audioPos, job.audioFrames, job.audio.data());
+            for (float& v : job.audio)
+                v = std::clamp(v, -1.0f, 1.0f);
+            audioPos += job.audioFrames;
+            audioTotal += ms(b, Clock::now());
         }
+        if (!toEncode.push(std::move(job)))
+            break;
 
-        p.framesDone = j + 1;
-        p.elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-        p.fps = p.elapsedSeconds > 0 ? double(p.framesDone) / p.elapsedSeconds : 0.0;
-        p.decodeMs = decodeTotal / double(p.framesDone);
-        p.renderMs = renderTotal / double(p.framesDone);
-        p.encodeMs = encodeTotal / double(p.framesDone);
-        p.audioMs = audioTotal / double(p.framesDone);
-        if (progress && (p.framesDone % 5 == 0 || p.framesDone == total))
+        const int64_t done = encodedFrames.load();
+        if (progress && (item->index % 5 == 0)) {
+            p.framesDone = done;
+            p.elapsedSeconds = std::chrono::duration<double>(Clock::now() - started).count();
+            p.fps = p.elapsedSeconds > 0 ? double(done) / p.elapsedSeconds : 0.0;
+            const double n = double(item->index + 1);
+            p.decodeMs = decodeTotal.load() / n;
+            p.renderMs = renderTotal / n;
+            p.encodeMs = done > 0 ? encodeTotal.load() / double(done) : 0.0;
+            p.audioMs = audioTotal / n;
             progress(p);
+        }
     }
 
+    // Terminar la cadena. En un cierre normal el codificador vacía lo pendiente antes de salir;
+    // si se canceló o falló, todos los hilos se detienen enseguida.
+    if (!failure.isEmpty())
+        stop = true;
+    decoded.close();
+    toEncode.close();
+    decoder.join();
+    encoderThread.join();
+
+    if (!encodeError.empty())
+        failure = QString::fromStdString(encodeError);
+    if (!failure.isEmpty() || encodedFrames.load() != total) {
+        encoder.abort();
+        return fail(failure.isEmpty() ? QCoreApplication::translate("Exporter", "La exportación se interrumpió.") : failure);
+    }
     if (!encoder.finish(&encError))
         return fail(QString::fromStdString(encError));
+
+    p.framesDone = total;
+    p.elapsedSeconds = std::chrono::duration<double>(Clock::now() - started).count();
+    p.fps = p.elapsedSeconds > 0 ? double(total) / p.elapsedSeconds : 0.0;
+    p.decodeMs = decodeTotal.load() / double(total);
+    p.renderMs = renderTotal / double(total);
+    p.encodeMs = encodeTotal.load() / double(total);
+    p.audioMs = audioTotal / double(total);
+    if (progress)
+        progress(p);
     return true;
 }
 

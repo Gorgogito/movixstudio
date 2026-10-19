@@ -1,13 +1,16 @@
 #include "engine/AudioReader.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 namespace movix::engine {
 
 namespace {
 // Un salto hacia delante menor que esto se resuelve descartando muestras en vez de buscar.
 constexpr TimeUs kMaxSkipAhead = 500'000;
+constexpr int kTempoBlock = 1024;
 } // namespace
 
 bool AudioReader::open(const std::string& path, int sampleRate, int channels, std::string* error)
@@ -19,13 +22,14 @@ bool AudioReader::open(const std::string& path, int sampleRate, int channels, st
     m_basePts = kNoTime;
     m_consumed = 0;
     m_eof = false;
+    m_tempoSpeed = 0.0;
     return m_decoder.open(path, sampleRate, channels, error);
 }
 
 void AudioReader::seekTo(TimeUs t)
 {
     ++m_seeks;
-    m_decoder.seek(t);
+    m_decoder.seek(std::max<TimeUs>(0, t));
     m_fifo.clear();
     m_fifoRead = 0;
     m_basePts = kNoTime;
@@ -35,7 +39,6 @@ void AudioReader::seekTo(TimeUs t)
 
 bool AudioReader::fill(int frames)
 {
-    auto available = [&] { return int((m_fifo.size() / size_t(m_channels)) - m_fifoRead); };
     while (available() < frames && !m_eof) {
         if (!m_decoder.read(m_chunk)) {
             m_eof = true;
@@ -55,13 +58,19 @@ bool AudioReader::fill(int frames)
     return available() >= frames;
 }
 
-void AudioReader::mixInto(TimeUs t, int frames, float gain, float* out)
+void AudioReader::readSource(TimeUs t, int frames, float* dst)
 {
-    if (!m_decoder.isOpen() || frames <= 0)
-        return;
-    const TimeUs tolerance = kUsPerSecond / m_rate + 1; // una muestra
-    auto available = [&] { return int((m_fifo.size() / size_t(m_channels)) - m_fifoRead); };
+    std::memset(dst, 0, size_t(frames) * size_t(m_channels) * sizeof(float));
+    // Antes del inicio del medio: silencio hasta llegar a 0.
+    int lead = 0;
+    if (t < 0) {
+        lead = int(std::min<int64_t>(frames, (-t * m_rate + kUsPerSecond - 1) / kUsPerSecond));
+        t += TimeUs(lead) * kUsPerSecond / m_rate;
+        if (lead >= frames)
+            return;
+    }
 
+    const TimeUs tolerance = kUsPerSecond / m_rate + 1; // una muestra
     if (m_basePts == kNoTime || std::llabs(t - nextPts()) > tolerance) {
         const TimeUs ahead = m_basePts == kNoTime ? -1 : t - nextPts();
         if (ahead > 0 && ahead < kMaxSkipAhead) {
@@ -75,22 +84,78 @@ void AudioReader::mixInto(TimeUs t, int frames, float gain, float* out)
         }
     }
 
-    fill(frames);
-    // Si el medio empieza después de `t` (o tras una búsqueda al principio), rellenar con silencio.
-    int lead = 0;
+    const int wanted = frames - lead;
+    fill(wanted);
+    // Si el medio empieza después de `t`, rellenar con silencio.
+    int gap = 0;
     if (m_basePts != kNoTime && nextPts() > t + tolerance)
-        lead = int(std::min<TimeUs>(frames, (nextPts() - t) * m_rate / kUsPerSecond));
-
-    const int n = std::min(frames - lead, available());
+        gap = int(std::min<TimeUs>(wanted, (nextPts() - t) * m_rate / kUsPerSecond));
+    const int n = std::min(wanted - gap, available());
     if (n <= 0)
         return;
-    const float* src = m_fifo.data() + m_fifoRead * size_t(m_channels);
-    float* dst = out + size_t(lead) * size_t(m_channels);
-    const size_t count = size_t(n) * size_t(m_channels);
-    for (size_t i = 0; i < count; ++i)
-        dst[i] += src[i] * gain;
+    std::memcpy(dst + size_t(lead + gap) * size_t(m_channels), m_fifo.data() + m_fifoRead * size_t(m_channels),
+                size_t(n) * size_t(m_channels) * sizeof(float));
     m_fifoRead += size_t(n);
     m_consumed += n;
+}
+
+void AudioReader::readTempo(TimeUs t, int frames, double speed, float* dst)
+{
+    // Instante del medio de la próxima salida si la petición es continua.
+    const TimeUs expected = m_tempoBase == kNoTime
+        ? kNoTime
+        : m_tempoBase + TimeUs(std::llround(double(m_tempoProduced) * speed * kUsPerSecond / m_rate));
+    const TimeUs tolerance = TimeUs(std::ceil(speed * kUsPerSecond / m_rate)) + 2;
+    if (m_tempoSpeed != speed || expected == kNoTime || std::llabs(t - expected) > tolerance) {
+        if (m_tempoSpeed != speed)
+            m_tempo.init(m_rate, m_channels, speed);
+        else
+            m_tempo.reset();
+        m_tempoSpeed = speed;
+        m_tempoOut.clear();
+        m_tempoRead = 0;
+        m_tempoBase = t;
+        m_tempoProduced = 0;
+        m_tempoFeed = t;
+    }
+
+    // Alimentar el filtro con el medio en orden hasta tener suficientes muestras de salida.
+    m_feed.resize(size_t(kTempoBlock) * size_t(m_channels));
+    const size_t needed = size_t(frames) * size_t(m_channels);
+    for (int guard = 0; m_tempoOut.size() - m_tempoRead < needed && guard < 512; ++guard) {
+        readSource(m_tempoFeed, kTempoBlock, m_feed.data());
+        m_tempo.push(m_feed.data(), kTempoBlock);
+        m_tempoFeed += TimeUs(kTempoBlock) * kUsPerSecond / m_rate;
+        m_tempo.pull(m_tempoOut);
+    }
+    const size_t n = std::min(needed, m_tempoOut.size() - m_tempoRead);
+    std::memcpy(dst, m_tempoOut.data() + m_tempoRead, n * sizeof(float));
+    std::memset(dst + n, 0, (needed - n) * sizeof(float));
+    m_tempoRead += n;
+    m_tempoProduced += frames;
+    if (m_tempoRead > 1 << 16) {
+        m_tempoOut.erase(m_tempoOut.begin(), m_tempoOut.begin() + std::ptrdiff_t(m_tempoRead));
+        m_tempoRead = 0;
+    }
+}
+
+void AudioReader::mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out)
+{
+    if (!m_decoder.isOpen() || frames <= 0)
+        return;
+    m_scratch.resize(size_t(frames) * size_t(m_channels));
+    if (std::abs(speed - 1.0) < 1e-9)
+        readSource(t, frames, m_scratch.data());
+    else
+        readTempo(t, frames, speed, m_scratch.data());
+
+    // Rampa lineal de ganancia a lo largo del bloque (volumen animado, fundidos, transiciones).
+    const float step = frames > 1 ? (gainEnd - gainStart) / float(frames) : 0.0f;
+    for (int i = 0; i < frames; ++i) {
+        const float g = gainStart + step * float(i);
+        for (int c = 0; c < m_channels; ++c)
+            out[size_t(i) * size_t(m_channels) + size_t(c)] += m_scratch[size_t(i) * size_t(m_channels) + size_t(c)] * g;
+    }
 }
 
 } // namespace movix::engine

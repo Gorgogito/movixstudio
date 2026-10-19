@@ -49,6 +49,12 @@ make_media(vp9_opus.webm
     -f lavfi -i "sine=f=660:r=48000:d=2"
     -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 500k -c:a libopus -shortest)
 
+# 6) Imagen con transparencia: mitad izquierda verde opaca, mitad derecha transparente.
+set(ext .png)
+make_media(half_alpha.png
+    -f lavfi -i "color=c=black:s=320x180,format=rgba,geq=r=0:g=255:b=0:a='if(lt(X,160),255,0)'"
+    -frames:v 1 -update 1)
+
 # 5) Solo audio: 3 s de tono a 44,1 kHz mono en WAV.
 set(ext .wav)
 make_media(tone_44k_mono.wav

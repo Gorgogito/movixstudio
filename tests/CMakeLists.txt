@@ -14,6 +14,8 @@ add_executable(movix_tests
     test_core_edits.cpp
     test_core_history.cpp
     test_core_file.cpp
+    test_core_f2.cpp
+    test_f2_media.cpp
     test_engine.cpp
     test_render.cpp
     test_export.cpp
@@ -30,10 +32,7 @@ target_compile_definitions(movix_tests PRIVATE MOVIX_TEST_MEDIA_DIR="${MOVIX_TES
 
 # Las DLL de FFmpeg junto al ejecutable de pruebas.
 add_custom_command(TARGET movix_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FFmpeg::avformat> $<TARGET_FILE:FFmpeg::avcodec> $<TARGET_FILE:FFmpeg::avutil>
-        $<TARGET_FILE:FFmpeg::swscale> $<TARGET_FILE:FFmpeg::swresample>
-        $<TARGET_FILE_DIR:movix_tests>)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} $<TARGET_FILE_DIR:movix_tests>)
 
 add_test(NAME generate_test_media
     COMMAND ${CMAKE_COMMAND} -DFFMPEG_EXE=${FFMPEG_EXE} -DOUT_DIR=${MOVIX_TEST_MEDIA_DIR}

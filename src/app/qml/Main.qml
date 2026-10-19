@@ -105,6 +105,10 @@ ApplicationWindow {
     Shortcut { sequence: "Delete"; onActivated: project.deleteSelection(false) }
     Shortcut { sequence: "Shift+Delete"; onActivated: project.deleteSelection(true) }
     Shortcut { sequence: "Ctrl+A"; onActivated: project.selectAll() }
+    Shortcut { sequences: [StandardKey.Copy]; onActivated: project.copySelection() }
+    Shortcut { sequences: [StandardKey.Cut]; onActivated: project.cutSelection() }
+    Shortcut { sequences: [StandardKey.Paste]; onActivated: { viewer.showTimeline(); project.paste() } }
+    Shortcut { sequence: "T"; onActivated: { viewer.showTimeline(); project.addTitle(0) } }
     Shortcut { sequence: "Escape"; onActivated: project.clearSelection() }
     Shortcut { sequence: "Space"; onActivated: window.activePlayer.togglePlayPause() }
     Shortcut { sequence: "K"; onActivated: window.activePlayer.pause() }
@@ -153,6 +157,12 @@ ApplicationWindow {
             MenuItem { text: qsTr("&Eliminar") + "\t" + qsTr("Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(false) }
             MenuItem { text: qsTr("Eliminar y &cerrar hueco") + "\t" + qsTr("Mayús+Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(true) }
             MenuSeparator {}
+            MenuItem { text: qsTr("Co&piar") + "\tCtrl+C"; enabled: project.selection.length > 0; onTriggered: project.copySelection() }
+            MenuItem { text: qsTr("Cor&tar") + "\tCtrl+X"; enabled: project.selection.length > 0; onTriggered: project.cutSelection() }
+            MenuItem { text: qsTr("Pe&gar en el cabezal") + "\tCtrl+V"; enabled: project.canPaste; onTriggered: project.paste() }
+            MenuItem { text: qsTr("Modo &inserción"); checkable: true; checked: project.insertMode; onTriggered: project.insertMode = checked }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Añadir tít&ulo") + "\tT"; onTriggered: project.addTitle(0) }
             MenuItem { text: qsTr("Seleccionar &todo") + "\tCtrl+A"; onTriggered: project.selectAll() }
             MenuItem { text: qsTr("Añadir pista de &video"); onTriggered: project.addTrack("video") }
             MenuItem { text: qsTr("Añadir pista de &audio"); onTriggered: project.addTrack("audio") }
@@ -201,7 +211,7 @@ ApplicationWindow {
             SplitView.minimumHeight: 300
             orientation: Qt.Horizontal
 
-            MediaBin {
+            LibraryPanel {
                 SplitView.preferredWidth: 320
                 SplitView.minimumWidth: 220
                 project: project
@@ -254,7 +264,7 @@ ApplicationWindow {
         title: qsTr("Importar medios")
         fileMode: FileDialog.OpenFiles
         nameFilters: [
-            qsTr("Medios compatibles") + " (*.mp4 *.mov *.m4v *.mkv *.webm *.avi *.wmv *.flv *.mts *.m2ts *.ts *.mxf *.mpg *.mpeg *.3gp *.mp3 *.wav *.flac *.aac *.m4a *.ogg *.opus *.wma)",
+            qsTr("Medios compatibles") + " (*.mp4 *.mov *.m4v *.mkv *.webm *.avi *.wmv *.flv *.mts *.m2ts *.ts *.mxf *.mpg *.mpeg *.3gp *.mp3 *.wav *.flac *.aac *.m4a *.ogg *.opus *.wma *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)",
             qsTr("Todos los archivos") + " (*)"
         ]
         onAccepted: project.importFiles(selectedFiles)
@@ -363,7 +373,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.text
-                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: editor multipista básico (fase F1).")
+                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos y transiciones (fase F2).")
             }
             Text {
                 Layout.fillWidth: true

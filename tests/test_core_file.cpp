@@ -30,7 +30,7 @@ Project sampleProject(const QString& mediaPath)
     const Id id = edit::addMedia(p, m);
     const Id clip = edit::placeClip(p, p.videoTracks[0].id, id, 10, 500'000, 120);
     edit::placeClip(p, p.audioTracks[1].id, id, 50);
-    edit::setClipGain(p, clip, 0.25f);
+    edit::setProperty(p, clip, edit::Property::Volume, 0, 0.25f);
     edit::setTrackHidden(p, p.videoTracks[1].id, true);
     return p;
 }

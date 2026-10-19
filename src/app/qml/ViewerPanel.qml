@@ -98,6 +98,11 @@ Rectangle {
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontNormal
             }
+            TransformOverlay {
+                anchors.fill: parent
+                visible: !panel.sourceMode && !panel.activePlayer.playing
+                project: panel.project
+            }
         }
 
         TransportBar {

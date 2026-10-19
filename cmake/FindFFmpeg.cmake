@@ -28,5 +28,8 @@ foreach(_comp IN LISTS FFmpeg_FIND_COMPONENTS)
     endif()
 endforeach()
 
+# Todas las DLL del build (los componentes dependen entre sí): para copiarlas junto a los ejecutables.
+file(GLOB FFMPEG_RUNTIME_DLLS "${FFMPEG_INCLUDE_DIR}/../bin/*.dll")
+
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(FFmpeg REQUIRED_VARS FFMPEG_INCLUDE_DIR HANDLE_COMPONENTS)

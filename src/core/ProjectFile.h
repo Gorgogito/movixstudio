@@ -13,7 +13,8 @@ namespace movix::core {
 // Formato de archivo de proyecto (.mxproj): JSON legible y versionado.
 // Las rutas de los medios se guardan absolutas y relativas al proyecto; al abrir se usa la
 // absoluta si existe y, si no, la relativa (permite mover la carpeta del proyecto completa).
-inline constexpr int kProjectFormatVersion = 1;
+// Versión 2 (F2): velocidad, transformación y volumen animables, fundidos, títulos, transiciones.
+inline constexpr int kProjectFormatVersion = 2;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {

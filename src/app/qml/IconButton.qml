@@ -16,7 +16,7 @@ ToolButton {
     implicitHeight: size
     focusPolicy: Qt.NoFocus
     display: AbstractButton.IconOnly
-    icon.source: "qrc:/qt/qml/MovixStudio/icons/" + iconName + ".svg"
+    icon.source: iconName ? "qrc:/qt/qml/MovixStudio/icons/" + iconName + ".svg" : ""
     icon.width: Math.round(size * 0.55)
     icon.height: Math.round(size * 0.55)
     icon.color: !enabled ? Theme.textDisabled : (accent ? "#FFFFFF" : Theme.text)

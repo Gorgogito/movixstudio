@@ -1,5 +1,7 @@
 #include "playback/TimelinePlayer.h"
 
+#include "render/TitleRenderer.h"
+
 #include <QLoggingCategory>
 
 #include <algorithm>
@@ -108,6 +110,7 @@ double TimelinePlayer::frameRate() const
 void TimelinePlayer::videoLoop()
 {
     engine::VideoSources sources(m_options.hardwareDecoding);
+    sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
     for (;;) {
         std::unique_lock lock(m_videoMutex);
         m_videoCv.wait(lock, [this] {

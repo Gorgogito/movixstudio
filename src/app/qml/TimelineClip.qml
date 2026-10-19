@@ -22,6 +22,12 @@ Item {
     required property bool clipEnabled
     required property real gain
     required property bool selected
+    required property bool isTitle
+    required property bool isStill
+    required property real speed
+    required property var transitionFrames
+    required property var fadeIn
+    required property var fadeOut
     property var owner // la línea de tiempo que contiene el clip
 
     readonly property real px: owner.pxPerFrame
@@ -33,10 +39,22 @@ Item {
     readonly property real visualStart: trimming ? trimStart : start + (movingWithDrag ? owner.dragDelta : 0)
     readonly property real visualEnd: trimming ? trimEnd : start + duration + (movingWithDrag ? owner.dragDelta : 0)
     readonly property int visualRow: trackRow + (movingWithDrag ? owner.dragRowOffset : 0)
-    // Límites del medio disponibles para recortar.
-    readonly property real minStart: Math.max(0, start - Math.floor(sourceIn * fps + 1e-6))
-    readonly property real maxEnd: start + Math.floor((mediaDuration - sourceIn) * fps + 0.001)
-    readonly property real visibleSourceIn: sourceIn + (trimming ? (trimStart - start) / fps : 0)
+    // Límites del medio disponibles para recortar (imágenes y títulos no tienen límite).
+    readonly property bool unlimited: isTitle || isStill
+    readonly property real minStart: unlimited ? 0 : Math.max(0, start - Math.floor(sourceIn * fps / speed + 1e-6))
+    readonly property real maxEnd: unlimited ? 1e9 : start + Math.floor((mediaDuration - sourceIn) * fps / speed + 0.001)
+    readonly property real visibleSourceIn: sourceIn + (trimming ? (trimStart - start) / fps * speed : 0)
+    // Keyframes del clip (solo se muestran si está seleccionado).
+    property var keyframes: []
+    function refreshKeyframes() {
+        keyframes = selected ? owner.project.keyframeFrames(clipId) : []
+    }
+    onSelectedChanged: refreshKeyframes()
+    Connections {
+        target: clipItem.owner.project
+        enabled: clipItem.selected
+        function onHistoryChanged() { clipItem.refreshKeyframes() }
+    }
 
     x: visualStart * px
     y: visualRow * owner.trackHeight + 3
@@ -49,7 +67,7 @@ Item {
         anchors.fill: parent
         radius: 4
         clip: true
-        color: clipItem.kind === "video" ? Theme.clipVideoDark : Theme.clipAudioDark
+        color: clipItem.isTitle ? Theme.clipTitle : clipItem.kind === "video" ? Theme.clipVideoDark : Theme.clipAudioDark
         opacity: clipItem.clipEnabled ? 1 : 0.45
         border.width: clipItem.selected ? 2 : 1
         border.color: clipItem.selected ? Theme.clipSelected : Qt.lighter(color, 1.35)
@@ -57,7 +75,7 @@ Item {
         // Tira de miniaturas (clips de video).
         Item {
             id: filmstrip
-            visible: clipItem.kind === "video" && clipItem.hasVideo
+            visible: clipItem.kind === "video" && clipItem.hasVideo && !clipItem.isTitle
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
@@ -71,7 +89,7 @@ Item {
                 Image {
                     required property int index
                     // Instante de la miniatura, redondeado a 1/4 s para reutilizar la caché.
-                    readonly property real t: Math.round((clipItem.visibleSourceIn + index * filmstrip.tileWidth / clipItem.px / clipItem.fps) * 4) / 4
+                    readonly property real t: clipItem.isStill ? 0 : Math.round((clipItem.visibleSourceIn + index * filmstrip.tileWidth / clipItem.px / clipItem.fps * clipItem.speed) * 4) / 4
                     x: index * filmstrip.tileWidth
                     width: filmstrip.tileWidth
                     height: filmstrip.height
@@ -94,8 +112,47 @@ Item {
             height: clipItem.kind === "video" ? body.height * 0.38 - 2 : body.height - 18
             source: clipItem.path
             sourceIn: clipItem.visibleSourceIn
-            duration: (clipItem.visualEnd - clipItem.visualStart) / clipItem.fps
+            duration: (clipItem.visualEnd - clipItem.visualStart) / clipItem.fps * clipItem.speed
             color: clipItem.kind === "video" ? "#B0C8D0FF" : "#C0B8FFE0"
+        }
+
+        // Fundidos: degradados hacia negro en los extremos.
+        Rectangle {
+            visible: clipItem.fadeIn > 0
+            width: Math.min(body.width, clipItem.fadeIn * clipItem.px)
+            height: body.height
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#C0000000" }
+                GradientStop { position: 1; color: "transparent" }
+            }
+        }
+        Rectangle {
+            visible: clipItem.fadeOut > 0
+            anchors.right: parent.right
+            width: Math.min(body.width, clipItem.fadeOut * clipItem.px)
+            height: body.height
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "transparent" }
+                GradientStop { position: 1; color: "#C0000000" }
+            }
+        }
+
+        // Rombos de los keyframes del clip seleccionado.
+        Repeater {
+            model: clipItem.keyframes
+            Rectangle {
+                required property var modelData
+                x: (modelData - clipItem.start) * clipItem.px - 4
+                y: body.height - 12
+                width: 8
+                height: 8
+                rotation: 45
+                color: Theme.clipSelected
+                border.color: "#80000000"
+                visible: x > -4 && x < body.width
+            }
         }
 
         Rectangle {
@@ -111,11 +168,32 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 x: 4
                 width: parent.width - 8
-                text: clipItem.gain !== 1 ? clipItem.name + "  ·  " + Math.round(clipItem.gain * 100) + " %" : clipItem.name
+                text: (clipItem.isTitle ? "T  " : "") + clipItem.name
+                      + (clipItem.speed !== 1 ? "  ·  " + clipItem.speed.toLocaleString(Qt.locale(), "f", 2).replace(/,?0+$/, "") + "×" : "")
+                      + (clipItem.gain >= 0 && clipItem.gain !== 1 ? "  ·  " + Math.round(clipItem.gain * 100) + " %" : "")
                 color: "white"
                 font.pixelSize: 10
                 elide: Text.ElideRight
             }
+        }
+    }
+
+    // Transición de entrada: ocupa [corte - mitad, corte + mitad), centrada en el inicio del clip.
+    Rectangle {
+        visible: clipItem.transitionFrames > 0 && !clipItem.trimming && !clipItem.movingWithDrag
+        x: -Math.floor(clipItem.transitionFrames / 2) * clipItem.px
+        y: 2
+        z: 5
+        width: Math.max(10, clipItem.transitionFrames * clipItem.px)
+        height: 14
+        radius: 7
+        color: "#D07C6CFF"
+        border.color: Theme.accentHover
+        Text {
+            anchors.centerIn: parent
+            text: "⧓"
+            color: "white"
+            font.pixelSize: 10
         }
     }
 
@@ -226,6 +304,30 @@ Item {
         MenuItem { text: qsTr("Dividir en el cabezal") + "\tCtrl+B"; onTriggered: clipItem.owner.project.splitAtPlayhead() }
         MenuItem { text: qsTr("Eliminar") + "\t" + qsTr("Supr"); onTriggered: clipItem.owner.project.deleteSelection(false) }
         MenuItem { text: qsTr("Eliminar y cerrar hueco") + "\t" + qsTr("Mayús+Supr"); onTriggered: clipItem.owner.project.deleteSelection(true) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("Copiar") + "\tCtrl+C"; onTriggered: clipItem.owner.project.copySelection() }
+        MenuItem { text: qsTr("Cortar") + "\tCtrl+X"; onTriggered: clipItem.owner.project.cutSelection() }
+        MenuItem { text: qsTr("Pegar en el cabezal") + "\tCtrl+V"; enabled: clipItem.owner.project.canPaste; onTriggered: clipItem.owner.project.paste() }
+        MenuSeparator {}
+        Menu {
+            title: qsTr("Velocidad")
+            enabled: !clipItem.unlimited
+            Repeater {
+                model: [0.25, 0.5, 1, 1.5, 2, 4]
+                MenuItem {
+                    required property real modelData
+                    text: String(modelData).replace(".", ",") + "×"
+                    checkable: true
+                    checked: Math.abs(clipItem.speed - modelData) < 1e-6
+                    onTriggered: clipItem.owner.project.setClipSpeed(clipItem.clipId, modelData)
+                }
+            }
+        }
+        MenuItem {
+            text: qsTr("Separar audio")
+            enabled: clipItem.kind === "video" && clipItem.hasAudio
+            onTriggered: clipItem.owner.project.detachAudio(clipItem.clipId)
+        }
         MenuSeparator {}
         MenuItem {
             text: clipItem.clipEnabled ? qsTr("Desactivar clip") : qsTr("Activar clip")

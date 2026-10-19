@@ -28,6 +28,8 @@ struct AudioStreamInfo {
 struct MediaInfo {
     std::string path;
     std::string container;    // nombre largo del formato
+    std::string formatName;   // nombre corto del demuxer (mov,mp4..., png_pipe, image2...)
+    bool isStill = false;     // imagen fija
     TimeUs duration = 0;
     int64_t bitRate = 0;
     std::optional<VideoStreamInfo> video;

@@ -124,7 +124,7 @@ TEST_CASE("Mezcla de audio exacta a la muestra", "[engine][audio]")
     SECTION("volumen, suma de clips y pista silenciada")
     {
         edit::placeClip(p, p.audioTracks[1].id, tone, 30); // el mismo tono en A2
-        edit::setClipGain(p, clip, 0.5f);
+        edit::setProperty(p, clip, edit::Property::Volume, 0, 0.5f);
         std::vector<float> block(480 * 2);
         // Empezar a mitad del medio implica una búsqueda; con el pre-roll el resultado coincide
         // con la decodificación secuencial salvo la fase del remuestreo 44,1→48 kHz (< 1e-3).

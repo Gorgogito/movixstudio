@@ -7,6 +7,8 @@ layout(location = 0) out vec2 vTexcoord;
 layout(std140, binding = 0) uniform buf {
     mat4 mvp;
     mat4 yuvToRgb;
+    vec4 crop;   // u0, v0, u1, v1: parte visible de la capa
+    vec4 params; // x = opacidad
 } ubuf;
 
 void main()

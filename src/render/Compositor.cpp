@@ -6,6 +6,8 @@
 #include <QMatrix4x4>
 #include <rhi/qrhi.h>
 
+#include <cmath>
+
 namespace movix::render {
 
 namespace {
@@ -25,23 +27,33 @@ constexpr float kQuad[] = {
     -1.0f,  1.0f, 0.0f, 0.0f,
      1.0f,  1.0f, 1.0f, 0.0f,
 };
-constexpr quint32 kUniformSize = 128; // mvp + matriz de color
+constexpr quint32 kUniformSize = 64 + 64 + 16 + 16; // mvp, matriz de color, recorte, parámetros
 
-// Transforma el rectángulo unidad en `rect` (píxeles del destino, origen arriba a la izquierda).
-QMatrix4x4 rectTransform(QRhi* rhi, const QRectF& rect, QSize target)
+// Lleva el rectángulo unidad a un rectángulo rotado de centro `c` y semiejes `half` en píxeles
+// del destino (origen arriba a la izquierda), y de ahí a coordenadas de recorte.
+QMatrix4x4 placement(QRhi* rhi, QPointF c, QSizeF half, double rotationDeg, QSize target)
 {
     QMatrix4x4 m = rhi->clipSpaceCorrMatrix();
-    const double w = target.width(), h = target.height();
-    m.translate(float(rect.center().x() / w * 2.0 - 1.0), float(1.0 - rect.center().y() / h * 2.0));
-    m.scale(float(rect.width() / w), float(rect.height() / h));
+    // Píxeles → NDC (y hacia arriba).
+    QMatrix4x4 toNdc;
+    toNdc.setToIdentity();
+    toNdc(0, 0) = float(2.0 / target.width());
+    toNdc(0, 3) = -1.0f;
+    toNdc(1, 1) = float(-2.0 / target.height());
+    toNdc(1, 3) = 1.0f;
+    m *= toNdc;
+    m.translate(float(c.x()), float(c.y()));
+    m.rotate(float(rotationDeg), 0.0f, 0.0f, 1.0f); // con y hacia abajo, positivo = horario
+    m.scale(float(half.width()), float(-half.height())); // la parte superior del rectángulo (v = 0) arriba
     return m;
 }
 
 } // namespace
 
 struct Compositor::Slot {
-    std::unique_ptr<QRhiTexture> y;
-    std::unique_ptr<QRhiTexture> uv;
+    std::unique_ptr<QRhiTexture> tex0; // Y o RGBA
+    std::unique_ptr<QRhiTexture> tex1; // UV (solo NV12)
+    media::PixelFormat format = media::PixelFormat::NV12;
     std::unique_ptr<QRhiBuffer> ubuf;
     std::unique_ptr<QRhiShaderResourceBindings> srb;
     std::shared_ptr<const media::VideoFrame> uploaded; // mantiene vivos los datos hasta la subida
@@ -59,6 +71,16 @@ QRectF Compositor::fitRect(QSizeF target, double aspect)
     QSizeF size = targetAspect > aspect ? QSizeF(target.height() * aspect, target.height())
                                         : QSizeF(target.width(), target.width() / aspect);
     return QRectF(QPointF((target.width() - size.width()) / 2, (target.height() - size.height()) / 2), size);
+}
+
+Compositor::LayerGeometry Compositor::layerGeometry(const QRectF& canvas, double frameAspect, const core::LayerTransform& t)
+{
+    const QRectF fit = fitRect(canvas.size(), frameAspect);
+    LayerGeometry g;
+    g.center = canvas.center() + QPointF(t.x * canvas.width(), t.y * canvas.height());
+    g.halfSize = QSizeF(fit.width() / 2 * t.scale, fit.height() / 2 * t.scale);
+    g.rotation = t.rotation;
+    return g;
 }
 
 void Compositor::ensureCommon()
@@ -83,7 +105,7 @@ void Compositor::ensureCommon()
 void Compositor::setRenderTarget(QRhiRenderPassDescriptor* renderPass, int sampleCount)
 {
     ensureCommon();
-    if (m_layerPipeline && m_renderPass && m_renderPass->isCompatible(renderPass) && m_sampleCount == sampleCount)
+    if (m_nv12Pipeline && m_renderPass && m_renderPass->isCompatible(renderPass) && m_sampleCount == sampleCount)
         return;
     m_renderPass = renderPass;
     m_sampleCount = sampleCount;
@@ -105,6 +127,7 @@ void Compositor::setRenderTarget(QRhiRenderPassDescriptor* renderPass, int sampl
     });
     layerLayout->create();
 
+    // Mezcla "sobre" con alfa no premultiplicado.
     QRhiGraphicsPipeline::TargetBlend blend;
     blend.enable = true;
     blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
@@ -114,6 +137,7 @@ void Compositor::setRenderTarget(QRhiRenderPassDescriptor* renderPass, int sampl
 
     auto makePipeline = [&](const char* frag, QRhiShaderResourceBindings* srb) {
         std::unique_ptr<QRhiGraphicsPipeline> p(m_rhi->newGraphicsPipeline());
+        p->setFlags(QRhiGraphicsPipeline::UsesScissor);
         p->setShaderStages({
             {QRhiShaderStage::Vertex, loadShader(QStringLiteral("layer.vert.qsb"))},
             {QRhiShaderStage::Fragment, loadShader(QString::fromLatin1(frag))},
@@ -127,25 +151,35 @@ void Compositor::setRenderTarget(QRhiRenderPassDescriptor* renderPass, int sampl
         p->create();
         return p;
     };
-    m_layerPipeline = makePipeline("layer_nv12.frag.qsb", layerLayout.get());
+    m_nv12Pipeline = makePipeline("layer_nv12.frag.qsb", layerLayout.get());
+    m_rgbaPipeline = makePipeline("layer_rgba.frag.qsb", layerLayout.get());
     m_solidPipeline = makePipeline("solid.frag.qsb", m_solidSrb.get());
 }
 
-void Compositor::ensureSlotTextures(Slot& slot, int width, int height)
+void Compositor::ensureSlotTextures(Slot& slot, const media::VideoFrame& f)
 {
-    if (slot.y && slot.y->pixelSize() == QSize(width, height))
+    const QSize size(f.width, f.height);
+    if (slot.tex0 && slot.format == f.format && slot.tex0->pixelSize() == size)
         return;
-    slot.y.reset(m_rhi->newTexture(QRhiTexture::R8, QSize(width, height)));
-    slot.y->create();
-    slot.uv.reset(m_rhi->newTexture(QRhiTexture::RG8, QSize((width + 1) / 2, (height + 1) / 2)));
-    slot.uv->create();
+    slot.format = f.format;
+    if (f.format == media::PixelFormat::RGBA) {
+        slot.tex0.reset(m_rhi->newTexture(QRhiTexture::RGBA8, size));
+        slot.tex0->create();
+        slot.tex1.reset();
+    } else {
+        slot.tex0.reset(m_rhi->newTexture(QRhiTexture::R8, size));
+        slot.tex0->create();
+        slot.tex1.reset(m_rhi->newTexture(QRhiTexture::RG8, QSize((f.width + 1) / 2, (f.height + 1) / 2)));
+        slot.tex1->create();
+    }
     if (!slot.srb)
         slot.srb.reset(m_rhi->newShaderResourceBindings());
     slot.srb->setBindings({
         QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage,
                                                  slot.ubuf.get()),
-        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, slot.y.get(), m_sampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, slot.uv.get(), m_sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, slot.tex0.get(), m_sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage,
+                                                  slot.tex1 ? slot.tex1.get() : m_dummy.get(), m_sampler.get()),
     });
     slot.srb->create();
     slot.uploaded.reset();
@@ -158,11 +192,11 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         updates->uploadStaticBuffer(m_vbuf.get(), kQuad);
         m_vbufUploaded = true;
     }
+    m_canvas = canvasRect;
 
     // Fondo negro del lienzo.
-    m_drawCanvas = !canvasRect.isEmpty();
-    if (m_drawCanvas) {
-        const QMatrix4x4 mvp = rectTransform(m_rhi, canvasRect, targetSize);
+    if (!canvasRect.isEmpty()) {
+        const QMatrix4x4 mvp = placement(m_rhi, canvasRect.center(), canvasRect.size() / 2, 0.0, targetSize);
         const float color[16] = {0, 0, 0, 1}; // primera columna = RGBA
         updates->updateDynamicBuffer(m_solidUbuf.get(), 0, 64, mvp.constData());
         updates->updateDynamicBuffer(m_solidUbuf.get(), 64, 64, color);
@@ -170,7 +204,7 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
 
     m_activeLayers = 0;
     for (const engine::LayerFrame& layer : bundle.layers) {
-        if (!layer.frame || canvasRect.isEmpty())
+        if (!layer.frame || canvasRect.isEmpty() || layer.opacity <= 0.0)
             continue;
         if (m_slots.size() <= m_activeLayers) {
             auto slot = std::make_unique<Slot>();
@@ -180,40 +214,56 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         }
         Slot& slot = *m_slots[m_activeLayers++];
         const media::VideoFrame& f = *layer.frame;
-        ensureSlotTextures(slot, f.width, f.height);
+        ensureSlotTextures(slot, f);
         if (slot.uploaded != layer.frame) {
             // fromRawData evita copiar; `uploaded` mantiene vivos los datos hasta que se suben.
-            QRhiTextureSubresourceUploadDescription y(QByteArray::fromRawData(reinterpret_cast<const char*>(f.y.data()), qsizetype(f.y.size())));
-            QRhiTextureSubresourceUploadDescription uv(QByteArray::fromRawData(reinterpret_cast<const char*>(f.uv.data()), qsizetype(f.uv.size())));
-            updates->uploadTexture(slot.y.get(), QRhiTextureUploadEntry(0, 0, y));
-            updates->uploadTexture(slot.uv.get(), QRhiTextureUploadEntry(0, 0, uv));
+            auto raw = [](const std::vector<uint8_t>& v) {
+                return QRhiTextureSubresourceUploadDescription(
+                    QByteArray::fromRawData(reinterpret_cast<const char*>(v.data()), qsizetype(v.size())));
+            };
+            if (f.format == media::PixelFormat::RGBA) {
+                updates->uploadTexture(slot.tex0.get(), QRhiTextureUploadEntry(0, 0, raw(f.rgba)));
+            } else {
+                updates->uploadTexture(slot.tex0.get(), QRhiTextureUploadEntry(0, 0, raw(f.y)));
+                updates->uploadTexture(slot.tex1.get(), QRhiTextureUploadEntry(0, 0, raw(f.uv)));
+            }
             slot.uploaded = layer.frame;
         }
-        // La capa se ajusta al lienzo conservando su relación de aspecto.
-        const QRectF inCanvas = fitRect(canvasRect.size(), f.displayAspect()).translated(canvasRect.topLeft());
-        const QMatrix4x4 mvp = rectTransform(m_rhi, inCanvas, targetSize);
+
+        const LayerGeometry g = layerGeometry(canvasRect, f.displayAspect(), layer.transform);
+        const QMatrix4x4 mvp = placement(m_rhi, g.center, g.halfSize, g.rotation, targetSize);
         const auto rowMajor = media::yuvToRgbMatrix(f.colorSpace, f.fullRange);
         const QMatrix4x4 color(rowMajor.data());
+        const float crop[4] = {float(layer.crop.left), float(layer.crop.top), float(layer.crop.right), float(layer.crop.bottom)};
+        const float params[4] = {float(std::clamp(layer.opacity, 0.0, 1.0)), 0, 0, 0};
         updates->updateDynamicBuffer(slot.ubuf.get(), 0, 64, mvp.constData());
         updates->updateDynamicBuffer(slot.ubuf.get(), 64, 64, color.constData());
+        updates->updateDynamicBuffer(slot.ubuf.get(), 128, 16, crop);
+        updates->updateDynamicBuffer(slot.ubuf.get(), 144, 16, params);
     }
 }
 
 void Compositor::draw(QRhiCommandBuffer* cb, QSize targetSize)
 {
-    if (!m_layerPipeline)
+    if (!m_nv12Pipeline || m_canvas.isEmpty())
         return;
     const QRhiCommandBuffer::VertexInput input(m_vbuf.get(), 0);
+    // Tijera al lienzo (QRhi la expresa con origen abajo a la izquierda).
+    const QRect c = m_canvas.toAlignedRect().intersected(QRect(QPoint(0, 0), targetSize));
+    const QRhiScissor scissor(c.x(), targetSize.height() - (c.y() + c.height()), c.width(), c.height());
+
+    cb->setGraphicsPipeline(m_solidPipeline.get());
     cb->setViewport(QRhiViewport(0, 0, float(targetSize.width()), float(targetSize.height())));
-    if (m_drawCanvas) {
-        cb->setGraphicsPipeline(m_solidPipeline.get());
-        cb->setShaderResources(m_solidSrb.get());
-        cb->setVertexInput(0, 1, &input);
-        cb->draw(4);
-    }
+    cb->setScissor(scissor);
+    cb->setShaderResources(m_solidSrb.get());
+    cb->setVertexInput(0, 1, &input);
+    cb->draw(4);
     for (size_t i = 0; i < m_activeLayers; ++i) {
-        cb->setGraphicsPipeline(m_layerPipeline.get());
-        cb->setShaderResources(m_slots[i]->srb.get());
+        const Slot& slot = *m_slots[i];
+        cb->setGraphicsPipeline(slot.format == media::PixelFormat::RGBA ? m_rgbaPipeline.get() : m_nv12Pipeline.get());
+        cb->setViewport(QRhiViewport(0, 0, float(targetSize.width()), float(targetSize.height())));
+        cb->setScissor(scissor);
+        cb->setShaderResources(slot.srb.get());
         cb->setVertexInput(0, 1, &input);
         cb->draw(4);
     }

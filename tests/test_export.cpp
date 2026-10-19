@@ -212,6 +212,51 @@ TEST_CASE("Exportar a otra resolución y relación de aspecto", "[export]")
     CHECK(f.y[size_t(360) * 960 + 480] > 17);            // contenido
 }
 
+TEST_CASE("Rendimiento de la exportación en cadena (1080p60, codificador por GPU)", "[export][perf]")
+{
+    const auto& encoders = media::Encoder::availableVideoEncoders();
+    if (std::none_of(encoders.begin(), encoders.end(), [](const auto& e) { return e.name == "h264_nvenc"; }))
+        SKIP("Sin NVENC en este equipo");
+    QTemporaryDir dir;
+    const Project p = projectWith("count_1080p60.mp4", 1920, 1080, {60, 1});
+    auto s = settingsFor(dir.filePath("perf.mp4"), p);
+    s.videoCodec = "h264_nvenc";
+    exporting::ExportProgress progress;
+    REQUIRE(runExport(p, s, &progress)); // 180 fotogramas
+    std::printf("[export] cadena 1080p60 NVENC: %.0f fps (decodificar %.1f · componer %.1f · codificar %.1f ms)\n",
+                progress.fps, progress.decodeMs, progress.renderMs, progress.encodeMs);
+    // La suma secuencial de las etapas daría menos de lo que logra la cadena.
+    CHECK(progress.fps > 1000.0 / (progress.decodeMs + progress.renderMs + progress.encodeMs));
+}
+
+TEST_CASE("Los títulos y transformaciones llegan al archivo exportado", "[export][f2]")
+{
+    QTemporaryDir dir;
+    Project p = Project::createDefault();
+    p.settings.width = 640;
+    p.settings.height = 360;
+    TitleStyle style;
+    style.text = "MMMM";
+    style.size = 0.3;
+    style.shadow = false;
+    const Id title = edit::placeTitle(p, p.videoTracks[0].id, 0, 10, style);
+    edit::setProperty(p, title, edit::Property::PositionY, 0, -0.25); // en la mitad superior
+    auto s = settingsFor(dir.filePath("titulo.mp4"), p);
+    REQUIRE(runExport(p, s));
+    const auto frames = decodeAll(s.path.toStdString());
+    REQUIRE(frames.size() == 10);
+    const auto& f = *frames[5];
+    auto maxLuma = [&](int y0, int y1) {
+        int m = 0;
+        for (int y = y0; y < y1; ++y)
+            for (int x = 0; x < f.width; ++x)
+                m = std::max(m, int(f.y[size_t(y) * size_t(f.width) + size_t(x)]));
+        return m;
+    };
+    CHECK(maxLuma(30, 150) > 200);  // el texto blanco, desplazado hacia arriba
+    CHECK(maxLuma(220, 360) < 30);  // la mitad inferior queda negra
+}
+
 TEST_CASE("Cancelar la exportación borra el archivo parcial", "[export]")
 {
     QTemporaryDir dir;
