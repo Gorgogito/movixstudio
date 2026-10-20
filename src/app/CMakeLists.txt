@@ -22,7 +22,7 @@ if(WIN32)
     target_sources(MovixStudio PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/movixstudio.rc)
 endif()
 # Versión publicada más reciente (API de GitHub); vacía = sin búsqueda de actualizaciones.
-set(MOVIX_UPDATE_URL "https://api.github.com/repos/movixstudio/movixstudio/releases/latest"
+set(MOVIX_UPDATE_URL "https://api.github.com/repos/Gorgogito/movixstudio/releases/latest"
     CACHE STRING "Dirección de la versión más reciente (formato de la API de versiones de GitHub)")
 target_compile_definitions(MovixStudio PRIVATE MOVIX_VERSION="${PROJECT_VERSION}" MOVIX_UPDATE_URL="${MOVIX_UPDATE_URL}")
 if(MSVC)

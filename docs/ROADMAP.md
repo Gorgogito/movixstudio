@@ -245,4 +245,5 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - La instalación real del MSI (asistente, accesos directos, asociación de archivos, desinstalación
   y actualización entre versiones) en un equipo: se verificó su contenido extrayéndolo, con una
   prueba de humo de la IA y la aplicación sin nada más en el PATH.
-- La dirección del repositorio público (`MOVIX_UPDATE_URL`, `PROJECT_HOMEPAGE_URL`).
+- Publicar la primera versión en https://github.com/Gorgogito/movixstudio/releases con el MSI
+  adjunto (nombre `MovixStudio-<versión>-win64.msi`), para que la búsqueda de actualizaciones la encuentre.

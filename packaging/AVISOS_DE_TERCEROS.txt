@@ -2,7 +2,7 @@ MovixStudio — avisos de terceros
 ================================
 
 MovixStudio es software libre bajo la Licencia Pública General de GNU, versión 3 o posterior
-(archivo LICENSE). Su código fuente completo está en https://github.com/movixstudio/movixstudio.
+(archivo LICENSE). Su código fuente completo está en https://github.com/Gorgogito/movixstudio.
 
 Esta distribución incluye los componentes de terceros siguientes. El texto de cada licencia está
 en la carpeta «licenses» junto a este archivo.
