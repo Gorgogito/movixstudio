@@ -66,7 +66,12 @@ ApplicationWindow {
     Component.onCompleted: {
         project.checkRecovery()
         updates.checkAtStartup()
-        if (initialFile.toString() !== "")
+        if (initialFile.toString() === "")
+            return
+        // Con una copia por recuperar, se decide antes de abrir el archivo: recuperarla lo sustituiría.
+        if (recoveryDialog.visible)
+            recoveryDialog.pendingFile = initialFile
+        else
             project.importFiles([initialFile])
     }
 
@@ -452,6 +457,9 @@ ApplicationWindow {
     Dialog {
         id: recoveryDialog
         property string when
+        property url pendingFile // archivo con el que se abrió la aplicación, a la espera de la decisión
+        readonly property string pendingName: pendingFile.toString() === ""
+                                              ? "" : decodeURIComponent(pendingFile.toString().split("/").pop())
         title: qsTr("Recuperar proyecto")
         modal: true
         anchors.centerIn: parent
@@ -459,11 +467,35 @@ ApplicationWindow {
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: qsTr("MovixStudio no se cerró correctamente. Hay una copia automática del %1.\n¿Quieres recuperarla?").arg(recoveryDialog.when)
+            text: recoveryDialog.pendingName === ""
+                  ? qsTr("MovixStudio no se cerró correctamente. Hay una copia automática del %1.\n¿Quieres recuperarla?").arg(recoveryDialog.when)
+                  : qsTr("MovixStudio no se cerró correctamente. Hay una copia automática del %1.\n¿Quieres recuperarla en lugar de abrir «%2»?").arg(recoveryDialog.when).arg(recoveryDialog.pendingName)
         }
         footer: DialogButtonBox {
-            Button { text: qsTr("Recuperar"); highlighted: true; onClicked: { recoveryDialog.close(); project.recoverAutosave() } }
-            Button { text: qsTr("Descartar"); onClicked: { recoveryDialog.close(); project.discardAutosave() } }
+            Button {
+                text: qsTr("Recuperar")
+                highlighted: true
+                onClicked: {
+                    recoveryDialog.pendingFile = ""
+                    recoveryDialog.close()
+                    project.recoverAutosave()
+                }
+            }
+            Button {
+                text: recoveryDialog.pendingName === "" ? qsTr("Descartar") : qsTr("Descartar y abrir «%1»").arg(recoveryDialog.pendingName)
+                onClicked: {
+                    project.discardAutosave()
+                    recoveryDialog.close()
+                }
+            }
+        }
+        // Al descartar (o al cerrar con Esc, que conserva la copia para la próxima vez) se abre el archivo.
+        onClosed: {
+            if (pendingFile.toString() === "")
+                return
+            const file = pendingFile
+            pendingFile = ""
+            project.importFiles([file])
         }
     }
 

@@ -1713,6 +1713,16 @@ Do you want to recover it?</translation>
         <source>Buscar actualizaciones al &amp;iniciar</source>
         <translation>Check for updates at &amp;startup</translation>
     </message>
+    <message>
+        <source>MovixStudio no se cerró correctamente. Hay una copia automática del %1.
+¿Quieres recuperarla en lugar de abrir «%2»?</source>
+        <translation>MovixStudio did not close properly. There is an automatic copy from %1.
+Do you want to recover it instead of opening “%2”?</translation>
+    </message>
+    <message>
+        <source>Descartar y abrir «%1»</source>
+        <translation>Discard and open “%1”</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -2761,7 +2771,7 @@ Do you want to recover it?</translation>
     </message>
     <message>
         <source>Novedades</source>
-        <translation>What's new</translation>
+        <translation>What&apos;s new</translation>
     </message>
     <message>
         <source>Instalar ahora</source>
