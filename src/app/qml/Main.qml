@@ -249,6 +249,21 @@ ApplicationWindow {
             MenuItem { text: qsTr("Dividir en &escenas"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.splitScenes() }
             MenuItem { text: qsTr("Separar &voz y música"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.separateVoice() }
             MenuSeparator {}
+            MenuItem { text: qsTr("Quitar el fondo (&personas)"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.removeBackground("portrait") }
+            MenuItem { text: qsTr("Quitar el fondo (cualquier &sujeto)"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.removeBackground("general") }
+            MenuItem { text: qsTr("Aumentar la resolución ×&2"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.upscale(2) }
+            MenuItem { text: qsTr("Aumentar la resolución ×&4"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.upscale(4) }
+            MenuItem { text: qsTr("Cámara lenta suave ×2"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.slowMotion(2) }
+            MenuItem { text: qsTr("Cámara lenta suave ×4"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.slowMotion(4) }
+            MenuItem { text: qsTr("Seguir el &movimiento de la máscara"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.trackMotion() }
+            Menu {
+                title: qsTr("&Reencuadre automático")
+                enabled: !ai.busy && project.selection.length > 0
+                MenuItem { text: qsTr("Vertical 9:16"); onTriggered: ai.autoReframe("9:16") }
+                MenuItem { text: qsTr("Cuadrado 1:1"); onTriggered: ai.autoReframe("1:1") }
+                MenuItem { text: qsTr("Retrato 4:5"); onTriggered: ai.autoReframe("4:5") }
+            }
+            MenuSeparator {}
             MenuItem { text: qsTr("Te&xto a voz…"); enabled: !ai.busy; onTriggered: ttsDialog.open() }
             MenuItem { text: qsTr("T&raducir subtítulos…"); enabled: !ai.busy && project.durationFrames > 0; onTriggered: translateDialog.open() }
             MenuSeparator {}
@@ -297,6 +312,10 @@ ApplicationWindow {
                 overlayMode: inspector.overlayMode
                 overlayMaskIndex: inspector.maskIndex
                 onKeyPicked: inspector.pickingKey = false
+                onObjectPicked: (u, v) => {
+                    inspector.pickingObject = false
+                    ai.segmentObject(u, v)
+                }
             }
             Inspector {
                 id: inspector
@@ -472,7 +491,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Theme.text
-                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición y subtítulos automáticos con IA local (fase F4).")
+                text: qsTr("Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición e IA local de audio, texto y video (fase F5).")
             }
             Text {
                 Layout.fillWidth: true

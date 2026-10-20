@@ -328,6 +328,92 @@
         <source>Selecciona en la línea de tiempo un clip con audio.</source>
         <translation>Select a clip with audio in the timeline.</translation>
     </message>
+    <message>
+        <source>Recortando el fondo de «%1»…</source>
+        <translation>Removing the background of “%1”…</translation>
+    </message>
+    <message>
+        <source>Aumentando la resolución de «%1»…</source>
+        <translation>Upscaling “%1”…</translation>
+    </message>
+    <message>
+        <source>Creando fotogramas intermedios de «%1»…</source>
+        <translation>Creating in-between frames for “%1”…</translation>
+    </message>
+    <message>
+        <source>Siguiendo el movimiento en «%1»…</source>
+        <translation>Tracking motion in “%1”…</translation>
+    </message>
+    <message>
+        <source>Buscando el sujeto de «%1»…</source>
+        <translation>Finding the subject of “%1”…</translation>
+    </message>
+    <message>
+        <source>Seguir el movimiento</source>
+        <translation>Track motion</translation>
+    </message>
+    <message numerus="yes">
+        <source>Movimiento seguido en %n fotogramas.</source>
+        <translation>
+            <numerusform>Motion tracked over %n frame.</numerusform>
+            <numerusform>Motion tracked over %n frames.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Reencuadre automático</source>
+        <translation>Auto reframe</translation>
+    </message>
+    <message>
+        <source>Proyecto reencuadrado a %1.</source>
+        <translation>Project reframed to %1.</translation>
+    </message>
+    <message>
+        <source>No se pudo reencuadrar el clip.</source>
+        <translation>The clip could not be reframed.</translation>
+    </message>
+    <message>
+        <source>Aumentar la resolución</source>
+        <translation>Upscale</translation>
+    </message>
+    <message>
+        <source>Cámara lenta suave</source>
+        <translation>Smooth slow motion</translation>
+    </message>
+    <message>
+        <source>No se pudo usar el video generado.</source>
+        <translation>The generated video could not be used.</translation>
+    </message>
+    <message>
+        <source>Resolución aumentada a %1 × %2.</source>
+        <translation>Upscaled to %1 × %2.</translation>
+    </message>
+    <message>
+        <source>Cámara lenta suave a %1 fps.</source>
+        <translation>Smooth slow motion at %1 fps.</translation>
+    </message>
+    <message>
+        <source>Recortar el fondo</source>
+        <translation>Remove background</translation>
+    </message>
+    <message numerus="yes">
+        <source>Fondo recortado (%n fotogramas).</source>
+        <translation>
+            <numerusform>Background removed (%n frame).</numerusform>
+            <numerusform>Background removed (%n frames).</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>El clip ya no existe.</source>
+        <translation>The clip no longer exists.</translation>
+    </message>
+    <message>
+        <source>Selecciona un clip de video y pon el cabezal sobre él.</source>
+        <translation>Select a video clip and place the playhead over it.</translation>
+    </message>
+    <message>
+        <source>Selecciona un clip de video con una máscara (la región que se seguirá) y pon el cabezal sobre él.</source>
+        <translation>Select a video clip with a mask (the region to track) and place the playhead over it.</translation>
+    </message>
 </context>
 <context>
     <name>AiStatus</name>
@@ -663,6 +749,38 @@
     <message>
         <source>En el visor: arrastra los puntos o el centro; doble clic añade un punto y clic derecho en un punto lo quita.</source>
         <translation>On the viewer: drag the points or the center; double-click adds a point and right-click on a point removes it.</translation>
+    </message>
+    <message>
+        <source>Recorte por IA</source>
+        <translation>AI cutout</translation>
+    </message>
+    <message>
+        <source>Quita el fondo sin pantalla verde. Personas: rápido. Cualquier sujeto: más preciso, pero lento sin GPU compatible.</source>
+        <translation>Removes the background without a green screen. People: fast. Any subject: more precise, but slow without a compatible GPU.</translation>
+    </message>
+    <message>
+        <source>Personas</source>
+        <translation>People</translation>
+    </message>
+    <message>
+        <source>Cualquier sujeto</source>
+        <translation>Any subject</translation>
+    </message>
+    <message>
+        <source>Haz clic en el objeto del visor…</source>
+        <translation>Click the object in the viewer…</translation>
+    </message>
+    <message>
+        <source>Señalar un objeto con un clic</source>
+        <translation>Select an object with a click</translation>
+    </message>
+    <message>
+        <source>Conservar el fondo</source>
+        <translation>Keep the background</translation>
+    </message>
+    <message>
+        <source>Quitar</source>
+        <translation>Remove</translation>
     </message>
 </context>
 <context>
@@ -1508,10 +1626,6 @@ Do you want to recover it?</translation>
         <translation>Export subtitles</translation>
     </message>
     <message>
-        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición y subtítulos automáticos con IA local (fase F4).</source>
-        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development version: multitrack editing with keyframes, titles, transitions, color correction, compositing and automatic subtitles with local AI (phase F4).</translation>
-    </message>
-    <message>
         <source>Añadir &amp;marcador</source>
         <translation>Add &amp;marker</translation>
     </message>
@@ -1542,6 +1656,54 @@ Do you want to recover it?</translation>
     <message>
         <source>Distribuido bajo la Licencia Pública General de GNU, versión 3 o posterior. Usa Qt (LGPLv3), FFmpeg (GPL), miniaudio (dominio público), OpenColorIO (BSD), whisper.cpp (MIT), ONNX Runtime (MIT), eSpeak NG (GPLv3) y SentencePiece (Apache 2.0). Los modelos de IA se descargan aparte, cada uno con su licencia.</source>
         <translation>Distributed under the GNU General Public License, version 3 or later. Uses Qt (LGPLv3), FFmpeg (GPL), miniaudio (public domain), OpenColorIO (BSD), whisper.cpp (MIT), ONNX Runtime (MIT), eSpeak NG (GPLv3) and SentencePiece (Apache 2.0). AI models are downloaded separately, each under its own license.</translation>
+    </message>
+    <message>
+        <source>Quitar el fondo (&amp;personas)</source>
+        <translation>Remove background (&amp;people)</translation>
+    </message>
+    <message>
+        <source>Quitar el fondo (cualquier &amp;sujeto)</source>
+        <translation>Remove background (any &amp;subject)</translation>
+    </message>
+    <message>
+        <source>Aumentar la resolución ×&amp;2</source>
+        <translation>Upscale ×&amp;2</translation>
+    </message>
+    <message>
+        <source>Aumentar la resolución ×&amp;4</source>
+        <translation>Upscale ×&amp;4</translation>
+    </message>
+    <message>
+        <source>Cámara lenta suave ×2</source>
+        <translation>Smooth slow motion ×2</translation>
+    </message>
+    <message>
+        <source>Cámara lenta suave ×4</source>
+        <translation>Smooth slow motion ×4</translation>
+    </message>
+    <message>
+        <source>Seguir el &amp;movimiento de la máscara</source>
+        <translation>Track mask &amp;motion</translation>
+    </message>
+    <message>
+        <source>&amp;Reencuadre automático</source>
+        <translation>Auto &amp;reframe</translation>
+    </message>
+    <message>
+        <source>Vertical 9:16</source>
+        <translation>Vertical 9:16</translation>
+    </message>
+    <message>
+        <source>Cuadrado 1:1</source>
+        <translation>Square 1:1</translation>
+    </message>
+    <message>
+        <source>Retrato 4:5</source>
+        <translation>Portrait 4:5</translation>
+    </message>
+    <message>
+        <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición e IA local de audio, texto y video (fase F5).</source>
+        <translation>Free and open-source video editor, with no subscriptions or watermarks. Development version: multitrack editing with keyframes, titles, transitions, color correction, compositing and local AI for audio, text and video (phase F5).</translation>
     </message>
 </context>
 <context>
@@ -1628,6 +1790,26 @@ Do you want to recover it?</translation>
     <message>
         <source>Separa la voz de la música (batería, bajo y resto).</source>
         <translation>Separates the voice from the music (drums, bass and other).</translation>
+    </message>
+    <message>
+        <source>Recorta personas del fondo; rápido.</source>
+        <translation>Cuts people out of the background; fast.</translation>
+    </message>
+    <message>
+        <source>Recorta cualquier sujeto del fondo; más preciso y más lento.</source>
+        <translation>Cuts any subject out of the background; more precise and slower.</translation>
+    </message>
+    <message>
+        <source>Aumenta la resolución del video (hasta ×4) recuperando detalle.</source>
+        <translation>Increases video resolution (up to ×4) recovering detail.</translation>
+    </message>
+    <message>
+        <source>Crea fotogramas intermedios para cámara lenta suave.</source>
+        <translation>Creates in-between frames for smooth slow motion.</translation>
+    </message>
+    <message>
+        <source>Selecciona y sigue un objeto con un clic.</source>
+        <translation>Selects and follows an object with a click.</translation>
     </message>
 </context>
 <context>
@@ -1973,6 +2155,14 @@ Do you want to recover it?</translation>
     <message>
         <source>Reducción de ruido</source>
         <translation>Noise reduction</translation>
+    </message>
+    <message>
+        <source>Invertir el recorte</source>
+        <translation>Invert cutout</translation>
+    </message>
+    <message>
+        <source>Quitar el recorte</source>
+        <translation>Remove cutout</translation>
     </message>
 </context>
 <context>

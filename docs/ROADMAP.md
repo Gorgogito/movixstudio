@@ -125,7 +125,7 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - Pendientes de F2 que siguen abiertos: *speed ramping*, interpolación de keyframes en la interfaz,
   animaciones de texto, atajos configurables, proxies, copia cero, selección por recuadro.
 
-## F4 — IA de audio y texto (local) 🚧
+## F4 — IA de audio y texto (local) ✅
 
 - [x] Proceso `movix-ai-worker` aparte (un fallo o falta de memoria no cierra el editor): JSON por
       líneas en stdin/stdout, cola de trabajos, progreso, cancelación y detección de caídas
@@ -181,10 +181,42 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
   menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*).
 - La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
 
-## F5 — IA visual (local)
+## F5 — IA visual (local) ✅
 
-Eliminación de fondo (BiRefNet/MODNet), máscaras y seguimiento con SAM 2, *motion tracking*,
-encuadre automático, escalado (Real-ESRGAN), interpolación de fotogramas (RIFE).
+- [x] GPU 100 % libre: whisper.cpp con Vulkan (cargador de Khronos, sin Vulkan SDK) y ONNX Runtime
+      con el proveedor WebGPU (plugin oficial MIT; Dawn sobre Vulkan, sin `dxil.dll` propietario).
+      Si un modelo no cabe en la GPU, la sesión se recarga en la CPU y repite (nunca falla por la GPU)
+- [x] Mates de IA por clip: video en escala de grises cuya luma es la opacidad, decodificado al
+      instante de la fuente y combinado con las máscaras (`.mxproj` v6); invertir o quitar
+- [x] Quitar el fondo: MODNet (personas, en GPU: ~7 fps en 1080p, 3,7× la CPU) y BiRefNet lite
+      (cualquier sujeto; en CPU porque supera el límite de búferes del proveedor WebGPU)
+- [x] Seleccionar un objeto con un clic (SAM 2.1 tiny, en GPU) y seguirlo por el clip
+- [x] Seguimiento de movimiento: correlación cruzada normalizada sobre luma y croma con plantilla
+      gaussiana adaptable; anima la máscara y mueve con ella los clips adjuntos (títulos, imágenes)
+- [x] Reencuadre automático a 9:16, 1:1 o 4:5: cambia el formato del proyecto, escala para cubrir
+      y anima la posición siguiendo al sujeto (MODNet o, sin personas, lo que destaca del fondo)
+- [x] Aumentar la resolución ×2/×4 (Real-ESRGAN general x4v3, por teselas, en GPU) y cámara lenta
+      suave ×2/×4 (RIFE 4 con paso de tiempo, en GPU); el audio original se conserva separado
+
+### Correcciones que salieron de las pruebas
+
+- Dawn no encontraba `vulkan-1.dll` (lo busca junto a su DLL) y caía a Direct3D 12: se copia el
+  cargador de Vulkan de vcpkg junto a los ejecutables.
+- Cerrar un proceso con sesiones de ONNX Runtime vivas en el plugin WebGPU fallaba
+  (`0xc0000409`): el entorno y las sesiones no se destruyen al salir.
+- El rastreador solo con luma perdía objetos que se distinguen del fondo por el color.
+- La prueba del escalado medía PSNR, que favorece el desenfoque; ahora mide la nitidez recuperada.
+- `frameToRgba` no admite fotogramas RGBA de entrada (la referencia bilineal de una prueba era basura).
+
+### Limitaciones conocidas
+
+- BiRefNet en la CPU tarda ~10 s por fotograma (1024 × 1024): para video, mejor «Personas» o el
+  clic con SAM 2. HTDemucs sigue en la CPU (crear su sesión en la GPU cuesta más de lo que ahorra).
+- La primera ejecución en la GPU tarda unos segundos más (el controlador compila los sombreadores).
+- SAM 2 se propaga desde el cabezal hasta el final del clip (no hacia atrás) guiándose por la
+  máscara anterior; con oclusiones largas puede perder el objeto.
+- El seguimiento usa una región rectangular sin escala ni giro; el reencuadre solo desplaza en
+  horizontal (pensado para pasar de un video horizontal a vertical, cuadrado o 4:5).
 
 ## F6 — Pulido y ecosistema
 

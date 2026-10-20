@@ -55,6 +55,7 @@ struct VideoLayer {
     double gradeMix = 0.0;
     ChromaKey chromaKey;
     std::vector<LayerMask> masks;
+    const AiMatte* matte = nullptr; // mate de IA (el instante es el de `sourceTime`)
     BlendMode blend = BlendMode::Normal;
     // Clip compuesto: capas de su secuencia en el fotograma que corresponde (de abajo arriba).
     bool compound = false;

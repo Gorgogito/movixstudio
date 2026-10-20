@@ -86,6 +86,8 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
             lm.points = m.points;
         l.masks.push_back(std::move(lm));
     }
+    if (c.matte.active() && !c.isCompound() && !c.title)
+        l.matte = &c.matte;
     l.blend = c.blend;
     if (!extended)
         l.opacity *= fadeFactor(c.fadeIn, c.fadeOut, rel, c.duration);

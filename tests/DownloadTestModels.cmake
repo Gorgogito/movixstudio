@@ -21,6 +21,15 @@ set(MODELS
     "opus-mt-en-es/target.spm|https://huggingface.co/Xenova/opus-mt-en-es/resolve/4b002a4c7edd54a7ced58877258b87f7efd3f892/target.spm|e236ee6d866b635c0142114f8647f39831f9d92534aa2aad75c942f6a78ad0e3"
     "opus-mt-en-es/vocab.json|https://huggingface.co/Xenova/opus-mt-en-es/resolve/4b002a4c7edd54a7ced58877258b87f7efd3f892/vocab.json|b074b4cca0036ade5a39ea97faabd534e1015482c480fc2cb02c6481983eb163"
     # HTDemucs (separación de voz y música).
+    # IA visual (F5).
+    "modnet/model.onnx|https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx|07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9"
+    "birefnet-lite/model.onnx|https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/onnx/model.onnx|5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"
+    "realesrgan-x4v3/model.onnx|https://huggingface.co/skillsafe-ai/realesr-general-x4v3/resolve/042a40bc4c918349ad3e2e607a68ae509a4c27b5/model.onnx|a946f7a9397021b9b6b7e71df3d2821b04cc09ff244423b7ca79cb191ce4a00e"
+    "rife-4/model.onnx|https://huggingface.co/walterlow/RIFE_fp32_timestep/resolve/ee09066f9822f8b28b8477a1b4cc30f19d607590/RIFE_fp32_timestep.onnx|4da60c1f20d42dba4f21503140940aa48a488585ead977532bf22e95a0319327"
+    "sam2-tiny/vision_encoder.onnx|https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx|4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c"
+    "sam2-tiny/vision_encoder.onnx_data|https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx_data|e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc"
+    "sam2-tiny/prompt_encoder_mask_decoder.onnx|https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx|874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf"
+    "sam2-tiny/prompt_encoder_mask_decoder.onnx_data|https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx_data|e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47"
     "htdemucs/htdemucs.onnx|https://huggingface.co/smank/htdemucs-onnx/resolve/fb1fd25aa6260c253d86bbb4aa26b73aebc79f10/htdemucs.onnx|d2b401f322558cd57d67a752ed7be3fa55178a0626011eda8ac7bb74e17280c0"
 )
 file(MAKE_DIRECTORY "${OUT_DIR}")

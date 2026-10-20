@@ -22,17 +22,24 @@ Rectangle {
     readonly property bool videoClip: hasClip && info.isVideoTrack === true
     property int tab: 0
     property bool pickingKey: false
+    property bool pickingObject: false // esperando el clic sobre el objeto que se recortará (SAM 2)
     property int maskIndex: 0
     // Qué edita el recuadro del visor según la pestaña.
     readonly property string overlayMode: !videoClip ? "transform"
                                           : pickingKey ? "pick"
+                                          : pickingObject ? "pickObject"
                                           : (tab === 2 && maskIndex < (info.masks ?? []).length) ? "mask" : "transform"
     onInfoChanged: {
-        if (!videoClip)
+        if (!videoClip) {
             pickingKey = false
+            pickingObject = false
+        }
         maskIndex = Math.max(0, Math.min(maskIndex, (info.masks ?? []).length - 1))
     }
-    onTabChanged: pickingKey = false
+    onTabChanged: {
+        pickingKey = false
+        pickingObject = false
+    }
 
     function refresh() {
         info = selectedCount === 1 ? project.clipInfo(project.selection[0]) : ({})
@@ -129,7 +136,10 @@ Rectangle {
             EffectsPanel {
                 visible: inspector.videoClip && inspector.tab === 2
                 project: inspector.project
+                ai: inspector.ai
                 info: inspector.info
+                pickingObject: inspector.pickingObject
+                onPickObjectToggled: (on) => inspector.pickingObject = on
                 picking: inspector.pickingKey
                 onPickToggled: (on) => inspector.pickingKey = on
                 maskIndex: inspector.maskIndex

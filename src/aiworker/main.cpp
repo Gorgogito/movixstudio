@@ -2,10 +2,14 @@
 // de memoria aquí no cierra el editor). Ver ai/WorkerProtocol.h.
 
 #include "ai/Beats.h"
+#include "ai/Onnx.h"
 #include "ai/Scenes.h"
 #include "ai/Separation.h"
 #include "ai/Translate.h"
 #include "ai/Tts.h"
+#include "ai/Tracking.h"
+#include "ai/VideoAi.h"
+#include "ai/Vision.h"
 #include "ai/Speech.h"
 #include "ai/WorkerProtocol.h"
 #include "core/ProjectFile.h"
@@ -25,6 +29,10 @@
 #include <mutex>
 #include <string>
 #include <thread>
+
+extern "C" {
+#include <libavutil/log.h>
+}
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -208,6 +216,60 @@ void runJob(Queue& queue, const QJsonObject& job)
         e["accompaniment"] = QString::fromStdString(accompaniment);
         e["duration"] = qint64(double(stems.vocals.size() / 2) * kUsPerSecond / ai::kSeparationSampleRate);
         send(e);
+    } else if (type == QLatin1String(ai::protocol::kRemoveBackground) || type == QLatin1String(ai::protocol::kSegmentObject)) {
+        ai::MatteResult matte;
+        const bool ok = type == QLatin1String(ai::protocol::kSegmentObject)
+            ? ai::segmentObject(modelPath, mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["x"].toDouble(0.5),
+                                job["y"].toDouble(0.5), job["output"].toString().toStdString(), matte, &error,
+                                progressIn(0.0, 1.0, "matte"), canceled)
+            : ai::removeBackground(modelPath,
+                                   job["kind"].toString() == QLatin1String("general") ? ai::MatteModel::General : ai::MatteModel::Portrait,
+                                   mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["output"].toString().toStdString(),
+                                   matte, &error, progressIn(0.0, 1.0, "matte"), canceled);
+        if (!ok)
+            return fail(error);
+        QJsonObject e = event(id, "result");
+        e["output"] = QString::fromStdString(matte.output);
+        e["start"] = qint64(matte.start);
+        e["frames"] = matte.frames;
+        send(e);
+    } else if (type == QLatin1String(ai::protocol::kUpscale) || type == QLatin1String(ai::protocol::kInterpolate)) {
+        ai::VideoResult video;
+        const std::string output = job["output"].toString().toStdString();
+        const bool ok = type == QLatin1String(ai::protocol::kUpscale)
+            ? ai::upscaleVideo(modelPath, mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["scale"].toInt(2), output,
+                               video, &error, progressIn(0.0, 1.0, "video"), canceled)
+            : ai::interpolateVideo(modelPath, mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["factor"].toInt(2),
+                                   output, video, &error, progressIn(0.0, 1.0, "video"), canceled);
+        if (!ok)
+            return fail(error);
+        QJsonObject e = event(id, "result");
+        e["output"] = QString::fromStdString(video.output);
+        e["width"] = video.width;
+        e["height"] = video.height;
+        e["fps"] = video.fps;
+        e["frames"] = video.frames;
+        send(e);
+    } else if (type == QLatin1String(ai::protocol::kTrack) || type == QLatin1String(ai::protocol::kSubjectCenters)) {
+        std::vector<ai::TrackPoint> points;
+        bool ok = false;
+        if (type == QLatin1String(ai::protocol::kTrack)) {
+            const QJsonArray r = job["region"].toArray();
+            const ai::Region region{r.at(0).toDouble(0.5), r.at(1).toDouble(0.5), r.at(2).toDouble(0.2), r.at(3).toDouble(0.2)};
+            ok = ai::trackRegion(mediaPath, job["from"].toInteger(), job["to"].toInteger(), region, points, &error,
+                                 progressIn(0.0, 1.0, "track"), canceled);
+        } else {
+            ok = ai::subjectCenters(mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["step"].toInteger(250'000),
+                                    modelPath, points, &error, progressIn(0.0, 1.0, "detect"), canceled);
+        }
+        if (!ok)
+            return fail(error);
+        QJsonArray list;
+        for (const ai::TrackPoint& t : points)
+            list.append(QJsonArray{qint64(t.time), t.cx, t.cy, double(t.confidence)});
+        QJsonObject e = event(id, "result");
+        e["points"] = list;
+        send(e);
     } else {
         fail("Trabajo desconocido: " + type.toStdString());
     }
@@ -218,9 +280,11 @@ void runJob(Queue& queue, const QJsonObject& job)
 int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv); // rutas de la aplicación (sin bucle de eventos)
+    av_log_set_level(AV_LOG_ERROR);   // sin los mensajes informativos de los codificadores
     g_exeDir = QDir::toNativeSeparators(QCoreApplication::applicationDirPath()).toStdString();
     if (argc > 1 && std::string(argv[1]) == "--info") {
-        std::printf("movix-ai-worker\n%s\n", ai::systemInfo().c_str());
+        std::printf("movix-ai-worker\n%s\nONNX Runtime GPU: %s\n", ai::systemInfo().c_str(),
+                    ai::onnx::gpuAvailable() ? ai::onnx::gpuDescription().c_str() : "no disponible");
         return 0;
     }
 #ifdef _WIN32
@@ -282,3 +346,4 @@ int main(int argc, char* argv[])
     worker.join();
     return 0;
 }
+

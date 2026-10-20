@@ -95,3 +95,10 @@ make_media(scenes_beats.mp4
     -f lavfi -i "aevalsrc='0.8*sin(2*PI*60*t)*exp(-mod(t-0.25\,0.5)*14)*gte(t\,0.25)':s=48000:d=6"
     -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p"
     -c:v libx264 -preset veryfast -g 30 -c:a aac -b:a 128k)
+
+# 10) Sujeto para recortar: bola roja de radio 70 que oscila en horizontal (centro x = 320 + 100·sen 3t,
+#     y = 180) sobre un fondo gris con textura suave. 1 s a 10 fps, 640×360.
+set(ext .mp4)
+make_media(subject_ball.mp4
+    -f lavfi -i "color=c=gray:s=640x360:r=10:d=1,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"
+    -c:v libx264 -preset veryfast -crf 12)

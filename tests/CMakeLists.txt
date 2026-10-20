@@ -29,6 +29,7 @@ add_executable(movix_tests
     test_ai_audio.cpp
     test_ai_media.cpp
     test_ai_onnx.cpp
+    test_ai_vision.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
@@ -68,3 +69,4 @@ catch_discover_tests(movix_tests
     DISCOVERY_MODE PRE_TEST
     DL_PATHS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}"
     PROPERTIES FIXTURES_REQUIRED "test_media;test_models")
+

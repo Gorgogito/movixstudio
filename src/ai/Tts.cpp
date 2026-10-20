@@ -123,7 +123,7 @@ struct KokoroModel {
 
 KokoroModel& kokoro()
 {
-    static KokoroModel m;
+    static KokoroModel& m = *new KokoroModel; // sin destruir al salir (ver onnx::env)
     return m;
 }
 

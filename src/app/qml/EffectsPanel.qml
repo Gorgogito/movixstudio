@@ -10,6 +10,9 @@ ColumnLayout {
 
     required property ProjectController project
     required property var info
+    property AiController ai: null
+    property bool pickingObject: false
+    signal pickObjectToggled(bool on)
     property bool picking: false        // cuentagotas activo sobre el visor
     signal pickToggled(bool on)
 
@@ -44,6 +47,68 @@ ColumnLayout {
         onAccepted: {
             panel.setKey("color", selectedColor.toString())
             panel.project.endInteraction()
+        }
+    }
+
+    // ---- Recorte por IA ----
+    Text {
+        Layout.topMargin: 6
+        text: qsTr("Recorte por IA")
+        color: Theme.accentHover
+        font.pixelSize: Theme.fontSmall
+        font.bold: true
+        font.letterSpacing: 0.8
+        font.capitalization: Font.AllUppercase
+    }
+    Text {
+        Layout.fillWidth: true
+        visible: !panel.info.hasMatte
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.pixelSize: Theme.fontSmall
+        text: qsTr("Quita el fondo sin pantalla verde. Personas: rápido. Cualquier sujeto: más preciso, pero lento sin GPU compatible.")
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        visible: !panel.info.hasMatte
+        Button {
+            Layout.fillWidth: true
+            text: qsTr("Personas")
+            enabled: panel.ai !== null && !panel.ai.busy
+            focusPolicy: Qt.NoFocus
+            onClicked: panel.ai.removeBackground("portrait")
+        }
+        Button {
+            Layout.fillWidth: true
+            text: qsTr("Cualquier sujeto")
+            enabled: panel.ai !== null && !panel.ai.busy
+            focusPolicy: Qt.NoFocus
+            onClicked: panel.ai.removeBackground("general")
+        }
+    }
+    Button {
+        Layout.fillWidth: true
+        visible: !panel.info.hasMatte
+        checkable: true
+        checked: panel.pickingObject
+        enabled: panel.ai !== null && !panel.ai.busy
+        text: panel.pickingObject ? qsTr("Haz clic en el objeto del visor…") : qsTr("Señalar un objeto con un clic")
+        focusPolicy: Qt.NoFocus
+        onClicked: panel.pickObjectToggled(checked)
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        visible: panel.info.hasMatte === true
+        CheckBox {
+            text: qsTr("Conservar el fondo")
+            checked: panel.info.matteInvert === true
+            onToggled: panel.project.setMatteInvert(panel.clipId, checked)
+        }
+        Item { Layout.fillWidth: true }
+        Button {
+            text: qsTr("Quitar")
+            focusPolicy: Qt.NoFocus
+            onClicked: panel.project.removeMatte(panel.clipId)
         }
     }
 

@@ -166,7 +166,13 @@ struct Callbacks {
 std::string systemInfo()
 {
     initialize();
-    return whisper_print_system_info();
+    std::string info = whisper_print_system_info();
+    // Dispositivos que ggml puede usar (CPU y, si hay controlador, GPU por Vulkan).
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        info += std::string("\ndispositivo: ") + ggml_backend_dev_name(dev) + " - " + ggml_backend_dev_description(dev);
+    }
+    return info;
 }
 
 bool loadSpeechAudio(const std::string& path, std::vector<float>& out, std::string* error, const ProgressFn& progress,

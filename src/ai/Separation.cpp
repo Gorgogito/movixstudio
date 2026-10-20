@@ -4,7 +4,10 @@
 #include "media/AudioDecoder.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 namespace movix::ai {
 
@@ -19,7 +22,7 @@ struct DemucsModel {
 
 DemucsModel& demucs()
 {
-    static DemucsModel m;
+    static DemucsModel& m = *new DemucsModel; // sin destruir al salir (ver onnx::env)
     return m;
 }
 
@@ -29,7 +32,7 @@ bool load(const std::string& path, std::string* error)
     if (m.session && m.path == path)
         return true;
     try {
-        m.session = onnx::openSession(path);
+        m.session = onnx::openSession(path); // en CPU: en la GPU crear la sesión cuesta más de lo que ahorra
         m.input = onnx::inputNames(*m.session).at(0);
         m.output = onnx::outputNames(*m.session).at(0);
         const auto shape = m.session->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
@@ -100,7 +103,11 @@ bool separate(const std::string& modelPath, const std::vector<float>& stereo, St
             }
             std::vector<Ort::Value> inputs;
             inputs.push_back(onnx::tensor(chunk, {1, 2, segment}));
+            const auto t0 = std::chrono::steady_clock::now();
             auto outputs = onnx::run(*m.session, {m.input}, inputs, {m.output});
+            if (std::getenv("MOVIX_AI_VERBOSE"))
+                std::fprintf(stderr, "demucs: ventana %lld en %.0f ms\n", (long long)c,
+                             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
             // Salida [1, 4 fuentes, 2 canales, segment]: batería, bajo, resto, voz.
             const float* src = outputs[0].GetTensorData<float>();
             for (int64_t i = 0; i < valid; ++i) {
@@ -162,3 +169,5 @@ bool separateFile(const std::string& modelPath, const std::string& mediaPath, Ti
 }
 
 } // namespace movix::ai
+
+

@@ -3,12 +3,14 @@
 #include "TestMedia.h"
 #include "media/AudioFilter.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <QSignalSpy>
 #include <QTest>
 #include <QUrl>
 
+#include <cmath>
 #include <filesystem>
 
 using namespace movix;
@@ -20,7 +22,9 @@ bool modelsAvailable()
     const std::filesystem::path dir(MOVIX_TEST_MODELS_DIR);
     return std::filesystem::exists(dir / "ggml-base.bin") && std::filesystem::exists(dir / "ggml-silero-v6.2.0.bin")
         && std::filesystem::exists(dir / "rnnoise-somnolent-hogwash.rnnn") && std::filesystem::exists(dir / "kokoro-82m/model.onnx")
-        && std::filesystem::exists(dir / "opus-mt-es-en/decoder.onnx") && std::filesystem::exists(dir / "htdemucs/htdemucs.onnx");
+        && std::filesystem::exists(dir / "opus-mt-es-en/decoder.onnx") && std::filesystem::exists(dir / "htdemucs/htdemucs.onnx")
+        && std::filesystem::exists(dir / "modnet/model.onnx") && std::filesystem::exists(dir / "realesrgan-x4v3/model.onnx")
+        && std::filesystem::exists(dir / "rife-4/model.onnx") && std::filesystem::exists(dir / "sam2-tiny/vision_encoder.onnx_data");
 }
 
 // Importa un medio, lo pone en la línea de tiempo y selecciona su clip. Devuelve el id del clip.
@@ -131,6 +135,56 @@ TEST_CASE("Aplicación: pulsos, escenas, subtítulos y silencios con el proceso 
         const auto words = ai.words().size();
         ai.deleteWords(0, 2);
         CHECK(ai.words().size() == words - 3);
+    }
+
+    SECTION("IA visual: recorte, objeto, seguimiento, reencuadre, escalado y cámara lenta")
+    {
+        const core::Id clip = placeMedia(project, "subject_ball.mp4");
+        auto run = [&](auto action) {
+            project.select(qint64(clip), false);
+            action();
+            waitIdle(ai);
+            INFO((errors.isEmpty() ? QString() : errors.last().at(0).toString()).toStdString());
+            REQUIRE(errors.isEmpty());
+        };
+        const auto& p = [&]() -> const core::Project& { return project.project(); };
+
+        run([&] { ai.removeBackground("portrait"); });
+        CHECK(p().findClip(clip)->matte.active());
+        project.removeMatte(qint64(clip));
+        CHECK_FALSE(p().findClip(clip)->matte.active());
+
+        // Objeto con un clic (cabezal al principio, clic en el centro de la bola).
+        project.player()->seekFrame(0);
+        run([&] { ai.segmentObject(320.0 / 640.0, 0.5); });
+        CHECK(p().findClip(clip)->matte.active());
+
+        // Seguimiento: una máscara rectangular sobre la bola sigue su movimiento.
+        REQUIRE(project.addMask(qint64(clip), "rectangle") == 0);
+        project.setClipProperty(qint64(clip), "mask.0.x", 0.5);
+        project.setClipProperty(qint64(clip), "mask.0.width", 0.25);
+        project.setClipProperty(qint64(clip), "mask.0.height", 0.44);
+        run([&] { ai.trackMotion(); });
+        const auto& mx = p().findClip(clip)->masks[0].x;
+        REQUIRE(mx.isAnimated());
+        CHECK(mx.keys.size() >= 9);
+        CHECK(mx.at(p().settings.timeToFrame(fromSeconds(0.5))) * 640.0 == Catch::Approx(320.0 + 100.0 * std::sin(1.5)).margin(10));
+
+        // Reencuadre vertical: el proyecto pasa a 9:16 y el clip cubre el lienzo siguiendo a la bola.
+        run([&] { ai.autoReframe("9:16"); });
+        CHECK(p().settings.width == 360);
+        CHECK(p().settings.height == 640);
+        CHECK(p().findClip(clip)->transform.scale.value == Catch::Approx(640.0 / 360.0 * 640.0 / 360.0).epsilon(0.01));
+        CHECK(p().findClip(clip)->transform.x.isAnimated());
+
+        // Escalado ×2 y cámara lenta ×2 (el medio se sustituye; la velocidad baja a la mitad).
+        const core::FramePos duration = p().findClip(clip)->duration;
+        run([&] { ai.upscale(2); });
+        CHECK(p().findMedia(p().findClip(clip)->mediaId)->width == 1280);
+        run([&] { ai.slowMotion(2); });
+        CHECK(p().findClip(clip)->speed == Catch::Approx(0.5));
+        CHECK(p().findClip(clip)->duration == 2 * duration);
+        CHECK(p().findMedia(p().findClip(clip)->mediaId)->frameRate == Catch::Approx(20.0));
     }
 
     SECTION("Texto a voz y separación de voz")

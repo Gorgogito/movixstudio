@@ -13,6 +13,7 @@ Rectangle {
     property string overlayMode: "transform" // ver TransformOverlay
     property int overlayMaskIndex: 0
     signal keyPicked()
+    signal objectPicked(real u, real v)
     readonly property TimelinePlayer activePlayer: sourceMode ? project.sourcePlayer : project.player
 
     function showTimeline() {
@@ -120,6 +121,7 @@ Rectangle {
                     mode: panel.overlayMode
                     maskIndex: panel.overlayMaskIndex
                     onPicked: panel.keyPicked()
+                    onObjectPicked: (u, v) => panel.objectPicked(u, v)
                 }
             }
 

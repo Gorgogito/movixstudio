@@ -60,6 +60,11 @@ if("vulkan" IN_LIST FEATURES AND VCPKG_CROSSCOMPILING)
         "-DVulkan_GLSLC_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/tools/shaderc/glslc${VCPKG_HOST_EXECUTABLE_SUFFIX}"
         "-DVULKAN_SHADERS_GEN_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/tools/${PORT}/vulkan-shaders-gen${VCPKG_HOST_EXECUTABLE_SUFFIX}"
     )
+elseif("vulkan" IN_LIST FEATURES)
+    # MovixStudio: sin Vulkan SDK; glslc viene del puerto shaderc y el cargador, de vulkan-loader.
+    list(APPEND FEATURE_OPTIONS
+        "-DVulkan_GLSLC_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/tools/shaderc/glslc${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+    )
 endif()
 
 string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static"  GGML_STATIC)

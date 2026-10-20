@@ -18,7 +18,8 @@ namespace movix::core {
 // Versión 3 (F3): recorte, corrección de color (con LUT .cube), croma, máscara y modo de fusión.
 // Versión 4: corrección de color con keyframes, varias máscaras (y de forma libre), clips compuestos.
 // Versión 5 (F4): transcripción de los medios, reducción de ruido por clip, marcadores.
-inline constexpr int kProjectFormatVersion = 5;
+// Versión 6 (F5): mates de IA por clip.
+inline constexpr int kProjectFormatVersion = 6;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {

@@ -18,6 +18,10 @@ enum class ModelTask {
     Speech,        // texto a voz: Kokoro (ONNX) + voces
     Translation,   // traducción: Opus-MT (Marian, ONNX) + SentencePiece
     Separation,    // separación de fuentes: HTDemucs (ONNX)
+    Matting,       // recorte de fondo: MODNet, BiRefNet (ONNX)
+    Upscaling,     // escalado: Real-ESRGAN (ONNX)
+    Interpolation, // fotogramas intermedios: RIFE (ONNX)
+    Segmentation,  // objetos con un clic: SAM 2.1 (ONNX)
 };
 
 struct ModelFile {
@@ -46,6 +50,11 @@ QString defaultVadModel();
 QString defaultDenoiseModel();
 QString speechModel();
 QString separationModel();
+QString portraitMatteModel();
+QString generalMatteModel();
+QString upscaleModel();
+QString interpolationModel();
+QString segmentationModel();
 // Modelo de traducción de `from` a `to` ("es", "en"); vacío si no hay.
 QString translationModel(const QString& from, const QString& to);
 

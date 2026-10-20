@@ -21,6 +21,9 @@ add_library(movix_ai STATIC
     Tts.h Tts.cpp
     Translate.h Translate.cpp
     Separation.h Separation.cpp
+    Vision.h Vision.cpp
+    VideoAi.h VideoAi.cpp
+    Tracking.h Tracking.cpp
 )
 
 target_include_directories(movix_ai PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

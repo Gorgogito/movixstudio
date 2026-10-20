@@ -35,6 +35,7 @@ void VideoSources::clear()
     m_lutCache.clear();
     m_cubeFiles.clear();
     m_maskCache.clear();
+    m_matteCache.clear();
 }
 
 bool masksNeedRaster(const std::vector<core::LayerMask>& masks)
@@ -60,6 +61,57 @@ std::shared_ptr<const MaskImage> VideoSources::maskImage(const std::vector<core:
     if (m_maskCache.size() >= 16)
         m_maskCache.erase(m_maskCache.begin());
     m_maskCache.push_back({masks, w, h, image});
+    return image;
+}
+
+std::shared_ptr<const MaskImage> VideoSources::matteImage(const core::VideoLayer& layer, const std::vector<core::LayerMask>& masks)
+{
+    // Un lector propio por aparición del clip (no comparte el de la imagen).
+    const std::uint64_t key = layer.instance ^ 0x9E3779B97F4A7C15ull;
+    Entry& e = m_readers[key];
+    e.lastUse = ++m_tick;
+    if (!e.reader || e.path != layer.matte->path) {
+        e.reader = std::make_unique<VideoReader>();
+        e.path = layer.matte->path;
+        e.failed = !e.reader->open(e.path, m_hardware);
+    }
+    if (e.failed)
+        return nullptr;
+    const auto frame = e.reader->frameAt(std::max<TimeUs>(0, layer.sourceTime - layer.matte->start));
+    if (!frame || frame->format == media::PixelFormat::RGBA || frame->y.empty())
+        return nullptr;
+
+    CachedMatte& cached = m_matteCache[key];
+    if (cached.frame == frame && cached.masks == masks && cached.invert == layer.matte->invert)
+        return cached.image;
+
+    // Opacidad = luma del mate (expandida si es de rango limitado), invertida si se pide.
+    auto image = std::make_shared<MaskImage>();
+    image->width = frame->width;
+    image->height = frame->height;
+    image->alpha.resize(size_t(frame->width) * size_t(frame->height));
+    const int bytes = frame->format == media::PixelFormat::P016 ? 2 : 1;
+    for (size_t i = 0; i < image->alpha.size(); ++i) {
+        int y = frame->y[i * bytes + (bytes - 1)];
+        if (!frame->fullRange)
+            y = std::clamp((y - 16) * 255 / 219, 0, 255);
+        image->alpha[i] = uint8_t(layer.matte->invert ? 255 - y : y);
+    }
+    // Las máscaras del clip recortan además el mate.
+    if (!masks.empty()) {
+        if (const auto m = maskImage(masks, frame->width, frame->height); m && m->width > 0 && m->height > 0) {
+            // La máscara puede estar a menor resolución: se toma la muestra más cercana.
+            for (int y = 0; y < image->height; ++y) {
+                const size_t my = size_t(std::min(m->height - 1, y * m->height / image->height));
+                for (int x = 0; x < image->width; ++x) {
+                    const size_t mx = size_t(std::min(m->width - 1, x * m->width / image->width));
+                    uint8_t& a = image->alpha[size_t(y) * size_t(image->width) + size_t(x)];
+                    a = uint8_t(a * m->alpha[my * size_t(m->width) + mx] / 255);
+                }
+            }
+        }
+    }
+    cached = {frame, masks, layer.matte->invert, image};
     return image;
 }
 
@@ -182,7 +234,9 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
         }
         out.chromaKey = layer.chromaKey;
         out.masks = layer.masks;
-        if (masksNeedRaster(out.masks))
+        if (layer.matte)
+            out.maskImage = matteImage(layer, out.masks);
+        else if (masksNeedRaster(out.masks))
             out.maskImage = maskImage(out.masks, layerW, layerH);
         out.blend = layer.blend;
         bundle.layers.push_back(std::move(out));

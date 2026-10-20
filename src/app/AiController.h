@@ -82,6 +82,24 @@ public:
     Q_INVOKABLE void translateSubtitles(const QString& from, const QString& to);
     // Separa la voz del resto del audio del clip seleccionado en dos pistas nuevas.
     Q_INVOKABLE void separateVoice();
+    // Recorta el fondo del clip de video seleccionado con un mate de IA. kind: "portrait" (MODNet,
+    // personas) o "general" (BiRefNet, cualquier sujeto; más lento).
+    Q_INVOKABLE void removeBackground(const QString& kind);
+    // Sustituye el video del clip seleccionado por una versión escalada (×2 o ×4) con Real-ESRGAN.
+    Q_INVOKABLE void upscale(int scale);
+    // Cámara lenta suave: RIFE multiplica los fotogramas por `factor` y el clip pasa a ir `factor`
+    // veces más despacio (el audio original queda separado, a su velocidad).
+    Q_INVOKABLE void slowMotion(int factor);
+    // Sigue el movimiento de la región de la primera máscara del clip seleccionado desde el cabezal
+    // hasta el final del clip: la máscara queda animada y los demás clips seleccionados (títulos,
+    // imágenes) se mueven con ella.
+    Q_INVOKABLE void trackMotion();
+    // Cambia el formato del proyecto (aspect: "9:16", "1:1" o "4:5") y anima la posición del clip
+    // seleccionado para que su sujeto quede centrado.
+    Q_INVOKABLE void autoReframe(const QString& aspect);
+    // Recorta el objeto señalado (u, v en fracciones de la capa) del clip seleccionado con SAM 2,
+    // desde el cabezal hasta el final del clip.
+    Q_INVOKABLE void segmentObject(double u, double v);
     Q_INVOKABLE void cancel();
 
     // Edición por texto: elimina de la línea de tiempo lo que ocupan las palabras [first, last].
@@ -103,7 +121,7 @@ signals:
     void notice(const QString& message);
 
 private:
-    enum class Task { None, Download, Transcribe, Silences, Beats, Scenes, Speak, Translate, Separate };
+    enum class Task { None, Download, Transcribe, Silences, Beats, Scenes, Speak, Translate, Separate, Matte, Upscale, SlowMotion, Track, Reframe };
     // Clip sobre el que se analiza (pulsos, escenas) y cómo se lleva su tiempo a la línea de tiempo.
     struct ClipContext {
         movix::core::Id clipId = movix::core::kNoId;
@@ -166,6 +184,10 @@ private:
     movix::core::FramePos m_atFrame = 0;
     movix::core::Id m_sourceTrack = movix::core::kNoId;
     QString m_trackSuffix;
+    int m_factor = 2;
+    movix::core::FramePos m_trackStartRel = 0; // fotograma (relativo al clip) donde empieza el seguimiento
+    QString m_aspect;
+    void startVideoJob(Task task, const QString& modelId, const char* type, const QString& suffix, int factor);
     // Carpeta para los audios generados: junto al proyecto guardado o en los datos de la aplicación.
     QString generatedFolder() const;
     // Añade un archivo de audio generado como medio y lo coloca en `frame` en una pista de audio

@@ -91,6 +91,8 @@ private:
     std::shared_ptr<const media::VideoFrame> title(const core::TitleStyle& style, int w, int h);
     std::shared_ptr<const color::Lut3D> lut(const core::ColorGrade& grade);
     std::shared_ptr<const MaskImage> maskImage(const std::vector<core::LayerMask>& masks, int layerWidth, int layerHeight);
+    // Opacidad del mate de IA de la capa (multiplicada por sus máscaras), o nullptr si no se puede leer.
+    std::shared_ptr<const MaskImage> matteImage(const core::VideoLayer& layer, const std::vector<core::LayerMask>& masks);
     void buildLayers(const std::vector<core::VideoLayer>& layers, FrameBundle& bundle);
 
     struct Entry {
@@ -125,6 +127,13 @@ private:
         std::shared_ptr<const MaskImage> image;
     };
     std::vector<CachedMask> m_maskCache;
+    struct CachedMatte {
+        std::shared_ptr<const media::VideoFrame> frame; // el fotograma del mate del que salió
+        std::vector<core::LayerMask> masks;
+        bool invert = false;
+        std::shared_ptr<const MaskImage> image;
+    };
+    std::unordered_map<std::uint64_t, CachedMatte> m_matteCache; // por aparición del clip
 };
 
 // Mezclador de audio de la línea de tiempo: suma todos los tramos que suenan en un intervalo.

@@ -36,7 +36,7 @@ struct MarianModel {
 
 MarianModel& marian()
 {
-    static MarianModel m;
+    static MarianModel& m = *new MarianModel; // sin destruir al salir (ver onnx::env)
     return m;
 }
 

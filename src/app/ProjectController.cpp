@@ -707,6 +707,21 @@ void ProjectController::jumpToMarker(bool forward)
         m_player->seekFrame(*target);
 }
 
+void ProjectController::setMatteInvert(qint64 clipId, bool invert)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c || !c->matte.active())
+        return;
+    AiMatte m = c->matte;
+    m.invert = invert;
+    apply(tr("Invertir el recorte"), [&](Project& p) { return edit::setMatte(p, Id(clipId), m); });
+}
+
+void ProjectController::removeMatte(qint64 clipId)
+{
+    apply(tr("Quitar el recorte"), [&](Project& p) { return edit::setMatte(p, Id(clipId), AiMatte{}); });
+}
+
 void ProjectController::setDenoise(qint64 clipId, double amount)
 {
     apply(tr("Reducción de ruido"), [&](Project& p) { return edit::setDenoise(p, Id(clipId), amount); },
@@ -957,6 +972,8 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
              return list;
          }()},
         {"colorActive", !c->color.isIdentity()},
+        {"hasMatte", c->matte.active()},
+        {"matteInvert", c->matte.invert},
         {"chromaKey", QVariantMap{{"enabled", c->chromaKey.enabled},
                                   {"color", colorName(c->chromaKey.color)},
                                   {"tolerance", c->chromaKey.tolerance},

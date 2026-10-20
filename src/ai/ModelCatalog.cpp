@@ -164,6 +164,56 @@ const std::vector<ModelInfo>& modelCatalog()
                              hf("smank/htdemucs-onnx", "fb1fd25aa6260c253d86bbb4aa26b73aebc79f10", QStringLiteral("htdemucs.onnx")),
                              "d2b401f322558cd57d67a752ed7be3fa55178a0626011eda8ac7bb74e17280c0", 304321552)};
         list.push_back(demucs);
+
+        auto single = [&](const char* id, ModelTask task, const char* name, const char* description, const char* license,
+                          const char* repo, const char* revision, const char* path, const char* sha256, std::int64_t size) {
+            ModelInfo m;
+            m.id = QLatin1String(id);
+            m.task = task;
+            m.name = QLatin1String(name);
+            m.description = QCoreApplication::translate("ModelCatalog", description);
+            m.license = QLatin1String(license);
+            m.folder = m.id;
+            m.files = {file("model.onnx", hf(repo, revision, QLatin1String(path)), sha256, size)};
+            list.push_back(m);
+        };
+        single("modnet", ModelTask::Matting, "MODNet", QT_TRANSLATE_NOOP("ModelCatalog", "Recorta personas del fondo; rápido."),
+               "Apache-2.0", "Xenova/modnet", "fa2fa546052fba4c08921230a26cc69a333fca12", "onnx/model.onnx",
+               "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9", 25888640);
+        single("birefnet-lite", ModelTask::Matting, "BiRefNet lite",
+               QT_TRANSLATE_NOOP("ModelCatalog", "Recorta cualquier sujeto del fondo; más preciso y más lento."), "MIT",
+               "onnx-community/BiRefNet_lite-ONNX", "de15b22ba131738a16dff04aab8bdf8dc32e3ac1", "onnx/model.onnx",
+               "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333", 224005088);
+        single("realesrgan-x4v3", ModelTask::Upscaling, "Real-ESRGAN general x4v3",
+               QT_TRANSLATE_NOOP("ModelCatalog", "Aumenta la resolución del video (hasta ×4) recuperando detalle."), "BSD-3-Clause",
+               "skillsafe-ai/realesr-general-x4v3", "042a40bc4c918349ad3e2e607a68ae509a4c27b5", "model.onnx",
+               "a946f7a9397021b9b6b7e71df3d2821b04cc09ff244423b7ca79cb191ce4a00e", 4866428);
+        single("rife-4", ModelTask::Interpolation, "RIFE 4",
+               QT_TRANSLATE_NOOP("ModelCatalog", "Crea fotogramas intermedios para cámara lenta suave."), "MIT",
+               "walterlow/RIFE_fp32_timestep", "ee09066f9822f8b28b8477a1b4cc30f19d607590", "RIFE_fp32_timestep.onnx",
+               "4da60c1f20d42dba4f21503140940aa48a488585ead977532bf22e95a0319327", 21604567);
+
+        ModelInfo sam;
+        sam.id = QStringLiteral("sam2-tiny");
+        sam.task = ModelTask::Segmentation;
+        sam.name = QStringLiteral("SAM 2.1 tiny");
+        sam.description = QCoreApplication::translate("ModelCatalog", "Selecciona y sigue un objeto con un clic.");
+        sam.license = QStringLiteral("Apache-2.0");
+        sam.folder = sam.id;
+        constexpr const char* kSam = "onnx-community/sam2.1-hiera-tiny-ONNX";
+        constexpr const char* kSamRev = "814a066640debee5a91e70aa401fb8e17e030503";
+        // Los .onnx_data (pesos externos) deben conservar su nombre junto al .onnx.
+        sam.files = {
+            file("vision_encoder.onnx", hf(kSam, kSamRev, QStringLiteral("onnx/vision_encoder.onnx")),
+                 "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c", 354238),
+            file("vision_encoder.onnx_data", hf(kSam, kSamRev, QStringLiteral("onnx/vision_encoder.onnx_data")),
+                 "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc", 134084864),
+            file("prompt_encoder_mask_decoder.onnx", hf(kSam, kSamRev, QStringLiteral("onnx/prompt_encoder_mask_decoder.onnx")),
+                 "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf", 213114),
+            file("prompt_encoder_mask_decoder.onnx_data", hf(kSam, kSamRev, QStringLiteral("onnx/prompt_encoder_mask_decoder.onnx_data")),
+                 "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47", 20958208),
+        };
+        list.push_back(sam);
         return list;
     }();
     return catalog;
@@ -200,6 +250,31 @@ QString speechModel()
 QString separationModel()
 {
     return QStringLiteral("htdemucs");
+}
+
+QString portraitMatteModel()
+{
+    return QStringLiteral("modnet");
+}
+
+QString generalMatteModel()
+{
+    return QStringLiteral("birefnet-lite");
+}
+
+QString upscaleModel()
+{
+    return QStringLiteral("realesrgan-x4v3");
+}
+
+QString interpolationModel()
+{
+    return QStringLiteral("rife-4");
+}
+
+QString segmentationModel()
+{
+    return QStringLiteral("sam2-tiny");
 }
 
 QString translationModel(const QString& from, const QString& to)

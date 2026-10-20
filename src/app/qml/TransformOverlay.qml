@@ -12,6 +12,7 @@ Item {
     required property ProjectController project
     property string mode: "transform"
     signal picked()
+    signal objectPicked(real u, real v)
     property var clipId: project.selection.length === 1 ? project.selection[0] : undefined
     property var geo: ({})
     // Rectángulo del lienzo dentro del visor (mismo ajuste que hace el compositor).
@@ -257,6 +258,15 @@ Item {
                 if (overlay.project.pickKeyColor(overlay.clipId, m.x / box.width, m.y / box.height))
                     overlay.picked()
             }
+        }
+
+        // Señalar un objeto (SAM 2): coordenadas de la capa.
+        MouseArea {
+            anchors.fill: parent
+            enabled: overlay.mode === "pickObject"
+            visible: enabled
+            cursorShape: Qt.PointingHandCursor
+            onClicked: (m) => overlay.objectPicked(m.x / box.width, m.y / box.height)
         }
 
         // Mover.

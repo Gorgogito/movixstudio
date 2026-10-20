@@ -11,6 +11,12 @@
     "miniaudio",
     "opencolorio",
     "sentencepiece",
+    {
+      "name": "ggml",
+      "features": [
+        "vulkan"
+      ]
+    },
     "whisper-cpp"
   ]
 }

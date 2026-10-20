@@ -189,6 +189,9 @@ public:
     // Puntos de una máscara de forma libre con tangentes suaves (Catmull-Rom) o con esquinas.
     Q_INVOKABLE QVariantList smoothMaskPoints(const QVariantList& points, bool smooth) const;
     Q_INVOKABLE void setBlendMode(qint64 clipId, const QString& mode);
+    // Mate de IA (recorte de fondo): invertir o quitar.
+    Q_INVOKABLE void setMatteInvert(qint64 clipId, bool invert);
+    Q_INVOKABLE void removeMatte(qint64 clipId);
 
     // --- Clips compuestos ---
     // Nombres de las secuencias abiertas, de la principal a la activa (para la ruta de navegación).

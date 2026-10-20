@@ -116,6 +116,17 @@ struct ChromaKey {
     bool operator==(const ChromaKey&) const = default;
 };
 
+// Mate generado por IA (recorte de fondo, objeto segmentado): un video en escala de grises cuya
+// luma es la opacidad del clip. Cubre el medio desde `start` (instante del medio de su primer
+// fotograma) al mismo ritmo que la fuente.
+struct AiMatte {
+    std::string path;     // ruta absoluta UTF-8 ("" = sin mate)
+    std::int64_t start = 0; // µs
+    bool invert = false;  // conservar el fondo en lugar del sujeto
+    bool active() const { return !path.empty(); }
+    bool operator==(const AiMatte&) const = default;
+};
+
 enum class MaskShape { None, Rectangle, Ellipse, Linear, Path };
 // Cómo se combina una máscara con las anteriores del clip.
 enum class MaskMode { Add, Subtract, Intersect };

@@ -714,6 +714,31 @@ bool clearMarkers(Project& p, const std::string& label)
     return std::erase_if(p.markers, [&](const Marker& m) { return label.empty() || m.label == label; }) > 0;
 }
 
+bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn)
+{
+    Clip* c = p.findClip(clipId);
+    const MediaItem* m = p.findMedia(mediaId);
+    if (!c || !m || c->title || c->isCompound() || (c->mediaId == mediaId && c->sourceIn == sourceIn))
+        return false;
+    // Un fotograma de tolerancia: el medio procesado puede terminar justo al final del clip.
+    if (availableFrames(p, *m, sourceIn, c->speed) + 1 < c->duration)
+        return false;
+    c->mediaId = mediaId;
+    c->sourceIn = sourceIn;
+    c->matte = {}; // el mate era del medio anterior
+    return true;
+}
+
+bool setMatte(Project& p, Id clipId, const AiMatte& matte)
+{
+    auto loc = p.locateClip(clipId);
+    Clip* c = loc.clip();
+    if (!c || loc.track->kind != TrackKind::Video || c->title || c->isCompound() || c->matte == matte)
+        return false;
+    c->matte = matte;
+    return true;
+}
+
 bool setDenoise(Project& p, Id clipId, double amount)
 {
     Clip* c = p.findClip(clipId);

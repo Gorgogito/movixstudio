@@ -253,7 +253,8 @@ std::vector<AiController::MediaJob> AiController::audibleMedia(bool onlyUntransc
 
 bool AiController::startTask(Task task, std::vector<MediaJob> media, QStringList models)
 {
-    if (task != Task::Separate)
+    if (task != Task::Separate && task != Task::Matte && task != Task::Upscale && task != Task::SlowMotion && task != Task::Track
+        && task != Task::Reframe)
         m_current = {};
     m_queue.assign(media.begin(), media.end());
     m_totalJobs = int(m_queue.size());
@@ -310,11 +311,18 @@ void AiController::continueTask()
         return;
     }
     // 3. Trabajos que no recorren medios (texto a voz, traducción, separación): una sola petición.
-    if ((m_task == Task::Speak || m_task == Task::Translate || m_task == Task::Separate) && !m_request.isEmpty()) {
+    if ((m_task == Task::Speak || m_task == Task::Translate || m_task == Task::Separate || m_task == Task::Matte
+         || m_task == Task::Upscale || m_task == Task::SlowMotion || m_task == Task::Track || m_task == Task::Reframe)
+        && !m_request.isEmpty()) {
         m_currentJob = m_worker.submit(m_request);
         m_request = {};
-        setState(m_task, m_task == Task::Speak ? tr("Generando la voz…")
+        setState(m_task, m_task == Task::Speak       ? tr("Generando la voz…")
                          : m_task == Task::Translate ? tr("Traduciendo los subtítulos…")
+                         : m_task == Task::Matte     ? tr("Recortando el fondo de «%1»…").arg(m_current.name)
+                         : m_task == Task::Upscale   ? tr("Aumentando la resolución de «%1»…").arg(m_current.name)
+                         : m_task == Task::SlowMotion ? tr("Creando fotogramas intermedios de «%1»…").arg(m_current.name)
+                         : m_task == Task::Track      ? tr("Siguiendo el movimiento en «%1»…").arg(m_current.name)
+                         : m_task == Task::Reframe    ? tr("Buscando el sujeto de «%1»…").arg(m_current.name)
                                                      : tr("Separando la voz de la música…"),
                  0.0);
         return;
@@ -412,6 +420,142 @@ void AiController::onJobFinished(int job, const QJsonObject& result)
             emit notice(tr("Voz y música separadas en dos pistas nuevas."));
         else
             emit errorOccurred(tr("No se pudieron añadir las pistas separadas."));
+        return;
+    } else if (m_task == Task::Track && sameMedia) {
+        const QJsonArray points = result["points"].toArray();
+        int keys = 0;
+        m_project->applyEdit(tr("Seguir el movimiento"), [&](Project& p) {
+            Clip* tracked = p.findClip(m_clip.clipId);
+            if (!tracked || tracked->masks.empty() || points.isEmpty())
+                return false;
+            const ProjectSettings& s = p.settings;
+            const double x0 = points.at(0).toArray().at(1).toDouble(), y0 = points.at(0).toArray().at(2).toDouble();
+            // Ajuste de la capa seguida al lienzo, para llevar el desplazamiento a los clips adjuntos.
+            const MediaItem* m = p.findMedia(tracked->mediaId);
+            const double layerAspect = m && m->height ? double(m->width) / m->height : 16.0 / 9.0;
+            const double canvasAspect = double(s.width) / s.height;
+            const double fitW = std::min(1.0, layerAspect / canvasAspect), fitH = std::min(1.0, canvasAspect / layerAspect);
+            const double scale = tracked->transform.scale.at(m_trackStartRel);
+            std::vector<Id> attached;
+            for (Id id : m_clip.targets)
+                if (id != m_clip.clipId)
+                    attached.push_back(id);
+            std::map<Id, std::pair<double, double>> base;
+            for (Id id : attached)
+                if (const Clip* c = p.findClip(id))
+                    base[id] = {c->transform.x.at(m_trackStartRel + m_clip.start - c->start),
+                                c->transform.y.at(m_trackStartRel + m_clip.start - c->start)};
+            FramePos lastRel = -1;
+            for (const QJsonValue& v : points) {
+                const QJsonArray a = v.toArray();
+                const FramePos rel = toTimeline(a.at(0).toInteger()) - m_clip.start;
+                if (rel < 0 || rel >= m_clip.duration || rel == lastRel)
+                    continue;
+                lastRel = rel;
+                const double cx = a.at(1).toDouble(), cy = a.at(2).toDouble();
+                for (auto [prop, value] : {std::pair{edit::Property::MaskX, cx}, std::pair{edit::Property::MaskY, cy}}) {
+                    Animated* anim = edit::property(*p.findClip(m_clip.clipId), prop, 0);
+                    anim->setKey(rel, value, Interpolation::Linear);
+                }
+                for (Id id : attached) {
+                    Clip* c = p.findClip(id);
+                    if (!c)
+                        continue;
+                    const FramePos crel = rel + m_clip.start - c->start;
+                    if (crel < 0 || crel >= c->duration)
+                        continue;
+                    c->transform.x.setKey(crel, base[id].first + (cx - x0) * fitW * scale, Interpolation::Linear);
+                    c->transform.y.setKey(crel, base[id].second + (cy - y0) * fitH * scale, Interpolation::Linear);
+                }
+                ++keys;
+            }
+            return keys > 0;
+        });
+        finishTask();
+        emit notice(tr("Movimiento seguido en %n fotogramas.", nullptr, keys));
+        return;
+    } else if (m_task == Task::Reframe && sameMedia) {
+        const QJsonArray points = result["points"].toArray();
+        bool ok = false;
+        m_project->applyEdit(tr("Reencuadre automático"), [&](Project& p) {
+            // Nuevo formato: se conserva el lado corto del proyecto.
+            const int shortSide = std::min(p.settings.width, p.settings.height);
+            int w = shortSide, h = shortSide;
+            if (m_aspect == QLatin1String("9:16"))
+                h = (shortSide * 16 / 9) & ~1;
+            else if (m_aspect == QLatin1String("4:5"))
+                h = (shortSide * 5 / 4) & ~1;
+            edit::setResolution(p, w, h);
+            Clip* c = p.findClip(m_clip.clipId);
+            const MediaItem* m = c ? p.findMedia(c->mediaId) : nullptr;
+            if (!c || !m || !m->width || !m->height)
+                return false;
+            // Escala para cubrir el lienzo (la capa parte ajustada dentro de él).
+            const double layerAspect = double(m->width) / m->height, canvasAspect = double(w) / h;
+            const double cover = layerAspect > canvasAspect ? layerAspect / canvasAspect : canvasAspect / layerAspect;
+            c->transform.scale = Animated(cover);
+            const double layerWidth = layerAspect > canvasAspect ? cover : cover * layerAspect / canvasAspect; // en anchos de lienzo
+            const double limit = std::max(0.0, (layerWidth - 1.0) / 2.0);
+            c->transform.x = Animated(0.0);
+            for (const QJsonValue& v : points) {
+                const QJsonArray a = v.toArray();
+                const FramePos rel = toTimeline(a.at(0).toInteger()) - c->start;
+                if (rel < 0 || rel >= c->duration)
+                    continue;
+                // Desplazamiento que lleva el sujeto al centro, sin dejar bordes vacíos.
+                const double offset = std::clamp(-(a.at(1).toDouble() - 0.5) * layerWidth, -limit, limit);
+                c->transform.x.setKey(rel, offset, Interpolation::Smooth);
+            }
+            ok = true;
+            return true;
+        });
+        finishTask();
+        if (ok)
+            emit notice(tr("Proyecto reencuadrado a %1.").arg(m_aspect));
+        else
+            emit errorOccurred(tr("No se pudo reencuadrar el clip."));
+        return;
+    } else if ((m_task == Task::Upscale || m_task == Task::SlowMotion) && sameMedia) {
+        const QString path = result["output"].toString();
+        bool ok = false;
+        m_project->applyEdit(m_task == Task::Upscale ? tr("Aumentar la resolución") : tr("Cámara lenta suave"), [&](Project& p) {
+            std::string err;
+            const auto item = engine::probeMediaItem(QDir::toNativeSeparators(path).toStdString(), &err);
+            if (!item)
+                return false;
+            // El video nuevo no tiene sonido: el audio original se separa antes a su pista.
+            auto loc = p.locateClip(m_clip.clipId);
+            if (!loc.clip())
+                return false;
+            const MediaItem* old = p.findMedia(loc.clip()->mediaId);
+            if (old && old->hasAudio && loc.track->kind == TrackKind::Video && !loc.clip()->audioDetached)
+                edit::detachAudio(p, m_clip.clipId);
+            const Id media = edit::addMedia(p, *item);
+            if (!edit::replaceClipMedia(p, m_clip.clipId, media, 0))
+                return false;
+            if (m_task == Task::SlowMotion)
+                edit::setClipSpeed(p, m_clip.clipId, m_clip.speed / m_factor);
+            ok = true;
+            return true;
+        });
+        const Task task = m_task;
+        finishTask();
+        if (!ok)
+            emit errorOccurred(tr("No se pudo usar el video generado."));
+        else if (task == Task::Upscale)
+            emit notice(tr("Resolución aumentada a %1 × %2.").arg(result["width"].toInt()).arg(result["height"].toInt()));
+        else
+            emit notice(tr("Cámara lenta suave a %1 fps.").arg(result["fps"].toDouble(), 0, 'f', 2));
+        return;
+    } else if (m_task == Task::Matte && sameMedia) {
+        const AiMatte matte{QDir::toNativeSeparators(result["output"].toString()).toStdString(), result["start"].toInteger(), false};
+        bool ok = false;
+        m_project->applyEdit(tr("Recortar el fondo"), [&](Project& p) { return ok = edit::setMatte(p, m_clip.clipId, matte); });
+        finishTask();
+        if (ok)
+            emit notice(tr("Fondo recortado (%n fotogramas).", nullptr, result["frames"].toInt()));
+        else
+            emit errorOccurred(tr("El clip ya no existe."));
         return;
     } else if (m_task == Task::Beats && sameMedia) {
         std::vector<FramePos> frames;
@@ -742,6 +886,174 @@ void AiController::separateVoice()
     // Se trata como trabajo de una petición (sin cola de medios), pero se comprueba el medio al final.
     m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
     startTask(Task::Separate, {}, {model->id});
+}
+
+// --- Recorte de fondo ---
+
+void AiController::removeBackground(const QString& kind)
+{
+    if (busy() || !m_project)
+        return;
+    const auto ctx = selectedClip([&](const Clip&, const MediaItem& m) { return m.hasVideo && !m.isStill; });
+    if (!ctx || !m_project->project().trackOfClip(ctx->clipId) || m_project->project().trackOfClip(ctx->clipId)->kind != TrackKind::Video) {
+        emit errorOccurred(tr("Selecciona en la línea de tiempo un clip de video."));
+        return;
+    }
+    m_clip = *ctx;
+    const Project& p = m_project->project();
+    const MediaItem* media = p.findMedia(p.findClip(ctx->clipId)->mediaId);
+    const bool general = kind == QLatin1String("general");
+    const ai::ModelInfo* model = ai::findModel(general ? ai::generalMatteModel() : ai::portraitMatteModel());
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString output = generatedFolder() + QLatin1Char('/') + QFileInfo(QString::fromStdString(media->path)).completeBaseName()
+        + QStringLiteral(" - recorte %1.mp4").arg(stamp);
+    m_request = QJsonObject{
+        {"type", QLatin1String(ai::protocol::kRemoveBackground)},
+        {"model", ai::modelPath(*model)},
+        {"kind", general ? QStringLiteral("general") : QStringLiteral("portrait")},
+        {"media", QString::fromStdString(media->path)},
+        {"from", qint64(ctx->sourceIn)},
+        {"to", qint64(ctx->sourceIn + TimeUs(double(p.settings.frameToTime(ctx->duration)) * ctx->speed))},
+        {"output", QDir::toNativeSeparators(output)},
+    };
+    m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
+    startTask(Task::Matte, {}, {model->id});
+}
+
+void AiController::segmentObject(double u, double v)
+{
+    if (busy() || !m_project)
+        return;
+    const FramePos playhead = m_project->player()->positionFrame();
+    const auto ctx = selectedClip([&](const Clip& c, const MediaItem& m) {
+        return m.hasVideo && !m.isStill && playhead >= c.start && playhead < c.end();
+    });
+    if (!ctx) {
+        emit errorOccurred(tr("Selecciona un clip de video y pon el cabezal sobre él."));
+        return;
+    }
+    m_clip = *ctx;
+    const Project& p = m_project->project();
+    const Clip* c = p.findClip(ctx->clipId);
+    const MediaItem* media = p.findMedia(c->mediaId);
+    const ai::ModelInfo* model = ai::findModel(ai::segmentationModel());
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    m_request = QJsonObject{
+        {"type", QLatin1String(ai::protocol::kSegmentObject)},
+        {"model", ai::modelFolder(*model)},
+        {"media", QString::fromStdString(media->path)},
+        {"from", qint64(sourceTimeAt(p.settings, *c, playhead))},
+        {"to", qint64(sourceTimeAt(p.settings, *c, c->end()))},
+        {"x", std::clamp(u, 0.0, 1.0)},
+        {"y", std::clamp(v, 0.0, 1.0)},
+        {"output", QDir::toNativeSeparators(generatedFolder() + QLatin1Char('/')
+                                            + QFileInfo(QString::fromStdString(media->path)).completeBaseName()
+                                            + QStringLiteral(" - objeto %1.mp4").arg(stamp))},
+    };
+    m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
+    startTask(Task::Matte, {}, {model->id});
+}
+
+// --- Escalado y cámara lenta ---
+
+void AiController::startVideoJob(Task task, const QString& modelId, const char* type, const QString& suffix, int factor)
+{
+    if (busy() || !m_project)
+        return;
+    const auto ctx = selectedClip([&](const Clip&, const MediaItem& m) { return m.hasVideo && !m.isStill; });
+    if (!ctx) {
+        emit errorOccurred(tr("Selecciona en la línea de tiempo un clip de video."));
+        return;
+    }
+    m_clip = *ctx;
+    m_factor = factor;
+    const Project& p = m_project->project();
+    const MediaItem* media = p.findMedia(p.findClip(ctx->clipId)->mediaId);
+    const ai::ModelInfo* model = ai::findModel(modelId);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString output = generatedFolder() + QLatin1Char('/') + QFileInfo(QString::fromStdString(media->path)).completeBaseName()
+        + QStringLiteral(" - %1 %2.mp4").arg(suffix, stamp);
+    m_request = QJsonObject{
+        {"type", QLatin1String(type)},
+        {"model", ai::modelPath(*model)},
+        {"media", QString::fromStdString(media->path)},
+        {"from", qint64(ctx->sourceIn)},
+        {"to", qint64(ctx->sourceIn + TimeUs(double(p.settings.frameToTime(ctx->duration)) * ctx->speed))},
+        {"scale", factor},
+        {"factor", factor},
+        {"output", QDir::toNativeSeparators(output)},
+    };
+    m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
+    startTask(task, {}, {model->id});
+}
+
+void AiController::upscale(int scale)
+{
+    startVideoJob(Task::Upscale, ai::upscaleModel(), ai::protocol::kUpscale, QStringLiteral("x%1").arg(scale), scale == 4 ? 4 : 2);
+}
+
+void AiController::slowMotion(int factor)
+{
+    factor = std::clamp(factor, 2, 8);
+    startVideoJob(Task::SlowMotion, ai::interpolationModel(), ai::protocol::kInterpolate, QStringLiteral("lento x%1").arg(factor), factor);
+}
+
+// --- Seguimiento y reencuadre ---
+
+void AiController::trackMotion()
+{
+    if (busy() || !m_project)
+        return;
+    const FramePos playhead = m_project->player()->positionFrame();
+    const auto ctx = selectedClip([&](const Clip& c, const MediaItem& m) {
+        return m.hasVideo && !m.isStill && !c.masks.empty() && playhead >= c.start && playhead < c.end() - 1;
+    });
+    if (!ctx) {
+        emit errorOccurred(tr("Selecciona un clip de video con una máscara (la región que se seguirá) y pon el cabezal sobre él."));
+        return;
+    }
+    m_clip = *ctx;
+    const Project& p = m_project->project();
+    const Clip* c = p.findClip(ctx->clipId);
+    const MediaItem* media = p.findMedia(c->mediaId);
+    m_trackStartRel = playhead - c->start;
+    const Mask& mask = c->masks.front();
+    const double w = std::clamp(mask.width.at(m_trackStartRel), 0.02, 1.0), h = std::clamp(mask.height.at(m_trackStartRel), 0.02, 1.0);
+    m_request = QJsonObject{
+        {"type", QLatin1String(ai::protocol::kTrack)},
+        {"media", QString::fromStdString(media->path)},
+        {"from", qint64(sourceTimeAt(p.settings, *c, playhead))},
+        {"to", qint64(sourceTimeAt(p.settings, *c, c->end()))},
+        {"region", QJsonArray{mask.x.at(m_trackStartRel), mask.y.at(m_trackStartRel), w, h}},
+    };
+    m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
+    startTask(Task::Track, {}, {});
+}
+
+void AiController::autoReframe(const QString& aspect)
+{
+    if (busy() || !m_project)
+        return;
+    const auto ctx = selectedClip([](const Clip&, const MediaItem& m) { return m.hasVideo && !m.isStill; });
+    if (!ctx) {
+        emit errorOccurred(tr("Selecciona en la línea de tiempo un clip de video."));
+        return;
+    }
+    m_clip = *ctx;
+    m_aspect = aspect;
+    const Project& p = m_project->project();
+    const MediaItem* media = p.findMedia(p.findClip(ctx->clipId)->mediaId);
+    const ai::ModelInfo* modnet = ai::findModel(ai::portraitMatteModel());
+    m_request = QJsonObject{
+        {"type", QLatin1String(ai::protocol::kSubjectCenters)},
+        {"media", QString::fromStdString(media->path)},
+        {"from", qint64(ctx->sourceIn)},
+        {"to", qint64(ctx->sourceIn + TimeUs(double(p.settings.frameToTime(ctx->duration)) * ctx->speed))},
+        {"step", qint64(250'000)},
+        {"model", ai::modelPath(*modnet)},
+    };
+    m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
+    startTask(Task::Reframe, {}, {modnet->id});
 }
 
 // --- Edición por texto ---

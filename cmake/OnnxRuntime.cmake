@@ -21,3 +21,14 @@ set(ONNXRUNTIME_RUNTIME_DLLS
     "${_ort}/runtimes/win-x64/native/onnxruntime.dll"
     "${_ort}/runtimes/win-x64/native/onnxruntime_providers_shared.dll")
 set(ONNXRUNTIME_LICENSE_FILES "${_ort}/LICENSE" "${_ort}/ThirdPartyNotices.txt")
+
+# Proveedor de ejecución WebGPU (plugin oficial, MIT; Dawn es BSD) para usar la GPU. Solo se copia
+# su DLL: Dawn trabaja sobre Vulkan, así que no hacen falta dxcompiler.dll ni dxil.dll (este último
+# tiene licencia propietaria de Microsoft).
+FetchContent_Declare(onnxruntime_webgpu_pkg
+    URL "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.ep.webgpu/0.4.0/microsoft.ml.onnxruntime.ep.webgpu.0.4.0.nupkg"
+    URL_HASH SHA256=cc2e093a2eaa760a630d6c3299f015f1dd86885b9eb5877257135308f7c5e923
+    DOWNLOAD_NAME onnxruntime-webgpu.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(onnxruntime_webgpu_pkg)
+list(APPEND ONNXRUNTIME_RUNTIME_DLLS "${onnxruntime_webgpu_pkg_SOURCE_DIR}/runtimes/win-x64/native/onnxruntime_providers_webgpu.dll")

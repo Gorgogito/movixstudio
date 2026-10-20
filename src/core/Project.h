@@ -159,6 +159,7 @@ struct Clip {
     AnimatedGrade color;
     ChromaKey chromaKey;
     std::vector<Mask> masks; // se combinan en orden (ver MaskMode)
+    AiMatte matte;           // recorte por IA (se multiplica con las máscaras)
     BlendMode blend = BlendMode::Normal;
 
     FramePos end() const { return start + duration; }

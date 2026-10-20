@@ -322,6 +322,13 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
                                             {"duration", qint64(c.transitionIn.duration)}};
         if (!c.color.isIdentity())
             o["color"] = animatedGradeToJson(c.color, projectDir);
+        if (c.matte.active()) {
+            const QString path = QString::fromStdString(c.matte.path);
+            o["matte"] = QJsonObject{{"path", QDir::fromNativeSeparators(path)},
+                                     {"relativePath", projectDir.relativeFilePath(path)},
+                                     {"start", qint64(c.matte.start)},
+                                     {"invert", c.matte.invert}};
+        }
         if (c.chromaKey != ChromaKey{}) {
             const ChromaKey& k = c.chromaKey;
             o["chromaKey"] = QJsonObject{{"enabled", k.enabled},
@@ -400,6 +407,20 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         }
         if (c.contains("color"))
             clip.color = animatedGradeFromJson(c["color"].toObject(), projectDir, missing);
+        if (c.contains("matte")) {
+            const QJsonObject m = c["matte"].toObject();
+            QString path = m["path"].toString();
+            if (!QFileInfo::exists(path)) {
+                const QString relative = projectDir.absoluteFilePath(m["relativePath"].toString());
+                if (QFileInfo::exists(relative))
+                    path = QDir::cleanPath(relative);
+                else if (!missing.contains(QDir::toNativeSeparators(path)))
+                    missing.append(QDir::toNativeSeparators(path));
+            }
+            clip.matte.path = QDir::toNativeSeparators(path).toStdString();
+            clip.matte.start = m["start"].toInteger();
+            clip.matte.invert = m["invert"].toBool();
+        }
         if (c.contains("chromaKey")) {
             const QJsonObject k = c["chromaKey"].toObject();
             const ChromaKey def;

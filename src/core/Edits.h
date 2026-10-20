@@ -116,6 +116,11 @@ bool setMaskShape(Project& p, Id clipId, int index, MaskShape shape);
 bool setMaskOptions(Project& p, Id clipId, int index, MaskMode mode, bool invert);
 bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points);
 bool setBlendMode(Project& p, Id clipId, BlendMode mode);
+// Sustituye el medio de un clip conservando su posición y duración (p. ej. por una versión
+// procesada que empieza en `sourceIn`). Falla si el medio nuevo no alcanza para la duración.
+bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn);
+// Mate de IA del clip (solo clips de video con medio). Un AiMatte vacío lo quita.
+bool setMatte(Project& p, Id clipId, const AiMatte& matte);
 
 // Separa el audio de un clip de video a una pista de audio libre (o nueva). Devuelve el clip de audio.
 Id detachAudio(Project& p, Id clipId);
