@@ -32,3 +32,4 @@ FetchContent_Declare(onnxruntime_webgpu_pkg
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(onnxruntime_webgpu_pkg)
 list(APPEND ONNXRUNTIME_RUNTIME_DLLS "${onnxruntime_webgpu_pkg_SOURCE_DIR}/runtimes/win-x64/native/onnxruntime_providers_webgpu.dll")
+set(ONNXRUNTIME_WEBGPU_LICENSE_FILES "${onnxruntime_webgpu_pkg_SOURCE_DIR}/LICENSE" "${onnxruntime_webgpu_pkg_SOURCE_DIR}/ThirdPartyNotices.txt")

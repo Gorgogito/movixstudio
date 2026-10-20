@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fragmentos que CPack añade al MSI generado: asocia los proyectos .mxproj con MovixStudio. -->
+<CPackWiXPatch>
+  <CPackWiXFragment Id="CM_CP_MovixStudio.exe">
+    <ProgId Id="MovixStudio.Proyecto" Description="Proyecto de MovixStudio"
+            Icon="CM_FP_MovixStudio.exe" IconIndex="0">
+      <Extension Id="mxproj" ContentType="application/x-movixstudio-project">
+        <Verb Id="open" TargetFile="CM_FP_MovixStudio.exe" Argument="&quot;%1&quot;" />
+      </Extension>
+    </ProgId>
+  </CPackWiXFragment>
+</CPackWiXPatch>

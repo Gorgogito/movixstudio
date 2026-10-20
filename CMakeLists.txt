@@ -33,6 +33,7 @@ find_path(MINIAUDIO_INCLUDE_DIR miniaudio.h REQUIRED)
 include(OnnxRuntime)
 
 add_subdirectory(src)
+include(Packaging)
 
 if(MOVIX_BUILD_TESTS)
     enable_testing()

@@ -21,8 +21,6 @@ add_custom_command(TARGET movix-ai-worker POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${MOVIX_ESPEAK_DATA} $<TARGET_FILE_DIR:movix-ai-worker>/espeak-ng-data)
 
 install(TARGETS movix-ai-worker RUNTIME DESTINATION .)
-file(GLOB MOVIX_WHISPER_DLLS "${MOVIX_VCPKG_BIN}/whisper.dll" "${MOVIX_VCPKG_BIN}/ggml*.dll" "${MOVIX_VCPKG_BIN}/vulkan-1.dll"
-                             "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/espeak-ng.dll")
-install(FILES ${MOVIX_WHISPER_DLLS} ${ONNXRUNTIME_RUNTIME_DLLS} DESTINATION .)
+# Las DLL que enlaza y los complementos de ggml y ONNX Runtime los instala cmake/Packaging.cmake.
+install(FILES "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/espeak-ng.dll" "${MOVIX_VCPKG_BIN}/vulkan-1.dll" DESTINATION .)
 install(DIRECTORY ${MOVIX_ESPEAK_DATA} DESTINATION .)
-install(FILES ${ONNXRUNTIME_LICENSE_FILES} DESTINATION licenses/onnxruntime)

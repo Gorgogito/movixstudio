@@ -1705,6 +1705,14 @@ Do you want to recover it?</translation>
         <source>Editor de video libre y de código abierto, sin suscripciones ni marcas de agua. Versión de desarrollo: edición multipista con keyframes, títulos, transiciones, corrección de color, composición e IA local de audio, texto y video (fase F5).</source>
         <translation>Free and open-source video editor, with no subscriptions or watermarks. Development version: multitrack editing with keyframes, titles, transitions, color correction, compositing and local AI for audio, text and video (phase F5).</translation>
     </message>
+    <message>
+        <source>&amp;Buscar actualizaciones</source>
+        <translation>Check for &amp;updates</translation>
+    </message>
+    <message>
+        <source>Buscar actualizaciones al &amp;iniciar</source>
+        <translation>Check for updates at &amp;startup</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -2739,6 +2747,68 @@ Do you want to recover it?</translation>
     <message>
         <source>Se descargará el modelo de voz (%1 MB).</source>
         <translation>The voice model will be downloaded (%1 MB).</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateBanner</name>
+    <message>
+        <source>Descargando MovixStudio %1… %2 %</source>
+        <translation>Downloading MovixStudio %1… %2%</translation>
+    </message>
+    <message>
+        <source>MovixStudio %1 está disponible.</source>
+        <translation>MovixStudio %1 is available.</translation>
+    </message>
+    <message>
+        <source>Novedades</source>
+        <translation>What's new</translation>
+    </message>
+    <message>
+        <source>Instalar ahora</source>
+        <translation>Install now</translation>
+    </message>
+    <message>
+        <source>Actualizar</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <source>Descargar</source>
+        <translation>Download</translation>
+    </message>
+    <message>
+        <source>Cancelar</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Omitir esta versión</source>
+        <translation>Skip this version</translation>
+    </message>
+    <message>
+        <source>Recordármelo más tarde</source>
+        <translation>Remind me later</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateController</name>
+    <message>
+        <source>No se pudo descargar la actualización: %1</source>
+        <translation>Could not download the update: %1</translation>
+    </message>
+    <message>
+        <source>Esta compilación no tiene configurada una dirección para buscar actualizaciones.</source>
+        <translation>This build has no address configured to check for updates.</translation>
+    </message>
+    <message>
+        <source>No se pudo comprobar si hay actualizaciones: %1</source>
+        <translation>Could not check for updates: %1</translation>
+    </message>
+    <message>
+        <source>MovixStudio está al día (versión %1).</source>
+        <translation>MovixStudio is up to date (version %1).</translation>
+    </message>
+    <message>
+        <source>No se pudo abrir el instalador %1</source>
+        <translation>Could not open the installer %1</translation>
     </message>
 </context>
 <context>

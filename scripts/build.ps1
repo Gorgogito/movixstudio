@@ -4,10 +4,12 @@
 .EXAMPLE
     ./scripts/build.ps1                 # Debug
     ./scripts/build.ps1 -Preset release -Test
+    ./scripts/build.ps1 -Preset release -Package   # instalador MSI y ZIP portable en build/release
 #>
 param(
     [ValidateSet('debug', 'release')] [string] $Preset = 'debug',
     [switch] $Test,
+    [switch] $Package,
     [switch] $Clean
 )
 $ErrorActionPreference = 'Stop'
@@ -25,6 +27,7 @@ $steps = @(
     "cmake --build --preset $Preset"
 )
 if ($Test) { $steps += "ctest --preset $Preset" }
+if ($Package) { $steps += "cd build\$Preset && cpack -C $(if ($Preset -eq 'debug') { 'Debug' } else { 'RelWithDebInfo' })" }
 
 $cmd = "`"$vcvars`" >nul && cd /d `"$root`" && " + ($steps -join ' && ')
 cmd /c $cmd

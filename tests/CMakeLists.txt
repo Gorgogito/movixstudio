@@ -30,6 +30,7 @@ add_executable(movix_tests
     test_ai_media.cpp
     test_ai_onnx.cpp
     test_ai_vision.cpp
+    test_updates.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
@@ -37,6 +38,7 @@ add_executable(movix_tests
     ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerColor.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ExportController.h ${PROJECT_SOURCE_DIR}/src/app/ExportController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/AiController.h ${PROJECT_SOURCE_DIR}/src/app/AiController.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/UpdateController.h ${PROJECT_SOURCE_DIR}/src/app/UpdateController.cpp
     test_ai_app.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )

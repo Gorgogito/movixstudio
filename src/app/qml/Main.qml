@@ -55,10 +55,17 @@ ApplicationWindow {
         onNotice: (message) => banner.show(message, false)
     }
 
+    UpdateController {
+        id: updates
+        onErrorOccurred: (message) => banner.show(message, true)
+        onNotice: (message) => banner.show(message, false)
+    }
+
     readonly property TimelinePlayer activePlayer: viewer.activePlayer
 
     Component.onCompleted: {
         project.checkRecovery()
+        updates.checkAtStartup()
         if (initialFile.toString() !== "")
             project.importFiles([initialFile])
     }
@@ -274,6 +281,15 @@ ApplicationWindow {
         }
         Menu {
             title: qsTr("Ay&uda")
+            MenuItem { text: qsTr("&Buscar actualizaciones"); enabled: updates.enabled && !updates.checking; onTriggered: updates.check() }
+            MenuItem {
+                text: qsTr("Buscar actualizaciones al &iniciar")
+                enabled: updates.enabled
+                checkable: true
+                checked: updates.autoCheck
+                onTriggered: updates.autoCheck = checked
+            }
+            MenuSeparator {}
             MenuItem { text: qsTr("&Acerca de MovixStudio"); onTriggered: aboutDialog.open() }
         }
     }
@@ -349,6 +365,19 @@ ApplicationWindow {
     }
 
     Banner { id: banner; anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 12 }
+    UpdateBanner {
+        updates: updates
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: banner.visible ? banner.height + 20 : 12
+        // Cerrar con los cambios resueltos y abrir el instalador (que sustituye esta versión).
+        onInstallRequested: window.guard(() => {
+            if (updates.launchInstaller()) {
+                window.closeConfirmed = true
+                window.close()
+            }
+        })
+    }
 
     // --- Diálogos ---
     FileDialog {

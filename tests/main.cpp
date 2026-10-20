@@ -30,6 +30,9 @@ int main(int argc, char* argv[])
     // Aplicación gráfica sin ventanas: los títulos necesitan las fuentes del sistema (QPainter).
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
+    // Ajustes (QSettings) propios de las pruebas, separados de los de la aplicación.
+    QGuiApplication::setOrganizationName(QStringLiteral("MovixStudio-pruebas"));
+    QGuiApplication::setApplicationName(QStringLiteral("movix_tests"));
     av_log_set_level(AV_LOG_ERROR);
     const int result = Catch::Session().run(argc, argv);
 #ifdef _WIN32

@@ -13,9 +13,18 @@ qt_add_executable(MovixStudio WIN32
     ProjectController.h ProjectController.cpp ProjectControllerColor.cpp
     ExportController.h ExportController.cpp
     AiController.h AiController.cpp
+    UpdateController.h UpdateController.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
-target_compile_definitions(MovixStudio PRIVATE MOVIX_VERSION="${PROJECT_VERSION}")
+if(WIN32)
+    set(MOVIX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/icons/movixstudio.ico")
+    configure_file(movixstudio.rc.in movixstudio.rc @ONLY)
+    target_sources(MovixStudio PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/movixstudio.rc)
+endif()
+# Versión publicada más reciente (API de GitHub); vacía = sin búsqueda de actualizaciones.
+set(MOVIX_UPDATE_URL "https://api.github.com/repos/movixstudio/movixstudio/releases/latest"
+    CACHE STRING "Dirección de la versión más reciente (formato de la API de versiones de GitHub)")
+target_compile_definitions(MovixStudio PRIVATE MOVIX_VERSION="${PROJECT_VERSION}" MOVIX_UPDATE_URL="${MOVIX_UPDATE_URL}")
 if(MSVC)
     # C4702 (código inalcanzable) proviene de plantillas de Qt instanciadas en Debug.
     target_compile_options(MovixStudio PRIVATE /wd4702)
@@ -67,6 +76,7 @@ qt_add_qml_module(MovixStudio
         qml/SilenceDialog.qml
         qml/TtsDialog.qml
         qml/TranslateDialog.qml
+        qml/UpdateBanner.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
@@ -87,12 +97,13 @@ qt_add_translations(MovixStudio
 add_custom_command(TARGET MovixStudio POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} $<TARGET_FILE_DIR:MovixStudio>)
 
-# Instalación autocontenida (cmake --install): ejecutable, Qt, plugins QML y FFmpeg en una
-# sola carpeta plana, como es habitual en Windows (CMAKE_INSTALL_BINDIR = "." en el nivel superior).
+# Instalación autocontenida (cmake --install): ejecutable, Qt y plugins QML en una sola carpeta
+# plana, como es habitual en Windows; el resto de las DLL y las licencias, en cmake/Packaging.cmake.
 install(TARGETS MovixStudio RUNTIME DESTINATION .)
-install(FILES ${FFMPEG_RUNTIME_DLLS} DESTINATION .)
-# DLL de las bibliotecas de vcpkg (OpenColorIO y sus dependencias).
-install(FILES $<TARGET_RUNTIME_DLLS:MovixStudio> DESTINATION .)
-install(FILES ${PROJECT_SOURCE_DIR}/LICENSE DESTINATION .)
-qt_generate_deploy_qml_app_script(TARGET MovixStudio OUTPUT_SCRIPT deploy_script NO_TRANSLATIONS)
+# Sin la biblioteca de ejecución (va junto al programa), sin compiladores de sombreadores de
+# Direct3D (D3D11 usa d3dcompiler_47.dll, que ya trae Windows; dxil.dll es propietaria y solo
+# serviría para D3D12), sin OpenGL por software y sin los complementos de depuración de QML.
+qt_generate_deploy_qml_app_script(TARGET MovixStudio OUTPUT_SCRIPT deploy_script NO_TRANSLATIONS
+    DEPLOY_TOOL_OPTIONS --no-compiler-runtime --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw
+                        --skip-plugin-types qmltooling)
 install(SCRIPT ${deploy_script})

@@ -3,9 +3,15 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Estado: fase F5 completada** — IA visual local (recorte de fondo, objetos con un clic,
-> seguimiento, reencuadre, escalado y cámara lenta) sobre la IA de audio y texto de F4, con
-> aceleración por GPU 100 % libre (Vulkan/WebGPU). Consulta la [hoja de ruta](docs/ROADMAP.md).
+> **Estado: fase F6 en curso** — instalador MSI, ZIP portable y actualizaciones dentro de la
+> aplicación, sobre la IA visual de F5 y la de audio y texto de F4, con aceleración por GPU 100 %
+> libre (Vulkan/WebGPU). Consulta la [hoja de ruta](docs/ROADMAP.md).
+
+**Novedades de F6 (en curso)**
+- Instalador MSI en español (menú Inicio, escritorio, proyectos `.mxproj` asociados, actualización
+  sobre la versión anterior) y ZIP portable; ningún componente propietario en la distribución.
+- Búsqueda de versiones nuevas al iniciar (desactivable) o desde Ayuda: con el instalador, descarga
+  la actualización, comprueba su SHA-256 y la instala.
 
 **Novedades de F5** — en local, en la GPU cuando la hay (cualquier GPU con Vulkan)
 - Quitar el fondo sin pantalla verde (personas o cualquier sujeto) o recortar un objeto con un
@@ -130,9 +136,19 @@ vcpkg y el ejecutable `ffmpeg` (para generar los medios de prueba). Las rutas es
 ./scripts/build.ps1 -Preset release -Test    # Release + pruebas
 ./scripts/run.ps1 -Preset release -- "C:\ruta\proyecto.mxproj"
 
-# Carpeta distribuible autocontenida (ejecutable + Qt + FFmpeg):
+# Carpeta distribuible autocontenida (ejecutables, Qt, FFmpeg, IA y licencias):
 cmake --install build/release --prefix "$PWD/dist/MovixStudio"
+
+# Instalador MSI y ZIP portable (build/release/MovixStudio-<versión>-win64.*):
+./scripts/build.ps1 -Preset release -Package
 ```
+
+El MSI necesita [WiX](https://wixtoolset.org) 4 o posterior y su extensión de interfaz
+(`dotnet tool install --global wix`, `wix extension add --global WixToolset.UI.wixext/<versión>`).
+Las DLL que hacen falta se resuelven al instalar (una que falte detiene la instalación) y la
+biblioteca de ejecución de MSVC va junto al programa. La dirección de la que se leen las versiones
+nuevas se cambia con `-DMOVIX_UPDATE_URL=...` (formato de la API de versiones de GitHub; vacía = sin
+actualizaciones) o, para pruebas, con la variable de entorno del mismo nombre.
 
 Diagnóstico de la reproducción: `$env:QT_LOGGING_RULES = "movix.player.stats.debug=true"; $env:QT_FORCE_STDERR_LOGGING = "1"`.
 
@@ -161,8 +177,8 @@ real (tiempos por palabra dentro de ±0,15 s), detectan sus tramos de voz, usan 
 
 ## Licencia
 
-GPL-3.0-or-later. Ver [LICENSE](LICENSE). Componentes de terceros: Qt (LGPLv3), FFmpeg (GPL, compilado
-con x264/x265), OpenColorIO (BSD-3-Clause; config de ACES incluido), miniaudio (dominio público /
-MIT-0), Catch2 (BSL-1.0, solo pruebas).
+GPL-3.0-or-later. Ver [LICENSE](LICENSE). Los componentes de terceros que se distribuyen, sus
+licencias y dónde obtener su código están en [packaging/AVISOS_DE_TERCEROS.txt](packaging/AVISOS_DE_TERCEROS.txt);
+la instalación copia el texto de cada licencia en `licenses/`. Catch2 (BSL-1.0) solo se usa en las pruebas.
 
 MovixStudio no está afiliado a Wondershare ni a Filmora; no usa su código, marca ni recursos.

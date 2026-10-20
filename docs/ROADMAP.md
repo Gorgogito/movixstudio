@@ -218,7 +218,31 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - El seguimiento usa una región rectangular sin escala ni giro; el reencuadre solo desplaza en
   horizontal (pensado para pasar de un video horizontal a vertical, cuadrado o 4:5).
 
-## F6 — Pulido y ecosistema
+## F6 — Pulido y ecosistema (en curso)
 
-Multicámara, plantillas propias, OpenTimelineIO, plugins/scripting, OpenFX, instalador y
-actualizaciones, Linux y macOS.
+Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara → el resto.
+
+- [x] Instalador MSI (WiX 4+, con CPack) en español: menú Inicio y escritorio, asociación de los
+      `.mxproj`, icono y datos de versión en el ejecutable, actualización mayor sobre la versión
+      anterior; y ZIP portable. Las DLL se resuelven al instalar (OpenColorIO arrastraba siete que
+      faltaban en la carpeta instalada) y la biblioteca de ejecución de MSVC va junto al programa
+- [x] Sin componentes propietarios ni sobrantes: fuera `dxil.dll`/`dxcompiler.dll`, el compilador
+      de sombreadores que ya trae Windows, OpenGL por software, `vc_redist.x64.exe` y los
+      complementos de depuración de QML (407 → 349 MB instalados; MSI de 109 MB)
+- [x] Avisos de terceros y texto de cada licencia en `licenses/`, con dónde obtener el código de
+      los componentes copyleft
+- [x] Actualizaciones: consulta la versión más reciente (API de versiones de GitHub) al iniciar,
+      como mucho una vez al día y desactivable, o desde Ayuda; con el MSI instalado descarga el
+      instalador, comprueba su SHA-256 (resumen que publica GitHub) y lo abre al cerrar la
+      aplicación; si no, ofrece la página de la versión. Se puede omitir una versión
+- [ ] OpenTimelineIO (importar y exportar la línea de tiempo)
+- [ ] Multicámara
+- [ ] Plantillas propias, plugins/scripting, OpenFX
+- [ ] Linux y macOS
+
+### Pendiente de comprobar
+
+- La instalación real del MSI (asistente, accesos directos, asociación de archivos, desinstalación
+  y actualización entre versiones) en un equipo: se verificó su contenido extrayéndolo, con una
+  prueba de humo de la IA y la aplicación sin nada más en el PATH.
+- La dirección del repositorio público (`MOVIX_UPDATE_URL`, `PROJECT_HOMEPAGE_URL`).

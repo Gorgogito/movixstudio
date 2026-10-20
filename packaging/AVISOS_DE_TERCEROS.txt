@@ -1,0 +1,56 @@
+MovixStudio — avisos de terceros
+================================
+
+MovixStudio es software libre bajo la Licencia Pública General de GNU, versión 3 o posterior
+(archivo LICENSE). Su código fuente completo está en https://github.com/movixstudio/movixstudio.
+
+Esta distribución incluye los componentes de terceros siguientes. El texto de cada licencia está
+en la carpeta «licenses» junto a este archivo.
+
+Componente                         Versión      Licencia                Carpeta en «licenses»
+---------------------------------  -----------  ----------------------  ---------------------
+Qt                                 6.8.3        LGPL-3.0                qt
+FFmpeg (compilación GPL de BtbN)   9.0.2        GPL-3.0-or-later        ffmpeg
+ONNX Runtime                       1.31.0       MIT                     onnxruntime
+ONNX Runtime WebGPU (incluye Dawn) 0.4.0        MIT / BSD-3-Clause      onnxruntime-webgpu
+whisper.cpp                        1.8.6        MIT                     whisper-cpp
+ggml                               0.26.0       MIT                     ggml
+OpenColorIO                        2.6.0        BSD-3-Clause            opencolorio
+eSpeak NG                          1.52.0       GPL-3.0-or-later        espeak-ng
+SentencePiece                      0.2.1        Apache-2.0              sentencepiece
+Protocol Buffers                   6.33.4       BSD-3-Clause            protobuf
+Abseil                             20260107.1   Apache-2.0              abseil
+Cargador de Vulkan (Khronos)       1.4.357.0    Apache-2.0              vulkan-loader
+miniaudio                          0.11.25      MIT-0 / dominio público miniaudio
+yaml-cpp                           0.9.0        MIT                     yaml-cpp
+Expat                              2.9.0        MIT                     expat
+Imath                              3.2.3        BSD-3-Clause            imath
+pystring                           1.2.0        BSD-3-Clause            pystring
+minizip-ng                         4.1.0        Zlib                    minizip-ng
+zlib                               1.3.2        Zlib                    zlib
+Zstandard                          1.5.7        BSD-3-Clause            zstd
+bzip2                              1.0.8        bzip2-1.0.6             bzip2
+liblzma (XZ Utils)                 5.8.4        0BSD                    liblzma
+Biblioteca de ejecución de MSVC    14.x         Componente del sistema  —
+
+Código fuente de los componentes con licencia copyleft
+------------------------------------------------------
+
+- Qt: https://download.qt.io/archive/qt/6.8/6.8.3/single/ — se enlaza de forma dinámica; puede
+  sustituir las DLL Qt6*.dll por otra compilación compatible.
+- FFmpeg: compilación «ffmpeg-n9.0-latest-win64-gpl-shared-9.0» de
+  https://github.com/BtbN/FFmpeg-Builds (código y guiones de compilación en ese repositorio;
+  código de FFmpeg en https://ffmpeg.org/download.html). Incluye x264, x265 y otras bibliotecas
+  GPL; la configuración exacta se muestra con «ffmpeg -version» de esa misma compilación.
+- eSpeak NG: https://github.com/espeak-ng/espeak-ng
+
+Si no puede obtener el código fuente correspondiente por esos medios, escriba a los
+colaboradores de MovixStudio mediante las incidencias del repositorio y se lo facilitaremos
+durante al menos tres años a partir de la publicación de esta versión.
+
+Modelos de IA
+-------------
+
+Los modelos de IA no se incluyen en el instalador: la aplicación los descarga a petición del
+usuario desde el diálogo «Modelos de IA», que muestra la licencia de cada uno antes de
+descargarlo.
