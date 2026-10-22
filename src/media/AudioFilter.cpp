@@ -214,8 +214,15 @@ void Denoiser::process(const float* in, int frames, std::vector<float>& out)
 void Denoiser::flush(std::vector<float>& out)
 {
     if (m_filter.isValid()) {
-        m_filter.push(nullptr, 0);
-        collect(out);
+        // Sin señal de fin de flujo: con ella, arnndn recibe el último bloque incompleto y aun así
+        // lee 480 muestras (lee fuera del búfer: basura o, si cae en el borde de una página, un
+        // cierre). Se empuja silencio en bloques de 10 ms hasta recuperar toda la salida retenida.
+        const int block = std::max(1, m_filter.sampleRate() / 100);
+        const std::vector<float> silence(size_t(block) * size_t(m_filter.channels()), 0.0f);
+        for (int i = 0; i < 100 && m_out < m_in; ++i) { // como mucho 1 s de relleno
+            m_filter.push(silence.data(), block);
+            collect(out);
+        }
     }
     // Si el filtro devolvió menos (relleno final), se completa con silencio.
     if (m_out < m_in) {

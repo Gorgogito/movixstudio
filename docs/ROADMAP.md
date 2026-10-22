@@ -254,9 +254,20 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
   y actualización entre versiones) en un equipo: se verificó su contenido extrayéndolo, con una
   prueba de humo de la IA y la aplicación sin nada más en el PATH.
 - Abrir en DaVinci Resolve / Kdenlive un `.otio` exportado (y al revés) con proyectos reales.
-- Fallo intermitente ya existente en la reducción de ruido (no en OTIO): la prueba `[denoise]` se
-  cae a veces (SIGSEGV dentro de `Denoiser::init`) o no filtra la segunda vez (≈ 1 de cada 3
-  ejecuciones aisladas; la batería completa pasó). `ffmpeg.exe` 9.0 da salidas distintas en cada
-  ejecución de `arnndn` con la misma entrada, aunque sin caerse ni cambiar su nivel de ruido.
+- Actualizar FFmpeg cuando la rama 9.0 incorpore las correcciones de `arnndn` de la rama principal
+  (5474b1e05a: lee entradas de las GRU sin inicializar; 279f225d98: modelos con capas que no
+  encajan). Con el modelo que usamos no se observa efecto (salida idéntica en cientos de pasadas).
+
+### Corregido: cierres y salida errática de la reducción de ruido
+
+`arnndn` (FFmpeg) consume bloques de 480 muestras, pero al recibir el fin de flujo se le entrega
+el último bloque incompleto y lo lee entero: lee fuera del búfer de entrada. Eso daba NaN o salida
+distinta en cada ejecución y, cuando el búfer acababa en el borde de una página, el cierre del
+proceso (≈ 1 de cada 10 pruebas; también podía ocurrir al reproducir o exportar el final de un clip
+con reducción de ruido). Se localizó con una traza de la pila en `tests/main.cpp` (instrucción del
+filtro paso alto de `rnnoise_channel` sobre la entrada) y el código de FFmpeg. `Denoiser::flush`
+ya no envía el fin de flujo: empuja silencio hasta recuperar toda la salida retenida. Prueba nueva
+(12 pasadas idénticas al bit y sin NaN con una longitud que no es múltiplo de 480): fallaba 15 de
+15 veces con el código anterior; las pruebas `[denoise]` pasan 40 de 40.
 - Publicar la primera versión en https://github.com/Gorgogito/movixstudio/releases con el MSI
   adjunto (nombre `MovixStudio-<versión>-win64.msi`), para que la búsqueda de actualizaciones la encuentre.

@@ -11,6 +11,7 @@
 
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 
@@ -101,6 +102,32 @@ TEST_CASE("Reducción de ruido con RNNoise: menos ruido, voz intacta y sin desfa
     std::vector<float> same;
     denoiser.process(in.data(), 4800, same);
     CHECK(same == std::vector<float>(in.begin(), in.begin() + 4800));
+}
+
+TEST_CASE("La reducción de ruido es determinista al vaciar un final incompleto", "[ai][denoise]")
+{
+    if (!std::filesystem::exists(rnnoiseModel()))
+        SKIP("Falta el modelo " << rnnoiseModel());
+    // Una longitud que no es múltiplo del bloque de RNNoise (480): antes se le pasaba el fin de
+    // flujo y arnndn leía el último bloque fuera del búfer (salida variable o cierre del proceso).
+    const auto full = decodeAll(test::mediaPath("speech_noisy.wav"), 48000);
+    REQUIRE(full.size() > 48000 * 2);
+    const std::vector<float> in(full.begin(), full.begin() + 48000 * 2 + 317);
+    std::vector<float> first;
+    for (int run = 0; run < 12; ++run) {
+        media::Denoiser denoiser;
+        REQUIRE(denoiser.init(48000, 1, rnnoiseModel(), 1.0));
+        std::vector<float> out;
+        for (size_t i = 0; i < in.size(); i += 1100)
+            denoiser.process(in.data() + i, int(std::min<size_t>(1100, in.size() - i)), out);
+        denoiser.flush(out);
+        REQUIRE(out.size() == in.size());
+        REQUIRE(std::all_of(out.begin(), out.end(), [](float v) { return std::isfinite(v); }));
+        if (run == 0)
+            first = out;
+        else
+            REQUIRE(out == first);
+    }
 }
 
 TEST_CASE("El lector aplica la reducción de ruido del clip y busca sin desfase", "[ai][denoise]")
