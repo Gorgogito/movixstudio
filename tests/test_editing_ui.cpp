@@ -165,3 +165,51 @@ TEST_CASE("Atajos de teclado configurables", "[app][shortcuts]")
         CHECK(keys.text("title") == "T");
     }
 }
+
+TEST_CASE("Selección por recuadro y edición de varios clips", "[app][multiselect]")
+{
+    ProjectController project;
+    project.newProject();
+    // Tres títulos: dos en la pista de arriba (filas 0) y uno en V1 (fila 1). 30 fps.
+    REQUIRE(project.addTitle(0, -1, 0));   // en V2 (fila 0), 0–150
+    const qint64 a = project.selection()[0].toLongLong();
+    REQUIRE(project.addTitle(0, -1, 300)); // fila 0, 300–450
+    const qint64 b = project.selection()[0].toLongLong();
+    const qint64 v1 = qint64(project.project().videoTracks[0].id);
+    REQUIRE(project.addTitle(0, v1, 100)); // fila 1, 100–250
+    const qint64 c = project.selection()[0].toLongLong();
+
+    // Recuadro sobre las dos filas entre los fotogramas 120 y 200: toca a y c, no b.
+    project.selectRange(120, 200, 0, 1, false);
+    QVariantList sel = project.selection();
+    CHECK(sel.size() == 2);
+    CHECK(sel.contains(a));
+    CHECK(sel.contains(c));
+    project.selectRange(400, 420, 0, 0, true); // añade b
+    CHECK(project.selection().size() == 3);
+    CHECK(project.selectionSummary()["count"].toInt() == 3);
+    CHECK(project.selectionSummary()["video"].toInt() == 3);
+
+    // Editar todos: arrastrar la opacidad es un solo paso de deshacer.
+    project.player()->seekFrame(0);
+    project.editSelection("opacity", 0.8);
+    project.editSelection("opacity", 0.5);
+    project.endInteraction();
+    project.editSelection("fadeIn", 1.0);
+    for (qint64 id : {a, b, c}) {
+        const Clip* clip = project.project().findClip(Id(id));
+        CHECK(clip->transform.opacity.value == Approx(0.5));
+        CHECK(clip->fadeIn == 30);
+    }
+    project.undo(); // los fundidos
+    project.undo(); // la opacidad
+    for (qint64 id : {a, b, c})
+        CHECK(project.project().findClip(Id(id))->transform.opacity.value == Approx(1.0));
+    project.editSelection("enabled", false);
+    for (qint64 id : {a, b, c})
+        CHECK_FALSE(project.project().findClip(Id(id))->enabled);
+    project.undo();
+    // Para revisar la interfaz con varios clips (fuera de las pruebas).
+    if (const QString dump = qEnvironmentVariable("MOVIX_UI_DUMP"); !dump.isEmpty())
+        REQUIRE(project.saveAs(QUrl::fromLocalFile(dump)));
+}

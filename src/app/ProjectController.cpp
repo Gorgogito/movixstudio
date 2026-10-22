@@ -1454,6 +1454,103 @@ void ProjectController::select(qint64 clipId, bool additive)
     emit selectionChanged();
 }
 
+void ProjectController::selectRange(qint64 fromFrame, qint64 toFrame, int firstRow, int lastRow, bool additive)
+{
+    const auto& p = project();
+    if (!additive)
+        m_selection.clear();
+    const FramePos a = std::min(fromFrame, toFrame), b = std::max(fromFrame, toFrame);
+    for (TrackKind kind : {TrackKind::Video, TrackKind::Audio}) {
+        const auto& tracks = p.tracksOf(kind);
+        for (int i = 0; i < int(tracks.size()); ++i) {
+            const int row = TrackListModel::displayRow(p, kind, i);
+            if (row < std::min(firstRow, lastRow) || row > std::max(firstRow, lastRow) || tracks[size_t(i)].locked)
+                continue;
+            for (const Clip& c : tracks[size_t(i)].clips)
+                if (c.start < b && c.end() > a)
+                    m_selection.insert(c.id);
+        }
+    }
+    m_clips.sync(project(), m_selection);
+    emit selectionChanged();
+}
+
+QVariantMap ProjectController::selectionSummary() const
+{
+    const auto& p = project();
+    const auto& s = p.settings;
+    int video = 0, audio = 0;
+    const Clip* first = nullptr;
+    for (Id id : m_selection) {
+        const Clip* c = p.findClip(id);
+        const Track* t = p.trackOfClip(id);
+        if (!c || !t)
+            continue;
+        (t->kind == TrackKind::Video ? video : audio) += 1;
+        if (!first || c->start < first->start)
+            first = c;
+    }
+    if (!first)
+        return {{"count", 0}};
+    const FramePos rel = std::clamp<FramePos>(playheadRel(*first), 0, first->duration - 1);
+    return {{"count", video + audio},
+            {"video", video},
+            {"audio", audio},
+            {"opacity", first->transform.opacity.at(rel)},
+            {"volume", first->volume.at(rel)},
+            {"scale", first->transform.scale.at(rel)},
+            {"speed", first->speed},
+            {"enabled", first->enabled},
+            {"reverse", first->reverse},
+            {"fadeIn", toSeconds(s.frameToTime(first->fadeIn))},
+            {"fadeOut", toSeconds(s.frameToTime(first->fadeOut))},
+            {"audioFadeIn", toSeconds(s.frameToTime(first->audioFadeIn))},
+            {"audioFadeOut", toSeconds(s.frameToTime(first->audioFadeOut))}};
+}
+
+void ProjectController::editSelection(const QString& what, const QVariant& value)
+{
+    const std::vector<Id> ids(m_selection.begin(), m_selection.end());
+    if (ids.empty())
+        return;
+    const FramePos playhead = m_player->positionFrame();
+    apply(tr("Editar %n clips", nullptr, int(ids.size())), [&](Project& p) {
+        bool changed = false;
+        const auto& s = p.settings;
+        for (Id id : ids) {
+            const Clip* c = p.findClip(id);
+            const Track* t = p.trackOfClip(id);
+            if (!c || !t || t->locked)
+                continue;
+            const bool videoTrack = t->kind == TrackKind::Video;
+            const FramePos rel = std::clamp<FramePos>(playhead - c->start, 0, c->duration - 1);
+            const double v = value.toDouble();
+            const FramePos frames = s.timeToFrame(TimeUs(std::max(0.0, v) * kUsPerSecond));
+            if (what == QLatin1String("opacity") && videoTrack)
+                changed |= edit::setProperty(p, id, edit::Property::Opacity, rel, v);
+            else if (what == QLatin1String("scale") && videoTrack)
+                changed |= edit::setProperty(p, id, edit::Property::Scale, rel, v);
+            else if (what == QLatin1String("volume"))
+                changed |= edit::setProperty(p, id, edit::Property::Volume, rel, v);
+            else if (what == QLatin1String("speed"))
+                changed |= edit::setClipSpeed(p, id, v);
+            else if (what == QLatin1String("enabled"))
+                changed |= edit::setClipEnabled(p, id, value.toBool());
+            else if (what == QLatin1String("reverse"))
+                changed |= edit::setReverse(p, id, value.toBool());
+            else if (what == QLatin1String("fadeIn") && videoTrack)
+                changed |= edit::setFades(p, id, frames, c->fadeOut);
+            else if (what == QLatin1String("fadeOut") && videoTrack)
+                changed |= edit::setFades(p, id, c->fadeIn, frames);
+            else if (what == QLatin1String("audioFadeIn"))
+                changed |= edit::setAudioFades(p, id, frames, c->audioFadeOut);
+            else if (what == QLatin1String("audioFadeOut"))
+                changed |= edit::setAudioFades(p, id, c->audioFadeIn, frames);
+        }
+        return changed;
+    }, QStringLiteral("sel:%1").arg(what));
+}
+
 void ProjectController::clearSelection()
 {
     if (m_selection.isEmpty())

@@ -1325,6 +1325,26 @@
         <source>Máquina de escribir</source>
         <translation>Typewriter</translation>
     </message>
+    <message>
+        <source>Los cambios se aplican a todos (los valores mostrados son los del primero). Arrastra en una zona vacía de la línea de tiempo para seleccionar con un recuadro.</source>
+        <translation>Changes apply to all of them (the values shown are the first one's). Drag on an empty area of the timeline to select with a box.</translation>
+    </message>
+    <message>
+        <source>Clips activos</source>
+        <translation>Clips enabled</translation>
+    </message>
+    <message>
+        <source>Audio: entrada</source>
+        <translation>Audio: in</translation>
+    </message>
+    <message>
+        <source>Audio: salida</source>
+        <translation>Audio: out</translation>
+    </message>
+    <message>
+        <source>Pegar el color copiado en todos</source>
+        <translation>Paste the copied color into all</translation>
+    </message>
 </context>
 <context>
     <name>KeyframeButton</name>
@@ -2573,6 +2593,13 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Interpolación del keyframe</source>
         <translation>Keyframe interpolation</translation>
+    </message>
+    <message numerus="yes">
+        <source>Editar %n clips</source>
+        <translation>
+            <numerusform>Edit %n clip</numerusform>
+            <numerusform>Edit %n clips</numerusform>
+        </translation>
     </message>
 </context>
 <context>

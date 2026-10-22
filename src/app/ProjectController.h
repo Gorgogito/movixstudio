@@ -287,6 +287,16 @@ public:
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);
     Q_INVOKABLE void clearSelection();
+    // Selección por recuadro: los clips que tocan [fromFrame, toFrame) en las filas firstRow..lastRow
+    // de la línea de tiempo (las de video de arriba abajo y luego las de audio).
+    Q_INVOKABLE void selectRange(qint64 fromFrame, qint64 toFrame, int firstRow, int lastRow, bool additive);
+    // Varios clips a la vez: {count, video, audio, opacity, volume, scale, speed, enabled, reverse,
+    // fadeIn, fadeOut, audioFadeIn, audioFadeOut} (los valores, del primero).
+    Q_INVOKABLE QVariantMap selectionSummary() const;
+    // Aplica a todos los seleccionados en un paso de deshacer: "opacity", "volume", "scale" (en el
+    // cabezal, como keyframe si están animados), "speed", "enabled", "reverse" o los fundidos
+    // ("fadeIn", "fadeOut", "audioFadeIn", "audioFadeOut", en segundos).
+    Q_INVOKABLE void editSelection(const QString& what, const QVariant& value);
     Q_INVOKABLE void selectAll();
     // "video", "audio", "mixed" o "" según las pistas de los clips seleccionados.
     Q_INVOKABLE QString selectionKind() const;

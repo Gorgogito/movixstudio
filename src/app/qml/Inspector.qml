@@ -549,12 +549,103 @@ Rectangle {
                 }
             }
 
-            // ======== Varios clips ========
-            Text {
-                Layout.topMargin: 10
+            // ======== Varios clips: lo que cambie aquí se aplica a todos ========
+            ColumnLayout {
+                id: multi
+                Layout.fillWidth: true
                 visible: inspector.selectedCount > 1
-                text: qsTr("%n clips seleccionados", "", inspector.selectedCount)
-                color: Theme.textMuted
+                spacing: 6
+                property var summary: ({})
+                function refresh() { summary = inspector.selectedCount > 1 ? inspector.project.selectionSummary() : ({}) }
+                Connections {
+                    target: inspector.project
+                    function onSelectionChanged() { multi.refresh() }
+                    function onHistoryChanged() { multi.refresh() }
+                }
+                Component.onCompleted: refresh()
+
+                SectionTitle { text: qsTr("%n clips seleccionados", "", inspector.selectedCount) }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    text: qsTr("Los cambios se aplican a todos (los valores mostrados son los del primero). Arrastra en una zona vacía de la línea de tiempo para seleccionar con un recuadro.")
+                }
+                RowLayout {
+                    SmallLabel { text: qsTr("Clips activos"); Layout.fillWidth: true }
+                    Switch {
+                        focusPolicy: Qt.NoFocus
+                        checked: multi.summary.enabled ?? true
+                        onToggled: inspector.project.editSelection("enabled", checked)
+                    }
+                }
+                SliderRow {
+                    visible: (multi.summary.video ?? 0) > 0
+                    label: qsTr("Opacidad")
+                    from: 0; to: 1; defaultValue: 1; suffix: "%"
+                    value: multi.summary.opacity ?? 1
+                    onMoved: (v) => inspector.project.editSelection("opacity", v)
+                    onReleased: inspector.project.endInteraction()
+                }
+                SliderRow {
+                    visible: (multi.summary.video ?? 0) > 0
+                    label: qsTr("Escala")
+                    from: 0.05; to: 4; defaultValue: 1; suffix: "%"
+                    value: multi.summary.scale ?? 1
+                    onMoved: (v) => inspector.project.editSelection("scale", v)
+                    onReleased: inspector.project.endInteraction()
+                }
+                SliderRow {
+                    label: qsTr("Volumen")
+                    from: 0; to: 2; defaultValue: 1; suffix: "%"
+                    value: multi.summary.volume ?? 1
+                    onMoved: (v) => inspector.project.editSelection("volume", v)
+                    onReleased: inspector.project.endInteraction()
+                }
+                RowLayout {
+                    SmallLabel { text: qsTr("Velocidad"); Layout.fillWidth: true }
+                    ComboBox {
+                        readonly property var speeds: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 8]
+                        focusPolicy: Qt.NoFocus
+                        model: speeds.map(s => (s + "×").replace(".", ","))
+                        currentIndex: Math.max(0, speeds.indexOf(multi.summary.speed ?? 1))
+                        onActivated: (i) => inspector.project.editSelection("speed", speeds[i])
+                    }
+                }
+                RowLayout {
+                    SmallLabel { text: qsTr("Al revés"); Layout.fillWidth: true }
+                    Switch {
+                        focusPolicy: Qt.NoFocus
+                        checked: multi.summary.reverse ?? false
+                        onToggled: inspector.project.editSelection("reverse", checked)
+                    }
+                }
+                RowLayout {
+                    visible: (multi.summary.video ?? 0) > 0
+                    SmallLabel { text: qsTr("Fundido de entrada"); Layout.fillWidth: true }
+                    SecondsField { seconds: multi.summary.fadeIn ?? 0; onEdited: (v) => inspector.project.editSelection("fadeIn", v) }
+                }
+                RowLayout {
+                    visible: (multi.summary.video ?? 0) > 0
+                    SmallLabel { text: qsTr("Fundido de salida"); Layout.fillWidth: true }
+                    SecondsField { seconds: multi.summary.fadeOut ?? 0; onEdited: (v) => inspector.project.editSelection("fadeOut", v) }
+                }
+                RowLayout {
+                    SmallLabel { text: qsTr("Audio: entrada"); Layout.fillWidth: true }
+                    SecondsField { seconds: multi.summary.audioFadeIn ?? 0; onEdited: (v) => inspector.project.editSelection("audioFadeIn", v) }
+                }
+                RowLayout {
+                    SmallLabel { text: qsTr("Audio: salida"); Layout.fillWidth: true }
+                    SecondsField { seconds: multi.summary.audioFadeOut ?? 0; onEdited: (v) => inspector.project.editSelection("audioFadeOut", v) }
+                }
+                Button {
+                    Layout.topMargin: 4
+                    text: qsTr("Pegar el color copiado en todos")
+                    focusPolicy: Qt.NoFocus
+                    visible: (multi.summary.video ?? 0) > 0
+                    onClicked: inspector.project.pasteColor()
+                }
             }
 
             // ======== Sin selección: proyecto ========

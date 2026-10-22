@@ -285,7 +285,9 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Atajos configurables: Editar → Atajos de teclado (pulsar la combinación nueva; quita el
       atajo a la acción que lo usaba y avisa; restablecer uno o todos). Se guardan en la
       configuración y los menús muestran los actuales
-- [ ] Selección por recuadro y edición de varios clips a la vez
+- [x] Selección por recuadro (arrastrar en una zona vacía; Ctrl o Mayús añade) y edición de varios
+      clips a la vez en el inspector: activos, opacidad, escala, volumen, velocidad, al revés,
+      fundidos y pegar el color, cada cambio en un solo paso de deshacer
 - [ ] Proxies automáticos y decodificación de copia cero (exportar 1080p60 a más de ~94 fps)
 - [ ] Visor HDR, corrección en luz lineal, puntos de máscara animables
 - [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas

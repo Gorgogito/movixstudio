@@ -319,16 +319,54 @@ Rectangle {
                     }
                 }
 
-                // Clic en zona vacía: deselecciona y mueve el cabezal.
+                // Clic en zona vacía: deselecciona y mueve el cabezal. Arrastrar dibuja un recuadro
+                // que selecciona los clips que toca (con Ctrl o Mayús se añaden a la selección).
                 MouseArea {
+                    id: emptyArea
+                    property point origin
+                    property bool marquee: false
                     width: view.contentWidth
                     height: view.contentHeight
                     onPressed: (mouse) => {
                         timeline.activated()
-                        timeline.project.clearSelection()
                         timeline.player.pause()
+                        origin = Qt.point(mouse.x, mouse.y)
+                        marquee = false
+                    }
+                    onPositionChanged: (mouse) => {
+                        if (!marquee && Math.abs(mouse.x - origin.x) + Math.abs(mouse.y - origin.y) > 6)
+                            marquee = true
+                        if (marquee)
+                            marqueeRect.update(origin, Qt.point(mouse.x, mouse.y))
+                    }
+                    onReleased: (mouse) => {
+                        const additive = (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)) !== 0
+                        if (marquee) {
+                            const r = marqueeRect
+                            timeline.project.selectRange(Math.floor(r.x / timeline.pxPerFrame), Math.ceil((r.x + r.width) / timeline.pxPerFrame),
+                                                         Math.floor(r.y / timeline.trackHeight), Math.floor((r.y + r.height - 1) / timeline.trackHeight),
+                                                         additive)
+                            marquee = false
+                            return
+                        }
+                        if (!additive)
+                            timeline.project.clearSelection()
                         timeline.player.seekFrame(Math.max(0, Math.round(mouse.x / timeline.pxPerFrame)))
                     }
+                }
+                Rectangle {
+                    id: marqueeRect
+                    function update(a, b) {
+                        x = Math.min(a.x, b.x)
+                        y = Math.min(a.y, b.y)
+                        width = Math.abs(a.x - b.x)
+                        height = Math.abs(a.y - b.y)
+                    }
+                    z: 10
+                    visible: emptyArea.marquee
+                    color: "#227C6CFF"
+                    border.color: Theme.accentHover
+                    border.width: 1
                 }
 
                 Repeater {
