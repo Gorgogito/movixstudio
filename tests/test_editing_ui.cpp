@@ -1,4 +1,5 @@
 #include "ProjectController.h"
+#include "ShortcutController.h"
 #include "core/Edits.h"
 #include "core/ProjectFile.h"
 #include "core/Timeline.h"
@@ -127,4 +128,40 @@ TEST_CASE("Máquina de escribir: los caracteres aparecen en su sitio", "[render]
     for (int x = 0; x < end; ++x)
         REQUIRE(alphaIn(*half, x, x + 1) == alphaIn(*full, x, x + 1));
     CHECK(alphaIn(*full, end + 1, W) > 0); // «BBBB» solo en el completo
+}
+
+TEST_CASE("Atajos de teclado configurables", "[app][shortcuts]")
+{
+    {
+        ShortcutController keys;
+        keys.resetAll();
+        CHECK(keys.keys()["split"].toStringList() == QStringList{"Ctrl+B", "S"});
+        CHECK(keys.text("saveAs") == "Ctrl+Mayús+S");
+        CHECK(keys.text("delete") == "Supr");
+        CHECK(keys.text("zoomIn") == "+");
+        CHECK(keys.sequenceFromKey(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier) == "Ctrl+Shift+D");
+        CHECK(keys.sequenceFromKey(Qt::Key_Shift, Qt::ShiftModifier).isEmpty());
+
+        // Asignar un atajo que usa otra acción se lo quita a esa.
+        CHECK(keys.conflict("split", "T") == keys.actions()[16].toMap()["label"].toString()); // «Añadir título»
+        REQUIRE(keys.assign("split", "T"));
+        CHECK(keys.keys()["split"].toStringList() == QStringList{"T"});
+        CHECK(keys.keys()["title"].toStringList().isEmpty());
+        CHECK(keys.text("title").isEmpty());
+        REQUIRE(keys.assign("title", "Ctrl+Shift+T"));
+    }
+    {
+        ShortcutController keys; // se guardan en la configuración
+        CHECK(keys.keys()["split"].toStringList() == QStringList{"T"});
+        CHECK(keys.text("title") == "Ctrl+Mayús+T");
+        bool customized = false;
+        for (const QVariant& a : keys.actions())
+            if (a.toMap()["id"] == "split")
+                customized = !a.toMap()["isDefault"].toBool();
+        CHECK(customized);
+        keys.reset("split");
+        CHECK(keys.keys()["split"].toStringList() == QStringList{"Ctrl+B", "S"});
+        keys.resetAll();
+        CHECK(keys.text("title") == "T");
+    }
 }

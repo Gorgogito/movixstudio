@@ -48,6 +48,7 @@ add_executable(movix_tests
     ${PROJECT_SOURCE_DIR}/src/app/UpdateController.h ${PROJECT_SOURCE_DIR}/src/app/UpdateController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TemplateStore.h ${PROJECT_SOURCE_DIR}/src/app/TemplateStore.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ScriptHost.h ${PROJECT_SOURCE_DIR}/src/app/ScriptHost.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ShortcutController.h ${PROJECT_SOURCE_DIR}/src/app/ShortcutController.cpp
     test_ai_app.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )

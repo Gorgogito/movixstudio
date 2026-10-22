@@ -1439,10 +1439,6 @@
         <translation>&amp;Play</translation>
     </message>
     <message>
-        <source>Espacio</source>
-        <translation>Space</translation>
-    </message>
-    <message>
         <source>&amp;Detener</source>
         <translation>&amp;Stop</translation>
     </message>
@@ -1459,16 +1455,8 @@
         <translation>Go to &amp;start</translation>
     </message>
     <message>
-        <source>Inicio</source>
-        <translation>Home</translation>
-    </message>
-    <message>
         <source>Ir al &amp;final</source>
         <translation>Go to &amp;end</translation>
-    </message>
-    <message>
-        <source>Fin</source>
-        <translation>End</translation>
     </message>
     <message>
         <source>Si&amp;lenciar</source>
@@ -1563,16 +1551,8 @@
         <translation>&amp;Delete</translation>
     </message>
     <message>
-        <source>Supr</source>
-        <translation>Del</translation>
-    </message>
-    <message>
         <source>Eliminar y &amp;cerrar hueco</source>
         <translation>Ripple &amp;delete</translation>
-    </message>
-    <message>
-        <source>Mayús+Supr</source>
-        <translation>Shift+Del</translation>
     </message>
     <message>
         <source>Seleccionar &amp;todo</source>
@@ -1869,6 +1849,10 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Nombre de la plantilla. Guarda los ajustes, las pistas, los títulos, los marcadores y los medios del proyecto (con el mismo nombre se sustituye).</source>
         <translation>Template name. It keeps the project&apos;s settings, tracks, titles, markers and media (an existing one with the same name is replaced).</translation>
+    </message>
+    <message>
+        <source>Atajos de &amp;teclado…</source>
+        <translation>&amp;Keyboard shortcuts…</translation>
     </message>
 </context>
 <context>
@@ -2751,6 +2735,232 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Línea %1: %2</source>
         <translation>Line %1: %2</translation>
+    </message>
+</context>
+<context>
+    <name>ShortcutController</name>
+    <message>
+        <source>Archivo</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>Edición</source>
+        <translation>Editing</translation>
+    </message>
+    <message>
+        <source>Reproducción</source>
+        <translation>Playback</translation>
+    </message>
+    <message>
+        <source>Vista</source>
+        <translation>View</translation>
+    </message>
+    <message>
+        <source>Nuevo proyecto</source>
+        <translation>New project</translation>
+    </message>
+    <message>
+        <source>Abrir proyecto</source>
+        <translation>Open project</translation>
+    </message>
+    <message>
+        <source>Guardar</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <source>Guardar como</source>
+        <translation>Save as</translation>
+    </message>
+    <message>
+        <source>Importar medios</source>
+        <translation>Import media</translation>
+    </message>
+    <message>
+        <source>Exportar video</source>
+        <translation>Export video</translation>
+    </message>
+    <message>
+        <source>Deshacer</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <source>Rehacer</source>
+        <translation>Redo</translation>
+    </message>
+    <message>
+        <source>Dividir en el cabezal</source>
+        <translation>Split at playhead</translation>
+    </message>
+    <message>
+        <source>Eliminar</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Eliminar y cerrar hueco</source>
+        <translation>Ripple delete</translation>
+    </message>
+    <message>
+        <source>Seleccionar todo</source>
+        <translation>Select all</translation>
+    </message>
+    <message>
+        <source>Quitar la selección</source>
+        <translation>Clear selection</translation>
+    </message>
+    <message>
+        <source>Copiar</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>Cortar</source>
+        <translation>Cut</translation>
+    </message>
+    <message>
+        <source>Pegar en el cabezal</source>
+        <translation>Paste at playhead</translation>
+    </message>
+    <message>
+        <source>Añadir título</source>
+        <translation>Add title</translation>
+    </message>
+    <message>
+        <source>Crear clip compuesto</source>
+        <translation>Create compound clip</translation>
+    </message>
+    <message>
+        <source>Romper clip compuesto</source>
+        <translation>Break compound clip</translation>
+    </message>
+    <message>
+        <source>Añadir marcador</source>
+        <translation>Add marker</translation>
+    </message>
+    <message>
+        <source>Marcador siguiente</source>
+        <translation>Next marker</translation>
+    </message>
+    <message>
+        <source>Marcador anterior</source>
+        <translation>Previous marker</translation>
+    </message>
+    <message>
+        <source>Reproducir / pausa</source>
+        <translation>Play / pause</translation>
+    </message>
+    <message>
+        <source>Pausa</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <source>Reproducir</source>
+        <translation>Play</translation>
+    </message>
+    <message>
+        <source>Fotograma anterior</source>
+        <translation>Previous frame</translation>
+    </message>
+    <message>
+        <source>Fotograma siguiente</source>
+        <translation>Next frame</translation>
+    </message>
+    <message>
+        <source>Un segundo atrás</source>
+        <translation>One second back</translation>
+    </message>
+    <message>
+        <source>Un segundo adelante</source>
+        <translation>One second forward</translation>
+    </message>
+    <message>
+        <source>Ir al inicio</source>
+        <translation>Go to start</translation>
+    </message>
+    <message>
+        <source>Ir al final</source>
+        <translation>Go to end</translation>
+    </message>
+    <message>
+        <source>Silenciar</source>
+        <translation>Mute</translation>
+    </message>
+    <message>
+        <source>Acercar la línea de tiempo</source>
+        <translation>Zoom timeline in</translation>
+    </message>
+    <message>
+        <source>Alejar la línea de tiempo</source>
+        <translation>Zoom timeline out</translation>
+    </message>
+    <message>
+        <source>Ajustar todo</source>
+        <translation>Fit all</translation>
+    </message>
+    <message>
+        <source>Imán</source>
+        <translation>Snapping</translation>
+    </message>
+    <message>
+        <source>Mayús</source>
+        <translation>Shift</translation>
+    </message>
+    <message>
+        <source>Supr</source>
+        <translation>Del</translation>
+    </message>
+    <message>
+        <source>Inicio</source>
+        <translation>Home</translation>
+    </message>
+    <message>
+        <source>Fin</source>
+        <translation>End</translation>
+    </message>
+    <message>
+        <source>Espacio</source>
+        <translation>Space</translation>
+    </message>
+</context>
+<context>
+    <name>ShortcutsDialog</name>
+    <message>
+        <source>Atajos de teclado</source>
+        <translation>Keyboard shortcuts</translation>
+    </message>
+    <message>
+        <source>Restablecer todos</source>
+        <translation>Reset all</translation>
+    </message>
+    <message>
+        <source>Cerrar</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>«%1» se quitó de «%2».</source>
+        <translation>“%1” was removed from “%2”.</translation>
+    </message>
+    <message>
+        <source>Pulsa la combinación nueva (Esc para cancelar).</source>
+        <translation>Press the new combination (Esc to cancel).</translation>
+    </message>
+    <message>
+        <source>Haz clic en un atajo para cambiarlo.</source>
+        <translation>Click a shortcut to change it.</translation>
+    </message>
+    <message>
+        <source>Pulsa una tecla…</source>
+        <translation>Press a key…</translation>
+    </message>
+    <message>
+        <source>(ninguno)</source>
+        <translation>(none)</translation>
+    </message>
+    <message>
+        <source>Sin atajo</source>
+        <translation>No shortcut</translation>
+    </message>
+    <message>
+        <source>Restablecer</source>
+        <translation>Reset</translation>
     </message>
 </context>
 <context>

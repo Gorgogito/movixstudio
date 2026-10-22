@@ -282,7 +282,9 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       (también en los de color): lineal, suave o mantener; la forma del icono la indica
 - [x] Animaciones de texto: de entrada y de salida (fundido, deslizar desde cada lado, zoom y
       máquina de escribir, que dibuja los caracteres en su sitio) con su duración
-- [ ] Atajos configurables
+- [x] Atajos configurables: Editar → Atajos de teclado (pulsar la combinación nueva; quita el
+      atajo a la acción que lo usaba y avisa; restablecer uno o todos). Se guardan en la
+      configuración y los menús muestran los actuales
 - [ ] Selección por recuadro y edición de varios clips a la vez
 - [ ] Proxies automáticos y decodificación de copia cero (exportar 1080p60 a más de ~94 fps)
 - [ ] Visor HDR, corrección en luz lineal, puntos de máscara animables

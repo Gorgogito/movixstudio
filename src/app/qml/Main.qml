@@ -111,46 +111,47 @@ ApplicationWindow {
         })
     }
 
-    // --- Atajos de teclado ---
-    Shortcut { sequences: [StandardKey.New]; onActivated: window.guard(() => project.newProject()) }
-    Shortcut { sequences: [StandardKey.Open]; onActivated: window.guard(() => openDialog.open()) }
-    Shortcut { sequences: [StandardKey.Save]; onActivated: window.saveProject(null) }
-    Shortcut { sequence: "Ctrl+Shift+S"; onActivated: saveDialog.open() }
-    Shortcut { sequence: "Ctrl+I"; onActivated: importDialog.open() }
-    Shortcut { sequence: "Ctrl+G"; onActivated: project.createCompound() }
+    // --- Atajos de teclado (configurables: Editar → Atajos de teclado) ---
+    ShortcutController { id: keys }
+    Shortcut { sequences: keys.keys.new; onActivated: window.guard(() => project.newProject()) }
+    Shortcut { sequences: keys.keys.open; onActivated: window.guard(() => openDialog.open()) }
+    Shortcut { sequences: keys.keys.save; onActivated: window.saveProject(null) }
+    Shortcut { sequences: keys.keys.saveAs; onActivated: saveDialog.open() }
+    Shortcut { sequences: keys.keys["import"]; onActivated: importDialog.open() }
+    Shortcut { sequences: keys.keys.compound; onActivated: project.createCompound() }
     Shortcut {
-        sequence: "Ctrl+Shift+G"
+        sequences: keys.keys.breakCompound
         onActivated: if (project.selection.length === 1) project.breakCompound(project.selection[0])
     }
-    Shortcut { sequence: "Ctrl+E"; onActivated: exportDialog.open() }
-    Shortcut { sequences: [StandardKey.Undo]; onActivated: project.undo() }
-    Shortcut { sequences: ["Ctrl+Y", "Ctrl+Shift+Z"]; onActivated: project.redo() }
-    Shortcut { sequences: ["Ctrl+B", "S"]; onActivated: { viewer.showTimeline(); project.splitAtPlayhead() } }
-    Shortcut { sequence: "Delete"; onActivated: library.wordSelectionActive ? library.deleteWordSelection() : project.deleteSelection(false) }
-    Shortcut { sequence: "Shift+Delete"; onActivated: project.deleteSelection(true) }
-    Shortcut { sequence: "Ctrl+A"; onActivated: project.selectAll() }
-    Shortcut { sequences: [StandardKey.Copy]; onActivated: project.copySelection() }
-    Shortcut { sequences: [StandardKey.Cut]; onActivated: project.cutSelection() }
-    Shortcut { sequences: [StandardKey.Paste]; onActivated: { viewer.showTimeline(); project.paste() } }
-    Shortcut { sequence: "T"; onActivated: { viewer.showTimeline(); project.addTitle(0) } }
-    Shortcut { sequence: "Escape"; onActivated: project.clearSelection() }
-    Shortcut { sequence: "Ctrl+M"; onActivated: project.addMarker() }
-    Shortcut { sequence: "Alt+Right"; onActivated: project.jumpToMarker(true) }
-    Shortcut { sequence: "Alt+Left"; onActivated: project.jumpToMarker(false) }
-    Shortcut { sequence: "Space"; onActivated: window.activePlayer.togglePlayPause() }
-    Shortcut { sequence: "K"; onActivated: window.activePlayer.pause() }
-    Shortcut { sequence: "L"; onActivated: window.activePlayer.play() }
-    Shortcut { sequence: "Left"; autoRepeat: true; onActivated: window.activePlayer.stepFrames(-1) }
-    Shortcut { sequence: "Right"; autoRepeat: true; onActivated: window.activePlayer.stepFrames(1) }
-    Shortcut { sequence: "Shift+Left"; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position - 1) }
-    Shortcut { sequence: "Shift+Right"; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position + 1) }
-    Shortcut { sequence: "Home"; onActivated: window.activePlayer.seek(0) }
-    Shortcut { sequence: "End"; onActivated: window.activePlayer.seek(window.activePlayer.duration) }
-    Shortcut { sequence: "M"; onActivated: window.activePlayer.muted = !window.activePlayer.muted }
-    Shortcut { sequences: ["+", "="]; onActivated: timeline.zoomBy(1.5) }
-    Shortcut { sequence: "-"; onActivated: timeline.zoomBy(1 / 1.5) }
-    Shortcut { sequence: "Shift+Z"; onActivated: timeline.fitAll() }
-    Shortcut { sequence: "N"; onActivated: timeline.snapping = !timeline.snapping }
+    Shortcut { sequences: keys.keys["export"]; onActivated: exportDialog.open() }
+    Shortcut { sequences: keys.keys.undo; onActivated: project.undo() }
+    Shortcut { sequences: keys.keys.redo; onActivated: project.redo() }
+    Shortcut { sequences: keys.keys.split; onActivated: { viewer.showTimeline(); project.splitAtPlayhead() } }
+    Shortcut { sequences: keys.keys["delete"]; onActivated: library.wordSelectionActive ? library.deleteWordSelection() : project.deleteSelection(false) }
+    Shortcut { sequences: keys.keys.rippleDelete; onActivated: project.deleteSelection(true) }
+    Shortcut { sequences: keys.keys.selectAll; onActivated: project.selectAll() }
+    Shortcut { sequences: keys.keys.copy; onActivated: project.copySelection() }
+    Shortcut { sequences: keys.keys.cut; onActivated: project.cutSelection() }
+    Shortcut { sequences: keys.keys.paste; onActivated: { viewer.showTimeline(); project.paste() } }
+    Shortcut { sequences: keys.keys.title; onActivated: { viewer.showTimeline(); project.addTitle(0) } }
+    Shortcut { sequences: keys.keys.deselect; onActivated: project.clearSelection() }
+    Shortcut { sequences: keys.keys.marker; onActivated: project.addMarker() }
+    Shortcut { sequences: keys.keys.nextMarker; onActivated: project.jumpToMarker(true) }
+    Shortcut { sequences: keys.keys.prevMarker; onActivated: project.jumpToMarker(false) }
+    Shortcut { sequences: keys.keys.playPause; onActivated: window.activePlayer.togglePlayPause() }
+    Shortcut { sequences: keys.keys.pause; onActivated: window.activePlayer.pause() }
+    Shortcut { sequences: keys.keys.play; onActivated: window.activePlayer.play() }
+    Shortcut { sequences: keys.keys.stepBack; autoRepeat: true; onActivated: window.activePlayer.stepFrames(-1) }
+    Shortcut { sequences: keys.keys.stepForward; autoRepeat: true; onActivated: window.activePlayer.stepFrames(1) }
+    Shortcut { sequences: keys.keys.back1s; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position - 1) }
+    Shortcut { sequences: keys.keys.forward1s; autoRepeat: true; onActivated: window.activePlayer.seek(window.activePlayer.position + 1) }
+    Shortcut { sequences: keys.keys.home; onActivated: window.activePlayer.seek(0) }
+    Shortcut { sequences: keys.keys.end; onActivated: window.activePlayer.seek(window.activePlayer.duration) }
+    Shortcut { sequences: keys.keys.mute; onActivated: window.activePlayer.muted = !window.activePlayer.muted }
+    Shortcut { sequences: keys.keys.zoomIn; onActivated: timeline.zoomBy(1.5) }
+    Shortcut { sequences: keys.keys.zoomOut; onActivated: timeline.zoomBy(1 / 1.5) }
+    Shortcut { sequences: keys.keys.fitAll; onActivated: timeline.fitAll() }
+    Shortcut { sequences: keys.keys.snapping; onActivated: timeline.snapping = !timeline.snapping }
     // Multicámara: 1–9 cortan al ángulo en el cabezal (también reproduciendo).
     Instantiator {
         model: 9
@@ -165,8 +166,9 @@ ApplicationWindow {
     menuBar: MenuBar {
         Menu {
             title: qsTr("&Archivo")
-            MenuItem { text: qsTr("&Nuevo proyecto") + "\tCtrl+N"; onTriggered: window.guard(() => project.newProject()) }
-            MenuItem { text: qsTr("&Abrir proyecto…") + "\tCtrl+O"; onTriggered: window.guard(() => openDialog.open()) }
+            width: 340 // cabe el atajo a la derecha de cada acción
+            MenuItem { text: qsTr("&Nuevo proyecto") + "\t" + keys.text("new"); onTriggered: window.guard(() => project.newProject()) }
+            MenuItem { text: qsTr("&Abrir proyecto…") + "\t" + keys.text("open"); onTriggered: window.guard(() => openDialog.open()) }
             Menu {
                 id: newFromTemplateMenu
                 title: qsTr("Nuevo desde p&lantilla")
@@ -182,8 +184,8 @@ ApplicationWindow {
                     onObjectRemoved: (index, object) => newFromTemplateMenu.removeItem(object)
                 }
             }
-            MenuItem { text: qsTr("&Guardar") + "\tCtrl+S"; onTriggered: window.saveProject(null) }
-            MenuItem { text: qsTr("Guardar &como…") + "\tCtrl+Mayús+S"; onTriggered: saveDialog.open() }
+            MenuItem { text: qsTr("&Guardar") + "\t" + keys.text("save"); onTriggered: window.saveProject(null) }
+            MenuItem { text: qsTr("Guardar &como…") + "\t" + keys.text("saveAs"); onTriggered: saveDialog.open() }
             MenuItem { text: qsTr("Guardar como plan&tilla…"); onTriggered: projectTemplateDialog.open() }
             Menu {
                 id: removeTemplateMenu
@@ -201,8 +203,8 @@ ApplicationWindow {
                 }
             }
             MenuSeparator {}
-            MenuItem { text: qsTr("&Importar medios…") + "\tCtrl+I"; onTriggered: importDialog.open() }
-            MenuItem { text: qsTr("&Exportar video…") + "\tCtrl+E"; onTriggered: exportDialog.open() }
+            MenuItem { text: qsTr("&Importar medios…") + "\t" + keys.text("import"); onTriggered: importDialog.open() }
+            MenuItem { text: qsTr("&Exportar video…") + "\t" + keys.text("export"); onTriggered: exportDialog.open() }
             MenuItem { text: qsTr("Importar línea de tiempo (&OTIO)…"); onTriggered: window.guard(() => otioImportDialog.open()) }
             MenuItem { text: qsTr("Exportar línea de tiempo (O&TIO)…"); onTriggered: otioExportDialog.open() }
             MenuSeparator {}
@@ -212,30 +214,31 @@ ApplicationWindow {
         }
         Menu {
             title: qsTr("&Editar")
+            width: 340
             MenuItem {
-                text: (project.canUndo ? qsTr("&Deshacer: %1").arg(project.undoText) : qsTr("&Deshacer")) + "\tCtrl+Z"
+                text: (project.canUndo ? qsTr("&Deshacer: %1").arg(project.undoText) : qsTr("&Deshacer")) + "\t" + keys.text("undo")
                 enabled: project.canUndo
                 onTriggered: project.undo()
             }
             MenuItem {
-                text: (project.canRedo ? qsTr("&Rehacer: %1").arg(project.redoText) : qsTr("&Rehacer")) + "\tCtrl+Y"
+                text: (project.canRedo ? qsTr("&Rehacer: %1").arg(project.redoText) : qsTr("&Rehacer")) + "\t" + keys.text("redo")
                 enabled: project.canRedo
                 onTriggered: project.redo()
             }
             MenuSeparator {}
-            MenuItem { text: qsTr("&Dividir en el cabezal") + "\tCtrl+B"; onTriggered: project.splitAtPlayhead() }
-            MenuItem { text: qsTr("&Eliminar") + "\t" + qsTr("Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(false) }
-            MenuItem { text: qsTr("Eliminar y &cerrar hueco") + "\t" + qsTr("Mayús+Supr"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(true) }
+            MenuItem { text: qsTr("&Dividir en el cabezal") + "\t" + keys.text("split"); onTriggered: project.splitAtPlayhead() }
+            MenuItem { text: qsTr("&Eliminar") + "\t" + keys.text("delete"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(false) }
+            MenuItem { text: qsTr("Eliminar y &cerrar hueco") + "\t" + keys.text("rippleDelete"); enabled: project.selection.length > 0; onTriggered: project.deleteSelection(true) }
             MenuSeparator {}
-            MenuItem { text: qsTr("Co&piar") + "\tCtrl+C"; enabled: project.selection.length > 0; onTriggered: project.copySelection() }
-            MenuItem { text: qsTr("Cor&tar") + "\tCtrl+X"; enabled: project.selection.length > 0; onTriggered: project.cutSelection() }
-            MenuItem { text: qsTr("Pe&gar en el cabezal") + "\tCtrl+V"; enabled: project.canPaste; onTriggered: project.paste() }
+            MenuItem { text: qsTr("Co&piar") + "\t" + keys.text("copy"); enabled: project.selection.length > 0; onTriggered: project.copySelection() }
+            MenuItem { text: qsTr("Cor&tar") + "\t" + keys.text("cut"); enabled: project.selection.length > 0; onTriggered: project.cutSelection() }
+            MenuItem { text: qsTr("Pe&gar en el cabezal") + "\t" + keys.text("paste"); enabled: project.canPaste; onTriggered: project.paste() }
             MenuItem { text: qsTr("Modo &inserción"); checkable: true; checked: project.insertMode; onTriggered: project.insertMode = checked }
             MenuSeparator {}
-            MenuItem { text: qsTr("Añadir tít&ulo") + "\tT"; onTriggered: project.addTitle(0) }
+            MenuItem { text: qsTr("Añadir tít&ulo") + "\t" + keys.text("title"); onTriggered: project.addTitle(0) }
             MenuSeparator {}
             MenuItem {
-                text: qsTr("Crear clip c&ompuesto") + "\tCtrl+G"
+                text: qsTr("Crear clip c&ompuesto") + "\t" + keys.text("compound")
                 enabled: project.selection.length > 0
                 onTriggered: project.createCompound()
             }
@@ -244,34 +247,38 @@ ApplicationWindow {
                 enabled: project.inCompound
                 onTriggered: project.openSequenceLevel(project.sequencePath.length - 2)
             }
-            MenuItem { text: qsTr("Seleccionar &todo") + "\tCtrl+A"; onTriggered: project.selectAll() }
+            MenuItem { text: qsTr("Seleccionar &todo") + "\t" + keys.text("selectAll"); onTriggered: project.selectAll() }
             MenuItem { text: qsTr("Añadir pista de &video"); onTriggered: project.addTrack("video") }
             MenuItem { text: qsTr("Añadir pista de &audio"); onTriggered: project.addTrack("audio") }
             MenuSeparator {}
-            MenuItem { text: qsTr("Añadir &marcador") + "\tCtrl+M"; onTriggered: project.addMarker() }
+            MenuItem { text: qsTr("Añadir &marcador") + "\t" + keys.text("marker"); onTriggered: project.addMarker() }
             MenuItem { text: qsTr("Quitar los marcadores"); enabled: project.markers.length > 0; onTriggered: project.clearMarkers() }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Atajos de &teclado…"); onTriggered: shortcutsDialog.open() }
         }
         Menu {
             title: qsTr("&Reproducción")
+            width: 300
             MenuItem {
-                text: (window.activePlayer.playing ? qsTr("&Pausar") : qsTr("&Reproducir")) + "\t" + qsTr("Espacio")
+                text: (window.activePlayer.playing ? qsTr("&Pausar") : qsTr("&Reproducir")) + "\t" + keys.text("playPause")
                 onTriggered: window.activePlayer.togglePlayPause()
             }
             MenuItem { text: qsTr("&Detener"); onTriggered: window.activePlayer.stop() }
             MenuSeparator {}
-            MenuItem { text: qsTr("Fotograma &anterior") + "\t←"; onTriggered: window.activePlayer.stepFrames(-1) }
-            MenuItem { text: qsTr("Fotograma &siguiente") + "\t→"; onTriggered: window.activePlayer.stepFrames(1) }
-            MenuItem { text: qsTr("Ir al &inicio") + "\t" + qsTr("Inicio"); onTriggered: window.activePlayer.seek(0) }
-            MenuItem { text: qsTr("Ir al &final") + "\t" + qsTr("Fin"); onTriggered: window.activePlayer.seek(window.activePlayer.duration) }
+            MenuItem { text: qsTr("Fotograma &anterior") + "\t" + keys.text("stepBack"); onTriggered: window.activePlayer.stepFrames(-1) }
+            MenuItem { text: qsTr("Fotograma &siguiente") + "\t" + keys.text("stepForward"); onTriggered: window.activePlayer.stepFrames(1) }
+            MenuItem { text: qsTr("Ir al &inicio") + "\t" + keys.text("home"); onTriggered: window.activePlayer.seek(0) }
+            MenuItem { text: qsTr("Ir al &final") + "\t" + keys.text("end"); onTriggered: window.activePlayer.seek(window.activePlayer.duration) }
             MenuSeparator {}
-            MenuItem { text: qsTr("Si&lenciar") + "\tM"; checkable: true; checked: window.activePlayer.muted; onTriggered: window.activePlayer.muted = checked }
+            MenuItem { text: qsTr("Si&lenciar") + "\t" + keys.text("mute"); checkable: true; checked: window.activePlayer.muted; onTriggered: window.activePlayer.muted = checked }
         }
         Menu {
             title: qsTr("&Ver")
-            MenuItem { text: qsTr("&Acercar la línea de tiempo") + "\t+"; onTriggered: timeline.zoomBy(1.5) }
-            MenuItem { text: qsTr("A&lejar la línea de tiempo") + "\t−"; onTriggered: timeline.zoomBy(1 / 1.5) }
-            MenuItem { text: qsTr("Ajustar &todo") + "\tMayús+Z"; onTriggered: timeline.fitAll() }
-            MenuItem { text: qsTr("&Imán") + "\tN"; checkable: true; checked: timeline.snapping; onTriggered: timeline.snapping = checked }
+            width: 340
+            MenuItem { text: qsTr("&Acercar la línea de tiempo") + "\t" + keys.text("zoomIn"); onTriggered: timeline.zoomBy(1.5) }
+            MenuItem { text: qsTr("A&lejar la línea de tiempo") + "\t" + keys.text("zoomOut"); onTriggered: timeline.zoomBy(1 / 1.5) }
+            MenuItem { text: qsTr("Ajustar &todo") + "\t" + keys.text("fitAll"); onTriggered: timeline.fitAll() }
+            MenuItem { text: qsTr("&Imán") + "\t" + keys.text("snapping"); checkable: true; checked: timeline.snapping; onTriggered: timeline.snapping = checked }
             MenuSeparator {}
             Menu {
                 title: qsTr("&Idioma")
@@ -574,6 +581,10 @@ ApplicationWindow {
         title: qsTr("Importar subtítulos")
         nameFilters: [qsTr("Subtítulos SubRip") + " (*.srt)", qsTr("Todos los archivos") + " (*)"]
         onAccepted: ai.importSrt(selectedFile)
+    }
+    ShortcutsDialog {
+        id: shortcutsDialog
+        keys: keys
     }
     NameDialog {
         id: projectTemplateDialog

@@ -16,6 +16,7 @@ qt_add_executable(MovixStudio WIN32
     UpdateController.h UpdateController.cpp
     TemplateStore.h TemplateStore.cpp
     ScriptHost.h ScriptHost.cpp
+    ShortcutController.h ShortcutController.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
 if(WIN32)
@@ -83,6 +84,7 @@ qt_add_qml_module(MovixStudio
         qml/NameDialog.qml
         qml/OfxEffects.qml
         qml/KeyframeButton.qml
+        qml/ShortcutsDialog.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
