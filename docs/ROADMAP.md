@@ -254,7 +254,14 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       al ángulo en el cabezal, también reproduciendo. Se ajusta la sincronía abriendo el clip; al
       romperlo queda el ángulo y el audio elegidos; en OTIO se exporta lo que se ve y se oye.
       `.mxproj` v7
-- [ ] Plantillas propias, plugins/scripting, OpenFX
+- [x] Plantillas propias: de título (estilo, posición, duración y fundidos; se guardan desde las
+      propiedades de un título y aparecen en la pestaña Títulos) y de proyecto (ajustes, pistas,
+      títulos, marcadores y medios; Archivo → Nuevo desde plantilla). En la carpeta de datos
+- [x] Scripts en JavaScript (QJSEngine) con una API `movix` para consultar y editar el proyecto
+      ([docs/SCRIPTS.md](SCRIPTS.md)): menú Scripts con cinco incluidos y los de la carpeta del
+      usuario. Un script es un paso de deshacer y, si falla, no cambia nada; sin acceso a archivos
+      ni red y con un límite de 10 s
+- [ ] OpenFX
 - [ ] Linux y macOS
 
 ### Pendiente de comprobar
@@ -278,5 +285,3 @@ filtro paso alto de `rnnoise_channel` sobre la entrada) y el código de FFmpeg. 
 ya no envía el fin de flujo: empuja silencio hasta recuperar toda la salida retenida. Prueba nueva
 (12 pasadas idénticas al bit y sin NaN con una longitud que no es múltiplo de 480): fallaba 15 de
 15 veces con el código anterior; las pruebas `[denoise]` pasan 40 de 40.
-- Publicar la primera versión en https://github.com/Gorgogito/movixstudio/releases con el MSI
-  adjunto (nombre `MovixStudio-<versión>-win64.msi`), para que la búsqueda de actualizaciones la encuentre.

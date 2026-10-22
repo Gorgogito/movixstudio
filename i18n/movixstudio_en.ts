@@ -1273,6 +1273,18 @@
         <source>El del ángulo que se ve</source>
         <translation>From the angle on screen</translation>
     </message>
+    <message>
+        <source>Guardar como plantilla…</source>
+        <translation>Save as template…</translation>
+    </message>
+    <message>
+        <source>Guardar plantilla de título</source>
+        <translation>Save title template</translation>
+    </message>
+    <message>
+        <source>Nombre de la plantilla (con el mismo nombre se sustituye)</source>
+        <translation>Template name (an existing one with the same name is replaced)</translation>
+    </message>
 </context>
 <context>
     <name>LibraryPanel</name>
@@ -1287,10 +1299,6 @@
     <message>
         <source>Transiciones</source>
         <translation>Transitions</translation>
-    </message>
-    <message>
-        <source>Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal.</source>
-        <translation>Drag a title to the timeline or double-click to add it at the playhead.</translation>
     </message>
     <message>
         <source>Arrastra una transición al corte entre dos clips contiguos de la misma pista.</source>
@@ -1327,6 +1335,18 @@
     <message>
         <source>Texto</source>
         <translation>Text</translation>
+    </message>
+    <message>
+        <source>Plantilla propia (clic derecho para eliminarla)</source>
+        <translation>Your template (right-click to delete it)</translation>
+    </message>
+    <message>
+        <source>Eliminar plantilla</source>
+        <translation>Delete template</translation>
+    </message>
+    <message>
+        <source>Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal. Guarda los tuyos como plantilla desde las propiedades de un título.</source>
+        <translation>Drag a title onto the timeline or double-click to add it at the playhead. Save your own as templates from a title's properties.</translation>
     </message>
 </context>
 <context>
@@ -1755,6 +1775,34 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Exportar línea de tiempo</source>
         <translation>Export timeline</translation>
     </message>
+    <message>
+        <source>Nuevo desde p&amp;lantilla</source>
+        <translation>New from &amp;template</translation>
+    </message>
+    <message>
+        <source>Guardar como plan&amp;tilla…</source>
+        <translation>Save as te&amp;mplate…</translation>
+    </message>
+    <message>
+        <source>Eliminar plantilla de proyecto</source>
+        <translation>Delete project template</translation>
+    </message>
+    <message>
+        <source>&amp;Scripts</source>
+        <translation>&amp;Scripts</translation>
+    </message>
+    <message>
+        <source>Abrir la carpeta de &amp;scripts</source>
+        <translation>Open the &amp;scripts folder</translation>
+    </message>
+    <message>
+        <source>Guardar como plantilla de proyecto</source>
+        <translation>Save as project template</translation>
+    </message>
+    <message>
+        <source>Nombre de la plantilla. Guarda los ajustes, las pistas, los títulos, los marcadores y los medios del proyecto (con el mismo nombre se sustituye).</source>
+        <translation>Template name. It keeps the project's settings, tracks, titles, markers and media (an existing one with the same name is replaced).</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -1918,6 +1966,21 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Audio: %1</source>
         <translation>Audio: %1</translation>
+    </message>
+</context>
+<context>
+    <name>NameDialog</name>
+    <message>
+        <source>Nombre</source>
+        <translation type="unfinished">Name</translation>
+    </message>
+    <message>
+        <source>Guardar</source>
+        <translation type="unfinished">Save</translation>
+    </message>
+    <message>
+        <source>Cancelar</source>
+        <translation type="unfinished">Cancel</translation>
     </message>
 </context>
 <context>
@@ -2361,6 +2424,38 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>No se pudo sincronizar por el audio: %1 (se alineó al inicio).</source>
         <translation>Could not sync by audio: %1 (aligned at the start).</translation>
     </message>
+    <message>
+        <source>No se pudo guardar la plantilla: %1</source>
+        <translation>Could not save the template: %1</translation>
+    </message>
+    <message>
+        <source>Plantilla de título «%1» guardada: está en la pestaña Títulos.</source>
+        <translation>Title template “%1” saved: it is in the Titles tab.</translation>
+    </message>
+    <message>
+        <source>Plantilla de proyecto «%1» guardada: está en Archivo → Nuevo desde plantilla.</source>
+        <translation>Project template “%1” saved: it is in File → New from template.</translation>
+    </message>
+    <message>
+        <source>No se pudo abrir el script: %1</source>
+        <translation>Could not open the script: %1</translation>
+    </message>
+    <message>
+        <source>Script «%1»</source>
+        <translation>Script “%1”</translation>
+    </message>
+    <message>
+        <source>El script «%1» falló. %2</source>
+        <translation>The script “%1” failed. %2</translation>
+    </message>
+    <message>
+        <source>«%1» terminado.</source>
+        <translation>“%1” finished.</translation>
+    </message>
+    <message>
+        <source>«%1» no cambió nada.</source>
+        <translation>“%1” changed nothing.</translation>
+    </message>
 </context>
 <context>
     <name>ProjectFile</name>
@@ -2522,6 +2617,17 @@ Do you want to recover it instead of opening “%2”?</translation>
     </message>
 </context>
 <context>
+    <name>ScriptHost</name>
+    <message>
+        <source>El script tardó más de %1 s y se detuvo.</source>
+        <translation>The script took longer than %1 s and was stopped.</translation>
+    </message>
+    <message>
+        <source>Línea %1: %2</source>
+        <translation>Line %1: %2</translation>
+    </message>
+</context>
+<context>
     <name>SilenceDialog</name>
     <message>
         <source>Eliminar silencios</source>
@@ -2625,6 +2731,13 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Después podrás editar el video desde la pestaña Texto.</source>
         <translation>You can then edit the video from the Text tab.</translation>
+    </message>
+</context>
+<context>
+    <name>TemplateStore</name>
+    <message>
+        <source>La plantilla necesita un nombre.</source>
+        <translation>The template needs a name.</translation>
     </message>
 </context>
 <context>

@@ -1,5 +1,6 @@
 #include "ProjectController.h"
 
+#include "ScriptHost.h"
 #include "ai/AudioSync.h"
 
 #include "EffectNames.h"
@@ -13,6 +14,7 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
 #include <QLocale>
@@ -32,6 +34,8 @@ std::vector<Id> toIds(const QVariantList& list)
         ids.push_back(Id(v.toLongLong()));
     return ids;
 }
+
+constexpr int kBuiltinTitles = 4; // títulos predefinidos (luego van las plantillas del usuario)
 
 const Track* firstUnlocked(const std::vector<Track>& tracks)
 {
@@ -53,6 +57,7 @@ ProjectController::ProjectController(QObject* parent)
     connect(&m_autosaveTimer, &QTimer::timeout, this, &ProjectController::autosave);
     m_autosaveTimer.start();
     refresh();
+    reloadScripts();
 }
 
 ProjectController::~ProjectController() = default;
@@ -283,6 +288,131 @@ bool ProjectController::exportOtio(const QUrl& url)
     emit notice(tr("Línea de tiempo exportada a «%1». Los efectos de imagen (color, máscaras, transformaciones…) no se incluyen.")
                     .arg(QFileInfo(path).fileName()));
     return true;
+}
+
+// --- Plantillas propias ---
+
+QStringList ProjectController::projectTemplates() const
+{
+    QStringList names;
+    for (const auto& t : m_templates.projects())
+        names.append(t.name);
+    return names;
+}
+
+bool ProjectController::saveTitleTemplate(qint64 clipId, const QString& name)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c || !c->title)
+        return false;
+    const auto& s = project().settings;
+    TemplateStore::Title t;
+    t.name = name;
+    t.style = *c->title;
+    t.x = c->transform.x.at(0);
+    t.y = c->transform.y.at(0);
+    t.scale = c->transform.scale.at(0);
+    t.rotation = c->transform.rotation.at(0);
+    t.opacity = c->transform.opacity.at(0);
+    t.seconds = toSeconds(s.frameToTime(c->duration));
+    t.fadeIn = toSeconds(s.frameToTime(c->fadeIn));
+    t.fadeOut = toSeconds(s.frameToTime(c->fadeOut));
+    QString error;
+    if (!m_templates.addTitle(t, &error)) {
+        emit errorOccurred(tr("No se pudo guardar la plantilla: %1").arg(error));
+        return false;
+    }
+    emit templatesChanged();
+    emit notice(tr("Plantilla de título «%1» guardada: está en la pestaña Títulos.").arg(name.trimmed()));
+    return true;
+}
+
+void ProjectController::removeTitleTemplate(int presetIndex)
+{
+    if (m_templates.removeTitle(presetIndex - kBuiltinTitles))
+        emit templatesChanged();
+}
+
+bool ProjectController::saveProjectTemplate(const QString& name)
+{
+    QString error;
+    if (!m_templates.saveProject(project(), name, &error)) {
+        emit errorOccurred(tr("No se pudo guardar la plantilla: %1").arg(error));
+        return false;
+    }
+    emit templatesChanged();
+    emit notice(tr("Plantilla de proyecto «%1» guardada: está en Archivo → Nuevo desde plantilla.").arg(name.trimmed()));
+    return true;
+}
+
+void ProjectController::removeProjectTemplate(const QString& name)
+{
+    if (m_templates.removeProject(name))
+        emit templatesChanged();
+}
+
+bool ProjectController::newFromTemplate(const QString& name)
+{
+    const LoadResult result = m_templates.loadProject(name);
+    if (!result.project) {
+        emit errorOccurred(result.error);
+        return false;
+    }
+    resetTo(*result.project, QUrl()); // sin archivo: guardarlo no pisa la plantilla
+    m_history.markDirty();
+    emit historyChanged();
+    discardAutosave();
+    if (!result.missingMedia.isEmpty())
+        emit errorOccurred(tr("No se encontraron %n archivos de medios:\n%1", nullptr, int(result.missingMedia.size()))
+                               .arg(result.missingMedia.join(QLatin1Char('\n'))));
+    return true;
+}
+
+// --- Scripts ---
+
+QString ProjectController::scriptsFolder() const
+{
+    return qEnvironmentVariableIsSet("MOVIX_SCRIPTS_DIR") ? qEnvironmentVariable("MOVIX_SCRIPTS_DIR")
+                                                         : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/scripts");
+}
+
+void ProjectController::reloadScripts()
+{
+    m_scripts.clear();
+    for (const movix::app::ScriptInfo& s : movix::app::listScripts(scriptsFolder()))
+        m_scripts.append(QVariantMap{{"name", s.name}, {"description", s.description}, {"path", s.path}, {"builtin", s.builtin}});
+    emit scriptsChanged();
+}
+
+bool ProjectController::runScript(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emit errorOccurred(tr("No se pudo abrir el script: %1").arg(file.errorString()));
+        return false;
+    }
+    const QString code = QString::fromUtf8(file.readAll());
+    const QString name = movix::app::scriptInfo(path, code).name;
+    std::vector<Id> selection(m_selection.begin(), m_selection.end());
+    movix::app::ScriptResult result;
+    apply(tr("Script «%1»").arg(name), [&](Project& p) {
+        result = movix::app::runScript(code, p, m_player->positionFrame(), selection);
+        return result.ok && result.changed; // si falla, el proyecto queda como estaba
+    });
+    if (!result.ok) {
+        emit errorOccurred(tr("El script «%1» falló. %2").arg(name, result.error));
+        return false;
+    }
+    const QString log = result.log.join(QStringLiteral(" · "));
+    emit notice(result.changed ? (log.isEmpty() ? tr("«%1» terminado.").arg(name) : QStringLiteral("%1: %2").arg(name, log))
+                               : tr("«%1» no cambió nada.").arg(name) + (log.isEmpty() ? QString() : QStringLiteral(" ") + log));
+    return true;
+}
+
+void ProjectController::openScriptsFolder()
+{
+    QDir().mkpath(scriptsFolder());
+    QDesktopServices::openUrl(QUrl::fromLocalFile(scriptsFolder()));
 }
 
 // --- Multicámara ---
@@ -989,19 +1119,43 @@ bool ProjectController::dropTransition(const QString& type, qint64 trackId, qint
 
 QVariantList ProjectController::titlePresets() const
 {
-    return {
-        QVariantMap{{"name", tr("Título")}, {"text", tr("Título")}},
-        QVariantMap{{"name", tr("Rótulo inferior")}, {"text", tr("Nombre Apellido")}},
-        QVariantMap{{"name", tr("Título con fondo")}, {"text", tr("Capítulo 1")}},
-        QVariantMap{{"name", tr("Subtítulo")}, {"text", tr("Texto del subtítulo")}},
+    QVariantList list{
+        QVariantMap{{"name", tr("Título")}, {"text", tr("Título")}, {"user", false}},
+        QVariantMap{{"name", tr("Rótulo inferior")}, {"text", tr("Nombre Apellido")}, {"user", false}},
+        QVariantMap{{"name", tr("Título con fondo")}, {"text", tr("Capítulo 1")}, {"user", false}},
+        QVariantMap{{"name", tr("Subtítulo")}, {"text", tr("Texto del subtítulo")}, {"user", false}},
     };
+    static_assert(kBuiltinTitles == 4);
+    for (const TemplateStore::Title& t : m_templates.titles())
+        list.append(QVariantMap{{"name", t.name}, {"text", QString::fromStdString(t.style.text)}, {"user", true}});
+    return list;
 }
 
 bool ProjectController::addTitle(int preset, qint64 trackId, qint64 frame)
 {
     TitleStyle style;
     Transform transform;
-    switch (preset) {
+    FramePos duration = project().settings.framesIn(5 * kUsPerSecond);
+    FramePos fadeIn = 0, fadeOut = 0;
+    if (preset >= kBuiltinTitles) { // plantilla del usuario
+        const auto& titles = m_templates.titles();
+        if (preset - kBuiltinTitles >= int(titles.size()))
+            return false;
+        const TemplateStore::Title& t = titles[size_t(preset - kBuiltinTitles)];
+        const auto& s = project().settings;
+        style = t.style;
+        transform.x = t.x;
+        transform.y = t.y;
+        transform.scale = t.scale;
+        transform.rotation = t.rotation;
+        transform.opacity = t.opacity;
+        duration = std::max<FramePos>(1, s.framesIn(TimeUs(t.seconds * kUsPerSecond)));
+        fadeIn = std::min(duration, s.timeToFrame(TimeUs(t.fadeIn * kUsPerSecond)));
+        fadeOut = std::min(duration - fadeIn, s.timeToFrame(TimeUs(t.fadeOut * kUsPerSecond)));
+    }
+    switch (preset < kBuiltinTitles ? preset : -1) {
+    case -1:
+        break;
     case 1: // rótulo inferior a la izquierda
         style.text = tr("Nombre Apellido").toStdString();
         style.size = 0.06;
@@ -1027,7 +1181,6 @@ bool ProjectController::addTitle(int preset, qint64 trackId, qint64 frame)
         break;
     }
     const FramePos at = frame >= 0 ? frame : m_player->positionFrame();
-    const FramePos duration = project().settings.framesIn(5 * kUsPerSecond);
     // Pista: la indicada o la superior si está libre en ese tramo; si no, una nueva encima de
     // todo (un título debajo de otro video quedaría tapado).
     Id target = trackId > 0 ? Id(trackId) : kNoId;
@@ -1043,6 +1196,8 @@ bool ProjectController::addTitle(int preset, qint64 trackId, qint64 frame)
         if (clip == kNoId)
             return false;
         p.findClip(clip)->transform = transform;
+        if (fadeIn > 0 || fadeOut > 0)
+            edit::setFades(p, clip, fadeIn, fadeOut);
         return true;
     });
     if (ok) {

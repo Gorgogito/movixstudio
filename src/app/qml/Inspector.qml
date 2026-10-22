@@ -206,6 +206,18 @@ Rectangle {
                     Layout.fillWidth: true
                     visible: inspector.info.isTitle === true
                     spacing: 6
+                    Button {
+                        text: qsTr("Guardar como plantilla…")
+                        focusPolicy: Qt.NoFocus
+                        onClicked: titleTemplateDialog.open()
+                    }
+                    NameDialog {
+                        id: titleTemplateDialog
+                        title: qsTr("Guardar plantilla de título")
+                        label: qsTr("Nombre de la plantilla (con el mismo nombre se sustituye)")
+                        initialName: (inspector.title.text ?? "").split("\n")[0]
+                        onNamed: (name) => inspector.project.saveTitleTemplate(inspector.info.clipId, name)
+                    }
                     TextArea {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 64

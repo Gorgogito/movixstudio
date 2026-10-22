@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ExportController.h"
+#include "TemplateStore.h"
 #include "TimelineModels.h"
 #include "core/Edits.h"
 #include "core/History.h"
@@ -153,7 +154,29 @@ public:
     Q_INVOKABLE void setTitleStyle(qint64 clipId, const QVariantMap& style);
     Q_INVOKABLE void detachAudio(qint64 clipId);
     Q_INVOKABLE void setTrackVolume(qint64 trackId, double volume);
-    Q_INVOKABLE QVariantList titlePresets() const;
+    // Títulos predefinidos seguidos de las plantillas del usuario ({name, text, user}); el índice es
+    // el que recibe addTitle().
+    Q_PROPERTY(QVariantList titlePresets READ titlePresets NOTIFY templatesChanged)
+    QVariantList titlePresets() const;
+
+    // --- Plantillas propias ---
+    Q_PROPERTY(QStringList projectTemplates READ projectTemplates NOTIFY templatesChanged)
+    QStringList projectTemplates() const;
+    Q_INVOKABLE bool saveTitleTemplate(qint64 clipId, const QString& name);
+    Q_INVOKABLE void removeTitleTemplate(int presetIndex);
+    Q_INVOKABLE bool saveProjectTemplate(const QString& name);
+    Q_INVOKABLE void removeProjectTemplate(const QString& name);
+    // Proyecto nuevo (sin guardar) a partir de la plantilla.
+    Q_INVOKABLE bool newFromTemplate(const QString& name);
+
+    // --- Scripts (JavaScript, ver ScriptHost.h y docs/SCRIPTS.md) ---
+    // Los incluidos y los de la carpeta del usuario: {name, description, path, builtin}.
+    Q_PROPERTY(QVariantList scripts READ scripts NOTIFY scriptsChanged)
+    QVariantList scripts() const { return m_scripts; }
+    Q_INVOKABLE void reloadScripts();
+    Q_INVOKABLE bool runScript(const QString& path); // un solo paso de deshacer
+    Q_INVOKABLE void openScriptsFolder();
+    QString scriptsFolder() const;
 
     // --- Color (F3) ---
     // Corrección completa del clip: valores básicos, ruedas [r, g, b, master], curvas [[x, y]...],
@@ -265,6 +288,8 @@ signals:
     void clipboardChanged();
     void insertModeChanged();
     void multicamViewChanged();
+    void templatesChanged();
+    void scriptsChanged();
 
 private:
     movix::core::FramePos playheadRel(const movix::core::Clip& c) const;
@@ -278,6 +303,8 @@ private:
     movix::core::History m_history;
     std::shared_ptr<const movix::core::Project> m_snapshot;
     bool m_multicamView = false;
+    TemplateStore m_templates;
+    QVariantList m_scripts;
     QUrl m_fileUrl;
     MediaListModel m_media;
     TrackListModel m_tracks;

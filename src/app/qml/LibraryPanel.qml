@@ -52,7 +52,9 @@ Rectangle {
         property string mimeKey
         property string mimeValue
         property string glyph
+        property bool removable: false // plantilla del usuario: clic derecho para eliminarla
         signal activated()
+        signal removeRequested()
         implicitHeight: 74
         radius: Theme.radius
         color: hover.hovered ? Theme.surfaceHover : Theme.surfaceRaised
@@ -86,9 +88,28 @@ Rectangle {
             id: dragArea
             anchors.fill: parent
             drag.target: proxy
-            onDoubleClicked: card.activated()
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: (mouse) => { if (mouse.button === Qt.RightButton && card.removable) cardMenu.popup() }
+            onDoubleClicked: (mouse) => { if (mouse.button === Qt.LeftButton) card.activated() }
         }
         Item { id: proxy }
+        Rectangle {
+            visible: card.removable
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 5
+            width: 6
+            height: 6
+            radius: 3
+            color: Theme.accent
+            ToolTip.visible: userHover.hovered
+            ToolTip.text: qsTr("Plantilla propia (clic derecho para eliminarla)")
+            HoverHandler { id: userHover }
+        }
+        Menu {
+            id: cardMenu
+            MenuItem { text: qsTr("Eliminar plantilla"); onTriggered: card.removeRequested() }
+        }
     }
 
     property int current: 0
@@ -124,8 +145,9 @@ Rectangle {
                     Layout.margins: 10
                     Layout.bottomMargin: 0
                     Layout.fillWidth: true
+                    Layout.preferredWidth: 1 // que ajuste al panel en vez de ensancharlo
                     wrapMode: Text.WordWrap
-                    text: qsTr("Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal.")
+                    text: qsTr("Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal. Guarda los tuyos como plantilla desde las propiedades de un título.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall + 1
                 }
@@ -136,7 +158,7 @@ Rectangle {
                     columnSpacing: 8
                     rowSpacing: 8
                     Repeater {
-                        model: library.project.titlePresets()
+                        model: library.project.titlePresets
                         LibraryCard {
                             required property var modelData
                             required property int index
@@ -145,7 +167,9 @@ Rectangle {
                             glyph: "T"
                             mimeKey: "application/x-movix-title"
                             mimeValue: String(index)
+                            removable: modelData.user
                             onActivated: library.project.addTitle(index)
+                            onRemoveRequested: library.project.removeTitleTemplate(index)
                         }
                     }
                 }
@@ -158,6 +182,7 @@ Rectangle {
                     Layout.margins: 10
                     Layout.bottomMargin: 0
                     Layout.fillWidth: true
+                    Layout.preferredWidth: 1 // que ajuste al panel en vez de ensancharlo
                     wrapMode: Text.WordWrap
                     text: qsTr("Arrastra una transición al corte entre dos clips contiguos de la misma pista.")
                     color: Theme.textMuted

@@ -14,6 +14,8 @@ qt_add_executable(MovixStudio WIN32
     ExportController.h ExportController.cpp
     AiController.h AiController.cpp
     UpdateController.h UpdateController.cpp
+    TemplateStore.h TemplateStore.cpp
+    ScriptHost.h ScriptHost.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
 if(WIN32)
@@ -78,9 +80,14 @@ qt_add_qml_module(MovixStudio
         qml/TranslateDialog.qml
         qml/UpdateBanner.qml
         qml/MulticamOverlay.qml
+        qml/NameDialog.qml
     RESOURCES
         ${MOVIX_ICONS}
 )
+
+# Scripts incluidos (":/scripts/*.js"); los del usuario van en su carpeta de datos.
+file(GLOB MOVIX_SCRIPTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS scripts/*.js)
+qt_add_resources(MovixStudio movix_scripts PREFIX / FILES ${MOVIX_SCRIPTS})
 
 target_link_libraries(MovixStudio PRIVATE
     movix_core movix_engine movix_render movix_export movix_playback movix_ai

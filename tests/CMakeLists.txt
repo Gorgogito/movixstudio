@@ -33,6 +33,8 @@ add_executable(movix_tests
     test_updates.cpp
     test_otio.cpp
     test_multicam.cpp
+    test_templates.cpp
+    test_scripts.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
@@ -41,12 +43,19 @@ add_executable(movix_tests
     ${PROJECT_SOURCE_DIR}/src/app/ExportController.h ${PROJECT_SOURCE_DIR}/src/app/ExportController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/AiController.h ${PROJECT_SOURCE_DIR}/src/app/AiController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/UpdateController.h ${PROJECT_SOURCE_DIR}/src/app/UpdateController.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/TemplateStore.h ${PROJECT_SOURCE_DIR}/src/app/TemplateStore.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ScriptHost.h ${PROJECT_SOURCE_DIR}/src/app/ScriptHost.cpp
     test_ai_app.cpp
     ${PROJECT_SOURCE_DIR}/cmake/utf8.manifest
 )
 target_link_libraries(movix_tests PRIVATE movix_media movix_core movix_color movix_engine movix_render movix_export movix_playback movix_ai Qt6::Test Catch2::Catch2 $<$<PLATFORM_ID:Windows>:winmm>)
 target_include_directories(movix_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(movix_tests PRIVATE Qt6::Quick)
+# Los scripts incluidos, como en la aplicación (":/scripts/*.js").
+qt_add_resources(movix_tests movix_test_scripts PREFIX / BASE ${PROJECT_SOURCE_DIR}/src/app
+    FILES ${PROJECT_SOURCE_DIR}/src/app/scripts/cortar-en-marcadores.js ${PROJECT_SOURCE_DIR}/src/app/scripts/quitar-huecos.js
+          ${PROJECT_SOURCE_DIR}/src/app/scripts/marcadores-cada-10-s.js ${PROJECT_SOURCE_DIR}/src/app/scripts/titulos-en-marcadores.js
+          ${PROJECT_SOURCE_DIR}/src/app/scripts/musica-de-fondo.js)
 # Modelos de IA de las pruebas: compartidos entre configuraciones (se descargan una vez).
 set(MOVIX_TEST_MODELS_DIR "${PROJECT_SOURCE_DIR}/build/test-models" CACHE PATH "Modelos de IA para las pruebas")
 target_compile_definitions(movix_tests PRIVATE

@@ -167,8 +167,39 @@ ApplicationWindow {
             title: qsTr("&Archivo")
             MenuItem { text: qsTr("&Nuevo proyecto") + "\tCtrl+N"; onTriggered: window.guard(() => project.newProject()) }
             MenuItem { text: qsTr("&Abrir proyecto…") + "\tCtrl+O"; onTriggered: window.guard(() => openDialog.open()) }
+            Menu {
+                id: newFromTemplateMenu
+                title: qsTr("Nuevo desde p&lantilla")
+                enabled: project.projectTemplates.length > 0
+                Instantiator {
+                    model: project.projectTemplates
+                    delegate: MenuItem {
+                        required property string modelData
+                        text: modelData
+                        onTriggered: window.guard(() => project.newFromTemplate(modelData))
+                    }
+                    onObjectAdded: (index, object) => newFromTemplateMenu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => newFromTemplateMenu.removeItem(object)
+                }
+            }
             MenuItem { text: qsTr("&Guardar") + "\tCtrl+S"; onTriggered: window.saveProject(null) }
             MenuItem { text: qsTr("Guardar &como…") + "\tCtrl+Mayús+S"; onTriggered: saveDialog.open() }
+            MenuItem { text: qsTr("Guardar como plan&tilla…"); onTriggered: projectTemplateDialog.open() }
+            Menu {
+                id: removeTemplateMenu
+                title: qsTr("Eliminar plantilla de proyecto")
+                enabled: project.projectTemplates.length > 0
+                Instantiator {
+                    model: project.projectTemplates
+                    delegate: MenuItem {
+                        required property string modelData
+                        text: modelData
+                        onTriggered: project.removeProjectTemplate(modelData)
+                    }
+                    onObjectAdded: (index, object) => removeTemplateMenu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => removeTemplateMenu.removeItem(object)
+                }
+            }
             MenuSeparator {}
             MenuItem { text: qsTr("&Importar medios…") + "\tCtrl+I"; onTriggered: importDialog.open() }
             MenuItem { text: qsTr("&Exportar video…") + "\tCtrl+E"; onTriggered: exportDialog.open() }
@@ -295,6 +326,26 @@ ApplicationWindow {
             MenuItem { text: qsTr("&Exportar subtítulos (SRT)…"); enabled: project.durationFrames > 0 && ai.hasSubtitleTrack(); onTriggered: srtExportDialog.open() }
             MenuSeparator {}
             MenuItem { text: qsTr("&Modelos de IA…"); onTriggered: modelsDialog.open() }
+        }
+        Menu {
+            id: scriptsMenu
+            title: qsTr("&Scripts")
+            onAboutToShow: project.reloadScripts() // recoge los que se añadan a la carpeta
+            Instantiator {
+                model: project.scripts
+                delegate: MenuItem {
+                    required property var modelData
+                    text: modelData.name
+                    ToolTip.visible: hovered && modelData.description !== ""
+                    ToolTip.delay: 500
+                    ToolTip.text: modelData.description
+                    onTriggered: { viewer.showTimeline(); project.runScript(modelData.path) }
+                }
+                onObjectAdded: (index, object) => scriptsMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => scriptsMenu.removeItem(object)
+            }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Abrir la carpeta de &scripts"); onTriggered: project.openScriptsFolder() }
         }
         Menu {
             title: qsTr("Ay&uda")
@@ -523,6 +574,13 @@ ApplicationWindow {
         title: qsTr("Importar subtítulos")
         nameFilters: [qsTr("Subtítulos SubRip") + " (*.srt)", qsTr("Todos los archivos") + " (*)"]
         onAccepted: ai.importSrt(selectedFile)
+    }
+    NameDialog {
+        id: projectTemplateDialog
+        title: qsTr("Guardar como plantilla de proyecto")
+        label: qsTr("Nombre de la plantilla. Guarda los ajustes, las pistas, los títulos, los marcadores y los medios del proyecto (con el mismo nombre se sustituye).")
+        initialName: project.projectName
+        onNamed: (name) => project.saveProjectTemplate(name)
     }
     FileDialog {
         id: otioImportDialog
