@@ -78,27 +78,13 @@ ColumnLayout {
             tip: qsTr("Keyframe anterior")
             onClicked: row.project.jumpToKeyframe(row.clipId, false)
         }
-        AbstractButton {
-            id: keyButton
+        KeyframeButton {
             visible: row.animatable
-            implicitWidth: 22
-            implicitHeight: 22
-            focusPolicy: Qt.NoFocus
-            ToolTip.visible: hovered
-            ToolTip.delay: 600
-            ToolTip.text: row.state_.keyHere ? qsTr("Quitar keyframe en el cabezal") : qsTr("Añadir keyframe en el cabezal")
-            onClicked: row.project.toggleKeyframe(row.clipId, row.prop)
-            contentItem: Item {
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 9
-                    height: 9
-                    rotation: 45
-                    color: row.state_.keyHere ? Theme.clipSelected : "transparent"
-                    border.width: 1.5
-                    border.color: row.state_.animated ? Theme.clipSelected : (keyButton.hovered ? Theme.text : Theme.textMuted)
-                }
-            }
+            keyHere: row.state_.keyHere === true
+            animated: row.state_.animated === true
+            interp: row.state_.interp || "linear"
+            onToggled: row.project.toggleKeyframe(row.clipId, row.prop)
+            onInterpolationChosen: (mode) => row.project.setKeyInterpolation(row.clipId, row.prop, mode)
         }
         IconButton {
             visible: row.animatable

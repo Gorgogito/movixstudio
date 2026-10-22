@@ -278,8 +278,10 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       (también combinados). Video hacia atrás por bloques de 1 s guardados (sin buscar en cada
       fotograma); audio a velocidad variable o al revés leído por ventanas y remuestreado (cambia
       el tono, como una cinta). OTIO: al revés como velocidad negativa; la variable, como su media
-- [ ] Interpolación de los keyframes desde la interfaz
-- [ ] Animaciones de texto
+- [x] Interpolación de los keyframes desde la interfaz: clic derecho en el rombo del keyframe
+      (también en los de color): lineal, suave o mantener; la forma del icono la indica
+- [x] Animaciones de texto: de entrada y de salida (fundido, deslizar desde cada lado, zoom y
+      máquina de escribir, que dibuja los caracteres en su sitio) con su duración
 - [ ] Atajos configurables
 - [ ] Selección por recuadro y edición de varios clips a la vez
 - [ ] Proxies automáticos y decodificación de copia cero (exportar 1080p60 a más de ~94 fps)

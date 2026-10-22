@@ -151,24 +151,24 @@ std::shared_ptr<const media::VideoFrame> VideoSources::still(const std::string& 
     return frame;
 }
 
-std::shared_ptr<const media::VideoFrame> VideoSources::title(const core::TitleStyle& style, int w, int h)
+std::shared_ptr<const media::VideoFrame> VideoSources::title(const core::TitleStyle& style, int w, int h, int chars)
 {
     if (!m_titles)
         return nullptr;
     for (const CachedTitle& c : m_titleCache)
-        if (c.width == w && c.height == h && c.style == style)
+        if (c.width == w && c.height == h && c.chars == chars && c.style == style)
             return c.frame;
-    auto frame = m_titles->render(style, w, h);
+    auto frame = m_titles->render(style, w, h, chars);
     if (m_titleCache.size() > 32)
         m_titleCache.erase(m_titleCache.begin());
-    m_titleCache.push_back({style, w, h, frame});
+    m_titleCache.push_back({style, w, h, chars, frame});
     return frame;
 }
 
 std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLayer& layer, int canvasWidth, int canvasHeight)
 {
     if (layer.title)
-        return title(*layer.title, canvasWidth, canvasHeight);
+        return title(*layer.title, canvasWidth, canvasHeight, layer.titleChars);
     if (!layer.media)
         return nullptr;
     if (layer.media->isStill)

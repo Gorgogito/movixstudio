@@ -72,7 +72,9 @@ public:
 class TitleRenderer {
 public:
     virtual ~TitleRenderer() = default;
-    virtual std::shared_ptr<const media::VideoFrame> render(const core::TitleStyle& style, int canvasWidth, int canvasHeight) = 0;
+    // `visibleChars`: solo los primeros caracteres (máquina de escribir), sin mover los demás; −1 = todos.
+    virtual std::shared_ptr<const media::VideoFrame> render(const core::TitleStyle& style, int canvasWidth, int canvasHeight,
+                                                            int visibleChars = -1) = 0;
 };
 
 // Lectores de video abiertos, uno por clip (para que cada clip decodifique en orden), con un
@@ -93,7 +95,7 @@ public:
 
 private:
     std::shared_ptr<const media::VideoFrame> still(const std::string& path);
-    std::shared_ptr<const media::VideoFrame> title(const core::TitleStyle& style, int w, int h);
+    std::shared_ptr<const media::VideoFrame> title(const core::TitleStyle& style, int w, int h, int chars = -1);
     std::shared_ptr<const color::Lut3D> lut(const core::ColorGrade& grade);
     std::shared_ptr<const MaskImage> maskImage(const std::vector<core::LayerMask>& masks, int layerWidth, int layerHeight);
     // Opacidad del mate de IA de la capa (multiplicada por sus máscaras), o nullptr si no se puede leer.
@@ -116,6 +118,7 @@ private:
     struct CachedTitle {
         core::TitleStyle style;
         int width = 0, height = 0;
+        int chars = -1;
         std::shared_ptr<const media::VideoFrame> frame;
     };
     std::vector<CachedTitle> m_titleCache; // pocos títulos: búsqueda lineal

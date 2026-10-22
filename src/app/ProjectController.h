@@ -124,7 +124,10 @@ public:
     Q_INVOKABLE void setClipProperty(qint64 clipId, const QString& prop, double value);
     Q_INVOKABLE void toggleKeyframe(qint64 clipId, const QString& prop);
     Q_INVOKABLE void resetClipProperty(qint64 clipId, const QString& prop);
-    // {value, animated, keyHere, hasPrev, hasNext} de la propiedad en el cabezal.
+    // Cómo se llega desde el keyframe del cabezal al siguiente: "linear", "hold" o "smooth".
+    // `prop` es una propiedad animable o "color" (keyframes de color).
+    Q_INVOKABLE void setKeyInterpolation(qint64 clipId, const QString& prop, const QString& interp);
+    // {value, animated, keyHere, interp, hasPrev, hasNext} de la propiedad en el cabezal.
     Q_INVOKABLE QVariantMap propertyState(qint64 clipId, const QString& prop) const;
     // Lleva el cabezal al keyframe anterior/siguiente de cualquier propiedad del clip.
     Q_INVOKABLE void jumpToKeyframe(qint64 clipId, bool forward);

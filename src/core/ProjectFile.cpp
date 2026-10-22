@@ -25,6 +25,7 @@ const char* const kBlendNames[] = {"normal",    "multiply",  "screen",    "overl
 const char* const kMaskNames[] = {"none", "rectangle", "ellipse", "linear", "path"};
 const char* const kMaskModeNames[] = {"add", "subtract", "intersect"};
 const char* const kColorModeNames[] = {"sdr", "pq", "hlg"};
+const char* const kTextAnimationNames[] = {"none", "fade", "slideUp", "slideDown", "slideLeft", "slideRight", "zoom", "typewriter"};
 static_assert(std::size(kBlendNames) == kBlendModeCount);
 
 template <typename E, size_t N>
@@ -92,6 +93,9 @@ QJsonObject titleToJson(const TitleStyle& s)
         {"outlineColor", argb(s.outlineColor)},
         {"shadow", s.shadow},
         {"background", argb(s.background)},
+        {"animIn", QLatin1String(kTextAnimationNames[int(s.animIn)])},
+        {"animOut", QLatin1String(kTextAnimationNames[int(s.animOut)])},
+        {"animSeconds", s.animSeconds},
     };
 }
 
@@ -109,6 +113,9 @@ TitleStyle titleFromJson(const QJsonObject& o)
     s.outlineColor = argbFromJson(o["outlineColor"], s.outlineColor);
     s.shadow = o["shadow"].toBool(s.shadow);
     s.background = argbFromJson(o["background"], s.background);
+    s.animIn = enumFromName(o["animIn"].toString(), kTextAnimationNames, TextAnimation::None);
+    s.animOut = enumFromName(o["animOut"].toString(), kTextAnimationNames, TextAnimation::None);
+    s.animSeconds = std::clamp(o["animSeconds"].toDouble(s.animSeconds), 0.05, 10.0);
     return s;
 }
 

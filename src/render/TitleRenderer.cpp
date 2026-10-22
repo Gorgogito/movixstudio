@@ -16,9 +16,21 @@ QColor fromArgb(std::uint32_t c)
 {
     return QColor::fromRgba(QRgb(c));
 }
+
+// Los primeros `n` puntos de código (sin partir pares sustitutos).
+QString leftCodePoints(const QString& s, int n, int& used)
+{
+    qsizetype i = 0;
+    used = 0;
+    while (i < s.size() && used < n) {
+        i += s[i].isHighSurrogate() && i + 1 < s.size() ? 2 : 1;
+        ++used;
+    }
+    return s.left(i);
+}
 } // namespace
 
-std::shared_ptr<const media::VideoFrame> QtTitleRenderer::render(const core::TitleStyle& s, int w, int h)
+std::shared_ptr<const media::VideoFrame> QtTitleRenderer::render(const core::TitleStyle& s, int w, int h, int visibleChars)
 {
     QImage image(w, h, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
@@ -43,15 +55,21 @@ std::shared_ptr<const media::VideoFrame> QtTitleRenderer::render(const core::Tit
         const double left = (w - blockWidth) / 2;
         const double top = (h - blockHeight) / 2;
 
+        // La posición de cada línea es la del texto completo: con la máquina de escribir los
+        // caracteres aparecen en su sitio, sin que el resto se mueva.
         QPainterPath path;
-        for (qsizetype i = 0; i < lines.size(); ++i) {
+        int remaining = visibleChars < 0 ? INT32_MAX : visibleChars;
+        for (qsizetype i = 0; i < lines.size() && remaining > 0; ++i) {
             const double lineWidth = metrics.horizontalAdvance(lines[i]);
             double x = left;
             if (s.align == 1)
                 x += (blockWidth - lineWidth) / 2;
             else if (s.align == 2)
                 x += blockWidth - lineWidth;
-            path.addText(QPointF(x, top + double(i) * lineHeight + metrics.ascent()), font, lines[i]);
+            int used = 0;
+            const QString shown = leftCodePoints(lines[i], remaining, used);
+            path.addText(QPointF(x, top + double(i) * lineHeight + metrics.ascent()), font, shown);
+            remaining -= used + 1; // el salto de línea también cuenta
         }
 
         if ((s.background >> 24) != 0) {

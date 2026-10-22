@@ -109,6 +109,9 @@ struct Transform {
     bool operator==(const Transform&) const = default;
 };
 
+// Animación de entrada o de salida de un título.
+enum class TextAnimation { None, Fade, SlideUp, SlideDown, SlideLeft, SlideRight, Zoom, Typewriter };
+
 // Estilo de un clip de título (texto generado).
 struct TitleStyle {
     std::string text = "Título";
@@ -122,6 +125,9 @@ struct TitleStyle {
     std::uint32_t outlineColor = 0xFF000000;
     bool shadow = true;
     std::uint32_t background = 0;    // ARGB del recuadro de fondo (0 = sin fondo)
+    TextAnimation animIn = TextAnimation::None;
+    TextAnimation animOut = TextAnimation::None;
+    double animSeconds = 0.6;        // duración de cada animación (como mucho, medio clip)
     bool operator==(const TitleStyle&) const = default;
 };
 

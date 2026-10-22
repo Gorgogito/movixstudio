@@ -1297,6 +1297,61 @@
         <source>El audio conserva el tono a cualquier velocidad. Añade keyframes a la velocidad variable para hacer rampas.</source>
         <translation>The audio keeps its pitch at any speed. Add keyframes to the variable speed to make ramps.</translation>
     </message>
+    <message>
+        <source>Fundido</source>
+        <translation>Fade</translation>
+    </message>
+    <message>
+        <source>Deslizar desde abajo</source>
+        <translation>Slide in from below</translation>
+    </message>
+    <message>
+        <source>Deslizar desde arriba</source>
+        <translation>Slide in from above</translation>
+    </message>
+    <message>
+        <source>Deslizar desde la derecha</source>
+        <translation>Slide in from the right</translation>
+    </message>
+    <message>
+        <source>Deslizar desde la izquierda</source>
+        <translation>Slide in from the left</translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation>Zoom</translation>
+    </message>
+    <message>
+        <source>Máquina de escribir</source>
+        <translation>Typewriter</translation>
+    </message>
+</context>
+<context>
+    <name>KeyframeButton</name>
+    <message>
+        <source>Añadir keyframe en el cabezal</source>
+        <translation>Add keyframe at playhead</translation>
+    </message>
+    <message>
+        <source>Quitar keyframe en el cabezal</source>
+        <translation>Remove keyframe at playhead</translation>
+    </message>
+    <message>
+        <source> (clic derecho: interpolación)</source>
+        <translation> (right-click: interpolation)</translation>
+    </message>
+    <message>
+        <source>Lineal</source>
+        <translation>Linear</translation>
+    </message>
+    <message>
+        <source>Suave (acelera y frena)</source>
+        <translation>Smooth (ease in and out)</translation>
+    </message>
+    <message>
+        <source>Mantener (salto al siguiente)</source>
+        <translation>Hold (jump to the next)</translation>
+    </message>
 </context>
 <context>
     <name>LibraryPanel</name>
@@ -2531,6 +2586,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Reproducir hacia delante</source>
         <translation>Play forwards</translation>
     </message>
+    <message>
+        <source>Interpolación del keyframe</source>
+        <translation>Keyframe interpolation</translation>
+    </message>
 </context>
 <context>
     <name>ProjectFile</name>
@@ -2623,14 +2682,6 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Keyframe anterior</source>
         <translation>Previous keyframe</translation>
-    </message>
-    <message>
-        <source>Quitar keyframe en el cabezal</source>
-        <translation>Remove keyframe at playhead</translation>
-    </message>
-    <message>
-        <source>Añadir keyframe en el cabezal</source>
-        <translation>Add keyframe at playhead</translation>
     </message>
     <message>
         <source>Keyframe siguiente</source>

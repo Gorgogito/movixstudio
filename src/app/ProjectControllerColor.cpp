@@ -187,6 +187,10 @@ QVariantMap ProjectController::colorGrade(qint64 clipId) const
         {"inputSpace", QString::fromStdString(g.inputSpace)},
         {"animated", c->color.isAnimated()},
         {"keyHere", c->color.keyAt(rel) != nullptr},
+        {"interp", c->color.keyAt(rel) ? QString(c->color.keyAt(rel)->interp == Interpolation::Hold     ? "hold"
+                                                 : c->color.keyAt(rel)->interp == Interpolation::Smooth ? "smooth"
+                                                                                                      : "linear")
+                                       : QString()},
         {"hasPrev", prev},
         {"hasNext", next},
     };

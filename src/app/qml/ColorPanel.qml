@@ -113,26 +113,14 @@ ColumnLayout {
             tip: qsTr("Keyframe anterior")
             onClicked: panel.project.jumpToKeyframe(panel.clipId, false)
         }
-        AbstractButton {
-            id: colorKey
-            implicitWidth: 22
-            implicitHeight: 22
-            focusPolicy: Qt.NoFocus
-            ToolTip.visible: hovered
-            ToolTip.delay: 600
-            ToolTip.text: panel.grade.keyHere ? qsTr("Quitar keyframe de color en el cabezal") : qsTr("Añadir keyframe de color en el cabezal")
-            onClicked: panel.project.toggleColorKeyframe(panel.clipId)
-            contentItem: Item {
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 9
-                    height: 9
-                    rotation: 45
-                    color: panel.grade.keyHere ? Theme.clipSelected : "transparent"
-                    border.width: 1.5
-                    border.color: panel.grade.animated ? Theme.clipSelected : (colorKey.hovered ? Theme.text : Theme.textMuted)
-                }
-            }
+        KeyframeButton {
+            keyHere: panel.grade.keyHere === true
+            animated: panel.grade.animated === true
+            interp: panel.grade.interp || "linear"
+            addTip: qsTr("Añadir keyframe de color en el cabezal")
+            removeTip: qsTr("Quitar keyframe de color en el cabezal")
+            onToggled: panel.project.toggleColorKeyframe(panel.clipId)
+            onInterpolationChosen: (mode) => panel.project.setKeyInterpolation(panel.clipId, "color", mode)
         }
         IconButton {
             size: 22

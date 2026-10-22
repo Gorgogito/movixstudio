@@ -33,6 +33,7 @@ std::uint64_t instanceKey(std::uint64_t outer, Id clip)
 }
 
 std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks, FramePos frame, std::uint64_t outer, int depth);
+void applyTextAnimation(const ProjectSettings& s, const TitleStyle& style, FramePos rel, FramePos duration, VideoLayer& l);
 
 bool contributesVideo(const Project& p, const Clip& c)
 {
@@ -114,7 +115,45 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
     l.blend = c.blend;
     if (!extended)
         l.opacity *= fadeFactor(c.fadeIn, c.fadeOut, rel, c.duration);
+    if (c.title && !extended)
+        applyTextAnimation(p.settings, *c.title, rel, c.duration, l);
     return l;
+}
+
+// Caracteres (puntos de código) de un texto UTF-8.
+int codePoints(const std::string& s)
+{
+    return int(std::count_if(s.begin(), s.end(), [](char ch) { return (static_cast<unsigned char>(ch) & 0xC0) != 0x80; }));
+}
+
+// Animaciones de entrada y salida de un título en el fotograma `rel` del clip.
+void applyTextAnimation(const ProjectSettings& s, const TitleStyle& style, FramePos rel, FramePos duration, VideoLayer& l)
+{
+    const FramePos frames = std::clamp<FramePos>(s.framesIn(TimeUs(style.animSeconds * kUsPerSecond)), 1, std::max<FramePos>(1, duration / 2));
+    auto apply = [&](TextAnimation anim, double t) { // t: 0 = oculto, 1 = en su sitio
+        if (anim == TextAnimation::None || t >= 1.0)
+            return;
+        const double e = 1.0 - std::pow(1.0 - std::clamp(t, 0.0, 1.0), 3.0); // desaceleración
+        const double shift = 0.15 * (1.0 - e);
+        switch (anim) {
+        case TextAnimation::Fade: l.opacity *= e; break;
+        case TextAnimation::SlideUp: l.transform.y += shift, l.opacity *= e; break;
+        case TextAnimation::SlideDown: l.transform.y -= shift, l.opacity *= e; break;
+        case TextAnimation::SlideLeft: l.transform.x += shift, l.opacity *= e; break;
+        case TextAnimation::SlideRight: l.transform.x -= shift, l.opacity *= e; break;
+        case TextAnimation::Zoom: l.transform.scale *= 0.6 + 0.4 * e, l.opacity *= e; break;
+        case TextAnimation::Typewriter: {
+            const int total = codePoints(style.text);
+            const int shown = int(std::floor(double(total) * std::clamp(t, 0.0, 1.0)));
+            l.titleChars = l.titleChars < 0 ? shown : std::min(l.titleChars, shown);
+            break;
+        }
+        case TextAnimation::None: break;
+        }
+    };
+    // Con el fotograma 0 ya algo visible y el último aún algo visible.
+    apply(style.animIn, double(rel + 1) / double(frames));
+    apply(style.animOut, double(duration - rel) / double(frames));
 }
 
 // Aplica el efecto de transición con progreso t ∈ (0, 1) a la capa saliente (a) y la entrante (b).

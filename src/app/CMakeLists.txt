@@ -82,6 +82,7 @@ qt_add_qml_module(MovixStudio
         qml/MulticamOverlay.qml
         qml/NameDialog.qml
         qml/OfxEffects.qml
+        qml/KeyframeButton.qml
     RESOURCES
         ${MOVIX_ICONS}
 )

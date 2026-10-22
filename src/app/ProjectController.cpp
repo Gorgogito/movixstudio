@@ -835,6 +835,11 @@ struct NamedProperty {
     int maskIndex = 0;
 };
 
+QString interpolationName(Interpolation i)
+{
+    return i == Interpolation::Hold ? QStringLiteral("hold") : i == Interpolation::Smooth ? QStringLiteral("smooth") : QStringLiteral("linear");
+}
+
 std::optional<NamedProperty> propertyFromName(const QString& name)
 {
     static const QHash<QString, edit::Property> kMap{
@@ -925,7 +930,31 @@ QVariantMap ProjectController::propertyState(qint64 clipId, const QString& prop)
         prev = prev || k.frame < rel;
         next = next || k.frame > rel;
     }
-    return {{"value", a.at(rel)}, {"animated", a.isAnimated()}, {"keyHere", a.keyAt(rel) != nullptr}, {"hasPrev", prev}, {"hasNext", next}};
+    const Keyframe* here = a.keyAt(rel);
+    return {{"value", a.at(rel)},           {"animated", a.isAnimated()}, {"keyHere", here != nullptr},
+            {"interp", here ? interpolationName(here->interp) : QString()}, {"hasPrev", prev}, {"hasNext", next}};
+}
+
+void ProjectController::setKeyInterpolation(qint64 clipId, const QString& prop, const QString& interp)
+{
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c)
+        return;
+    const Interpolation mode = interp == QLatin1String("hold") ? Interpolation::Hold
+                             : interp == QLatin1String("smooth") ? Interpolation::Smooth
+                                                                 : Interpolation::Linear;
+    const FramePos rel = playheadRel(*c);
+    if (prop == QLatin1String("color")) {
+        const FramePos r = std::clamp<FramePos>(rel, 0, c->duration - 1);
+        apply(tr("Interpolación del keyframe"), [&](Project& p) { return edit::setColorKeyInterpolation(p, Id(clipId), r, mode); });
+        return;
+    }
+    const auto property = propertyFromName(prop);
+    if (!property)
+        return;
+    apply(tr("Interpolación del keyframe"), [&](Project& p) {
+        return edit::setKeyframeInterpolation(p, Id(clipId), property->prop, rel, mode, property->maskIndex);
+    });
 }
 
 QVariantList ProjectController::keyframeFrames(qint64 clipId) const
@@ -1233,6 +1262,9 @@ void ProjectController::setTitleStyle(qint64 clipId, const QVariantMap& v)
     if (v.contains("outlineColor")) s.outlineColor = colorValue(v["outlineColor"], s.outlineColor);
     if (v.contains("shadow")) s.shadow = v["shadow"].toBool();
     if (v.contains("background")) s.background = v["background"].toString().isEmpty() ? 0 : colorValue(v["background"], s.background);
+    if (v.contains("animIn")) s.animIn = TextAnimation(std::clamp(v["animIn"].toInt(), 0, int(TextAnimation::Typewriter)));
+    if (v.contains("animOut")) s.animOut = TextAnimation(std::clamp(v["animOut"].toInt(), 0, int(TextAnimation::Typewriter)));
+    if (v.contains("animSeconds")) s.animSeconds = std::clamp(v["animSeconds"].toDouble(), 0.05, 10.0);
     apply(tr("Editar título"), [&](Project& p) { return edit::setTitleStyle(p, Id(clipId), s); }, QStringLiteral("title:%1").arg(clipId));
 }
 
@@ -1378,6 +1410,7 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
             {"color", colorName(ts.color)}, {"bold", ts.bold}, {"italic", ts.italic}, {"align", ts.align},
             {"outline", ts.outline}, {"outlineColor", colorName(ts.outlineColor)}, {"shadow", ts.shadow},
             {"background", ts.background ? colorName(ts.background) : QString()},
+            {"animIn", int(ts.animIn)}, {"animOut", int(ts.animOut)}, {"animSeconds", ts.animSeconds},
         };
     }
     if (c->isMulticam())

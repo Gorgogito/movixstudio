@@ -44,6 +44,7 @@ struct VideoLayer {
     Id mediaId = kNoId;
     const MediaItem* media = nullptr;  // nullptr en títulos
     const TitleStyle* title = nullptr; // solo en títulos
+    int titleChars = -1;               // máquina de escribir: caracteres visibles (−1 = todos)
     int trackIndex = 0;                // 0 = V1 (capa inferior)
     TimeUs sourceTime = 0;             // instante del medio que corresponde al fotograma
     LayerTransform transform;

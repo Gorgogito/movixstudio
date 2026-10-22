@@ -311,6 +311,44 @@ Rectangle {
                             MouseArea { anchors.fill: parent; onClicked: { colorDialog.key = "outlineColor"; colorDialog.selectedColor = parent.color; colorDialog.open() } }
                         }
                     }
+                    // Animaciones de entrada y salida.
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 4
+                        readonly property var animations: [qsTr("Ninguna"), qsTr("Fundido"), qsTr("Deslizar desde abajo"), qsTr("Deslizar desde arriba"),
+                                                           qsTr("Deslizar desde la derecha"), qsTr("Deslizar desde la izquierda"), qsTr("Zoom"),
+                                                           qsTr("Máquina de escribir")]
+                        SmallLabel { text: qsTr("Entrada") }
+                        ComboBox {
+                            Layout.fillWidth: true
+                            focusPolicy: Qt.NoFocus
+                            model: parent.animations
+                            currentIndex: inspector.title.animIn ?? 0
+                            onActivated: (i) => inspector.setTitle("animIn", i)
+                        }
+                        SmallLabel { text: qsTr("Salida") }
+                        ComboBox {
+                            Layout.fillWidth: true
+                            focusPolicy: Qt.NoFocus
+                            model: parent.animations
+                            currentIndex: inspector.title.animOut ?? 0
+                            onActivated: (i) => inspector.setTitle("animOut", i)
+                        }
+                        SmallLabel { text: qsTr("Duración") }
+                        SpinBox {
+                            Layout.fillWidth: true
+                            focusPolicy: Qt.NoFocus
+                            from: 1
+                            to: 50
+                            value: Math.round((inspector.title.animSeconds ?? 0.6) * 10)
+                            textFromValue: (v) => (v / 10).toLocaleString(Qt.locale(), "f", 1) + " s"
+                            valueFromText: (t) => Math.round(Number.fromLocaleString(Qt.locale(), t.replace(" s", "")) * 10)
+                            enabled: (inspector.title.animIn ?? 0) !== 0 || (inspector.title.animOut ?? 0) !== 0
+                            onValueModified: inspector.setTitle("animSeconds", value / 10)
+                        }
+                    }
                     RowLayout {
                         CheckBox { text: qsTr("Sombra"); checked: inspector.title.shadow ?? false; focusPolicy: Qt.NoFocus; onToggled: inspector.setTitle("shadow", checked) }
                         Item { Layout.fillWidth: true }

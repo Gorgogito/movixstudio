@@ -8,7 +8,8 @@ namespace movix::render {
 // contorno, sombra y recuadro de fondo opcionales. Requiere una QGuiApplication (fuentes).
 class QtTitleRenderer : public engine::TitleRenderer {
 public:
-    std::shared_ptr<const media::VideoFrame> render(const core::TitleStyle& style, int canvasWidth, int canvasHeight) override;
+    std::shared_ptr<const media::VideoFrame> render(const core::TitleStyle& style, int canvasWidth, int canvasHeight,
+                                                    int visibleChars = -1) override;
 };
 
 } // namespace movix::render
