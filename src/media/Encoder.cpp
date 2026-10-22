@@ -213,7 +213,7 @@ struct Encoder::Impl {
         vctx->pix_fmt = choosePixelFormat(vctx.get(), codec, s.tenBit);
         if (vctx->pix_fmt == AV_PIX_FMT_NONE)
             return fail("El códec " + s.codec + " no admite 10 bits; para HDR usa HEVC, AV1, VP9 o ProRes.");
-        vctx->gop_size = std::max(1, 2 * s.fpsNum / std::max(1, s.fpsDen)); // keyframe cada ~2 s
+        vctx->gop_size = s.gop > 0 ? s.gop : std::max(1, 2 * s.fpsNum / std::max(1, s.fpsDen)); // keyframe cada ~2 s
         const bool hdr = s.signal != VideoEncoderSettings::Signal::SDR;
         const AVColorPrimaries primaries = hdr ? AVCOL_PRI_BT2020 : AVCOL_PRI_BT709;
         const AVColorTransferCharacteristic trc = s.signal == VideoEncoderSettings::Signal::PQ  ? AVCOL_TRC_SMPTE2084
@@ -402,6 +402,45 @@ bool Encoder::writeVideo(const uint8_t* rgba, int stride)
     sws_scale(d->sws, src, srcStride, 0, d->settings.video.height, d->vframe->data, d->vframe->linesize);
     d->vframe->pts = d->vpts++;
     int ret = avcodec_send_frame(d->vctx.get(), d->vframe.get());
+    if (ret < 0)
+        return d->fail("Error del codificador de video: " + ffmpegError(ret));
+    return d->drain(d->vctx.get(), d->vstream);
+}
+
+bool Encoder::acceptsNv12() const
+{
+    return d->vctx && !d->settings.video.input16 && !d->settings.video.tenBit
+        && (d->vctx->pix_fmt == AV_PIX_FMT_NV12 || d->vctx->pix_fmt == AV_PIX_FMT_YUV420P)
+        && d->settings.video.signal == VideoEncoderSettings::Signal::SDR;
+}
+
+bool Encoder::writeVideoNv12(const uint8_t* nv12)
+{
+    if (!d->vctx || !acceptsNv12())
+        return false;
+    if (av_frame_make_writable(d->vframe.get()) < 0)
+        return d->fail("Sin memoria para el fotograma de salida.");
+    const int w = d->settings.video.width, h = d->settings.video.height;
+    AVFrame* f = d->vframe.get();
+    for (int y = 0; y < h; ++y)
+        std::memcpy(f->data[0] + ptrdiff_t(y) * f->linesize[0], nv12 + size_t(y) * size_t(w), size_t(w));
+    const uint8_t* uv = nv12 + size_t(w) * size_t(h);
+    if (d->vctx->pix_fmt == AV_PIX_FMT_NV12) {
+        for (int y = 0; y < h / 2; ++y)
+            std::memcpy(f->data[1] + ptrdiff_t(y) * f->linesize[1], uv + size_t(y) * size_t(w), size_t(w));
+    } else { // YUV420P: se separan U y V
+        for (int y = 0; y < h / 2; ++y) {
+            const uint8_t* row = uv + size_t(y) * size_t(w);
+            uint8_t* u = f->data[1] + ptrdiff_t(y) * f->linesize[1];
+            uint8_t* v = f->data[2] + ptrdiff_t(y) * f->linesize[2];
+            for (int x = 0; x < w / 2; ++x) {
+                u[x] = row[2 * x];
+                v[x] = row[2 * x + 1];
+            }
+        }
+    }
+    f->pts = d->vpts++;
+    const int ret = avcodec_send_frame(d->vctx.get(), f);
     if (ret < 0)
         return d->fail("Error del codificador de video: " + ffmpegError(ret));
     return d->drain(d->vctx.get(), d->vstream);

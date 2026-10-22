@@ -70,6 +70,8 @@ Rectangle {
                 required property string thumbnail
                 required property int usage
                 required property int index
+                // "" sin proxy, "ready" o el porcentaje mientras se crea.
+                readonly property string proxy: bin.project.proxyRevision >= 0 && tile.hasVideo ? bin.project.proxyState(tile.mediaId) : ""
                 readonly property bool isPicked: bin.picked.indexOf(tile.mediaId) >= 0
 
                 width: grid.cellWidth
@@ -145,6 +147,27 @@ Rectangle {
                             ToolTip.text: qsTr("En uso en la línea de tiempo")
                             HoverHandler { id: usageHover }
                         }
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 4
+                            width: proxyText.implicitWidth + 8
+                            height: proxyText.implicitHeight + 4
+                            radius: 3
+                            color: tile.proxy === "ready" ? "#B0205020" : "#B0000000"
+                            visible: tile.proxy !== ""
+                            Text {
+                                id: proxyText
+                                anchors.centerIn: parent
+                                text: tile.proxy === "ready" ? qsTr("Proxy") : qsTr("Proxy %1 %").arg(tile.proxy)
+                                color: "white"
+                                font.pixelSize: 10
+                            }
+                            ToolTip.visible: proxyHover.hovered
+                            ToolTip.text: tile.proxy === "ready" ? qsTr("La vista previa usa una copia ligera; la exportación, el original")
+                                                                 : qsTr("Creando una copia ligera para la vista previa")
+                            HoverHandler { id: proxyHover }
+                        }
                     }
                     Text {
                         anchors.left: parent.left
@@ -197,6 +220,19 @@ Rectangle {
                             text: qsTr("Crear multicámara alineada al inicio")
                             enabled: bin.picked.length >= 2
                             onTriggered: bin.project.createMulticam(bin.picked, false)
+                        }
+                        MenuSeparator {}
+                        MenuItem {
+                            text: qsTr("Crear proxy")
+                            visible: tile.hasVideo && tile.proxy === ""
+                            height: visible ? implicitHeight : 0
+                            onTriggered: bin.project.createProxy(tile.mediaId)
+                        }
+                        MenuItem {
+                            text: qsTr("Borrar proxy")
+                            visible: tile.proxy === "ready"
+                            height: visible ? implicitHeight : 0
+                            onTriggered: bin.project.removeProxy(tile.mediaId)
                         }
                         MenuSeparator {}
                         MenuItem {

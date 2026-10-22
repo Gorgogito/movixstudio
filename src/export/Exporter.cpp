@@ -78,6 +78,9 @@ bool Exporter::run(const core::Project& input, const ExportSettings& s, const st
     if (!encoder.open(es, &encError))
         return fail(QString::fromStdString(encError));
 
+    // SDR con un códec de 4:2:0: la GPU entrega NV12 (menos datos que leer, sin conversión en la CPU).
+    const bool nv12 = renderer.supportsNv12() && encoder.acceptsNv12() && qEnvironmentVariableIsEmpty("MOVIX_EXPORT_RGBA");
+
     // Cadena en tres hilos: decodificar → componer (este hilo, dueño de la GPU) → codificar.
     // La velocidad la marca la etapa más lenta en lugar de la suma de las tres.
     using Clock = std::chrono::steady_clock;
@@ -100,8 +103,12 @@ bool Exporter::run(const core::Project& input, const ExportSettings& s, const st
     std::atomic<double> decodeTotal{0}, encodeTotal{0};
     std::string encodeError;
 
+    // Copia cero: con decodificación por GPU, en el mismo dispositivo que compone (sin bajar a memoria).
+    void* gpuDevice = s.hardwareDecoding && qEnvironmentVariableIsEmpty("MOVIX_NO_ZERO_COPY") ? renderer.d3d11Device() : nullptr;
+
     std::thread decoder([&] {
         engine::VideoSources sources(s.hardwareDecoding);
+        sources.setGpuDevice(gpuDevice);
         sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
         sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
         for (int64_t j = 0; j < total && !stop.load(); ++j) {
@@ -118,7 +125,7 @@ bool Exporter::run(const core::Project& input, const ExportSettings& s, const st
             if (stop.load())
                 break; // cancelada o con error: no tiene sentido codificar lo pendiente
             const auto a = Clock::now();
-            bool ok = encoder.writeVideo(job->rgba.data(), s.width * (deep ? 8 : 4));
+            bool ok = nv12 ? encoder.writeVideoNv12(job->rgba.data()) : encoder.writeVideo(job->rgba.data(), s.width * (deep ? 8 : 4));
             if (ok && job->audioFrames > 0)
                 ok = encoder.writeAudio(job->audio.data(), job->audioFrames);
             encodeTotal = encodeTotal + ms(a, Clock::now());
@@ -154,7 +161,7 @@ bool Exporter::run(const core::Project& input, const ExportSettings& s, const st
         Encoded job;
         job.rgba = spare.tryPop().value_or(std::vector<uint8_t>{});
         const auto a = Clock::now();
-        if (!renderer.render(item->bundle, job.rgba)) {
+        if (!(nv12 ? renderer.renderNv12(item->bundle, job.rgba) : renderer.render(item->bundle, job.rgba))) {
             failure = QCoreApplication::translate("Exporter", "Error al componer el fotograma %1.").arg(item->index);
             break;
         }

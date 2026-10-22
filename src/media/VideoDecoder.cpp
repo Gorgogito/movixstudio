@@ -1,11 +1,19 @@
 #include "media/VideoDecoder.h"
 
 #include "media/ColorMatrix.h"
+#include "media/GpuFrames.h"
 
 #include <cstring>
 
+#ifdef _WIN32
+#include <d3d11.h> // antes que las cabeceras de FFmpeg (que la incluirían dentro de extern "C")
+#endif
+
 extern "C" {
 #include <libavutil/hwcontext.h>
+#ifdef _WIN32
+#include <libavutil/hwcontext_d3d11va.h>
+#endif
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
@@ -13,6 +21,30 @@ extern "C" {
 namespace movix::media {
 
 namespace {
+
+// Dispositivo D3D11VA propio o, para la copia cero, el del compositor (compartido con él).
+bool createHwDevice(AVBufferRef** out, void* external)
+{
+    if (!external)
+        return av_hwdevice_ctx_create(out, AV_HWDEVICE_TYPE_D3D11VA, nullptr, nullptr, 0) == 0;
+#ifdef _WIN32
+    AVBufferRef* ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
+    if (!ref)
+        return false;
+    auto* hw = reinterpret_cast<AVHWDeviceContext*>(ref->data);
+    auto* d3d = static_cast<AVD3D11VADeviceContext*>(hw->hwctx);
+    d3d->device = static_cast<ID3D11Device*>(external);
+    d3d->device->AddRef(); // FFmpeg lo libera al cerrar
+    if (av_hwdevice_ctx_init(ref) < 0) {
+        av_buffer_unref(&ref);
+        return false;
+    }
+    *out = ref;
+    return true;
+#else
+    return false;
+#endif
+}
 
 // Elige el formato hardware si el decodificador lo ofrece; si no (perfil no soportado,
 // fallo al inicializar la aceleración...), el primer formato de software disponible.
@@ -65,6 +97,7 @@ VideoDecoder::~VideoDecoder()
 
 void VideoDecoder::close()
 {
+    m_gpuPool.reset();
     m_codec.reset();
     m_format.reset();
     m_packet.reset();
@@ -119,7 +152,7 @@ bool VideoDecoder::open(const std::string& path, const VideoDecoderOptions& opti
             if (!cfg)
                 break;
             if ((cfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) && cfg->device_type == AV_HWDEVICE_TYPE_D3D11VA) {
-                if (av_hwdevice_ctx_create(&m_hwDevice, AV_HWDEVICE_TYPE_D3D11VA, nullptr, nullptr, 0) == 0) {
+                if (createHwDevice(&m_hwDevice, options.d3d11Device)) {
                     m_hwPixFmt = cfg->pix_fmt;
                     m_codec->hw_device_ctx = av_buffer_ref(m_hwDevice);
                     m_codec->opaque = reinterpret_cast<void*>(static_cast<intptr_t>(m_hwPixFmt));
@@ -258,6 +291,34 @@ std::shared_ptr<VideoFrame> VideoDecoder::convert(AVFrame* frame, TimeUs pts)
 {
     AVFrame* src = frame;
     m_lastFrameWasHw = frame->format == m_hwPixFmt;
+    if (m_lastFrameWasHw && m_options.d3d11Device && frame->hw_frames_ctx) {
+        // Copia cero: el fotograma se copia dentro de la GPU a una textura que lee el compositor.
+        const auto* frames = reinterpret_cast<const AVHWFramesContext*>(frame->hw_frames_ctx->data);
+        const AVPixFmtDescriptor* swDesc = av_pix_fmt_desc_get(frames->sw_format);
+        const bool deep = swDesc && swDesc->comp[0].depth > 8;
+        if ((!deep || m_options.highBitDepth) && frame->width % 2 == 0 && frame->height % 2 == 0) {
+            if (!m_gpuPool || !m_gpuPool->matches(frame->width, frame->height, deep))
+                m_gpuPool = std::make_unique<GpuTexturePool>(m_options.d3d11Device, frame->width, frame->height, deep);
+            std::shared_ptr<void> hold;
+            if (void* tex = m_gpuPool->copyFrom(frame->data[0], int(reinterpret_cast<intptr_t>(frame->data[1])), hold)) {
+                auto out = std::make_shared<VideoFrame>();
+                out->width = frame->width;
+                out->height = frame->height;
+                out->sampleAspect = m_sampleAspect;
+                out->pts = pts;
+                out->duration = frameDur(frame);
+                out->colorSpace = mapColorSpace(frame->colorspace, frame->width, frame->height);
+                out->fullRange = frame->color_range == AVCOL_RANGE_JPEG;
+                out->transfer = frame->color_trc == AVCOL_TRC_SMPTE2084     ? Transfer::PQ
+                                : frame->color_trc == AVCOL_TRC_ARIB_STD_B67 ? Transfer::HLG
+                                                                             : Transfer::SDR;
+                out->format = deep ? PixelFormat::P016 : PixelFormat::NV12;
+                out->gpuTexture = tex;
+                out->gpuHold = std::move(hold);
+                return out;
+            }
+        }
+    }
     if (m_lastFrameWasHw) {
         av_frame_unref(m_swFrame.get());
         if (av_hwframe_transfer_data(m_swFrame.get(), frame, 0) < 0)

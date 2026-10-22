@@ -17,4 +17,6 @@ qt_add_shaders(movix_render "movix_shaders"
         shaders/layer.frag
         shaders/solid.frag
         shaders/canvas.frag
+        shaders/fullscreen.vert
+        shaders/nv12.frag
 )

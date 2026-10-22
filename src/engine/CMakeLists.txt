@@ -5,6 +5,7 @@ add_library(movix_engine STATIC
     AudioReader.h AudioReader.cpp
     Sources.h Sources.cpp
     MediaImport.h MediaImport.cpp
+    Proxy.h Proxy.cpp
 )
 
 target_include_directories(movix_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

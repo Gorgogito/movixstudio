@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <map>
 #include <numbers>
 
 namespace movix::render {
@@ -83,6 +84,13 @@ void setVec(float* dst, float a, float b = 0, float c = 0, float d = 0)
 struct Compositor::Slot {
     std::unique_ptr<QRhiTexture> tex0; // Y o RGBA
     std::unique_ptr<QRhiTexture> tex1; // UV (solo NV12)
+    // Copia cero: vistas (luma y croma) sobre las texturas del decodificador, por textura nativa.
+    struct GpuViews {
+        std::unique_ptr<QRhiTexture> luma, chroma;
+    };
+    std::map<void*, GpuViews> gpuViews;
+    QRhiTexture* gpu0 = nullptr; // las del fotograma actual (nullptr si está en memoria)
+    QRhiTexture* gpu1 = nullptr;
     media::PixelFormat format = media::PixelFormat::NV12;
     std::unique_ptr<QRhiBuffer> ubuf;
     std::unique_ptr<QRhiShaderResourceBindings> srb;
@@ -284,6 +292,27 @@ void Compositor::setRenderTarget(QRhiRenderPassDescriptor* renderPass, int sampl
 void Compositor::ensureSlotTextures(Slot& slot, const media::VideoFrame& f)
 {
     const QSize size(f.width, f.height);
+    slot.gpu0 = slot.gpu1 = nullptr;
+    if (f.onGpu()) {
+        // Vistas R8/RG8 (o R16/RG16) de los planos de la textura NV12 (o P010) del decodificador.
+        auto it = slot.gpuViews.find(f.gpuTexture);
+        if (it == slot.gpuViews.end() || it->second.luma->pixelSize() != size) {
+            if (slot.gpuViews.size() > 64)
+                slot.gpuViews.clear();
+            const bool deep = f.format == media::PixelFormat::P016;
+            Slot::GpuViews views;
+            views.luma.reset(m_rhi->newTexture(deep ? QRhiTexture::R16 : QRhiTexture::R8, size));
+            views.chroma.reset(m_rhi->newTexture(deep ? QRhiTexture::RG16 : QRhiTexture::RG8, QSize(f.width / 2, f.height / 2)));
+            const QRhiTexture::NativeTexture native{quint64(reinterpret_cast<quintptr>(f.gpuTexture)), 0};
+            if (!views.luma->createFrom(native) || !views.chroma->createFrom(native))
+                return; // sin vistas: la capa no se dibuja (no debería ocurrir)
+            it = slot.gpuViews.insert_or_assign(f.gpuTexture, std::move(views)).first;
+        }
+        slot.gpu0 = it->second.luma.get();
+        slot.gpu1 = it->second.chroma.get();
+        slot.format = f.format;
+        return;
+    }
     if (slot.tex0 && slot.format == f.format && slot.tex0->pixelSize() == size)
         return;
     slot.format = f.format;
@@ -370,8 +399,8 @@ void Compositor::prepareNested(Slot& slot, const engine::FrameBundle& nested, QS
 void Compositor::updateSlotBindings(Slot& slot)
 {
     QRhiTexture* want[5] = {
-        slot.nested ? slot.nestedTex.get() : slot.tex0.get(),
-        slot.tex1 && !slot.nested ? slot.tex1.get() : m_dummy2D.get(),
+        slot.nested ? slot.nestedTex.get() : slot.gpu0 ? slot.gpu0 : slot.tex0.get(),
+        slot.gpu1 && !slot.nested ? slot.gpu1 : slot.tex1 && !slot.nested ? slot.tex1.get() : m_dummy2D.get(),
         slot.useLut ? slot.lutTex.get() : m_dummy3D.get(),
         slot.blends && m_backdrop ? m_backdrop.get() : m_dummy2D.get(),
         slot.useMaskTex ? slot.maskTex.get() : m_dummy2D.get(),
@@ -457,7 +486,7 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         const media::VideoFrame& f = slot.nested ? nestedInfo : *layer.frame;
         if (!slot.nested)
             ensureSlotTextures(slot, f);
-        if (!slot.nested && slot.uploaded != layer.frame) {
+        if (!slot.nested && !f.onGpu() && slot.uploaded != layer.frame) {
             // fromRawData evita copiar; `uploaded` mantiene vivos los datos hasta que se suben.
             auto raw = [](const std::vector<uint8_t>& v) {
                 return QRhiTextureSubresourceUploadDescription(

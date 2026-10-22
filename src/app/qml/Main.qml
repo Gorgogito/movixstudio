@@ -279,6 +279,7 @@ ApplicationWindow {
             MenuItem { text: qsTr("A&lejar la línea de tiempo") + "\t" + keys.text("zoomOut"); onTriggered: timeline.zoomBy(1 / 1.5) }
             MenuItem { text: qsTr("Ajustar &todo") + "\t" + keys.text("fitAll"); onTriggered: timeline.fitAll() }
             MenuItem { text: qsTr("&Imán") + "\t" + keys.text("snapping"); checkable: true; checked: timeline.snapping; onTriggered: timeline.snapping = checked }
+            MenuItem { text: qsTr("Usar &proxies en la vista previa"); checkable: true; checked: project.useProxies; onTriggered: project.useProxies = checked }
             MenuSeparator {}
             Menu {
                 title: qsTr("&Idioma")

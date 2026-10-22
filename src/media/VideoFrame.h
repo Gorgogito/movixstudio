@@ -3,6 +3,7 @@
 #include "media/Time.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace movix::media {
@@ -36,6 +37,11 @@ struct VideoFrame {
     std::vector<uint8_t> y;
     std::vector<uint8_t> uv;
     std::vector<uint8_t> rgba;
+    // Copia cero (Direct3D 11): textura NV12, o P010 si es P016, en la GPU del dispositivo con que se
+    // decodificó (ID3D11Texture2D*); `y` y `uv` quedan vacíos. `gpuHold` la devuelve a su grupo.
+    void* gpuTexture = nullptr;
+    std::shared_ptr<void> gpuHold;
+    bool onGpu() const { return gpuTexture != nullptr; }
 
     int chromaWidth() const { return (width + 1) / 2; }
     int chromaHeight() const { return (height + 1) / 2; }

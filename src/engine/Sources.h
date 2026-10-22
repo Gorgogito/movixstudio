@@ -8,6 +8,7 @@
 #include "ofx/OfxHost.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <map>
 #include <mutex>
@@ -86,6 +87,11 @@ public:
 
     void setTitleRenderer(std::shared_ptr<TitleRenderer> renderer) { m_titles = std::move(renderer); }
     void setMaskRenderer(std::shared_ptr<MaskRenderer> renderer) { m_maskRenderer = std::move(renderer); }
+    // Copia cero: los clips se decodifican en este dispositivo (ID3D11Device* del compositor) y sus
+    // fotogramas no bajan a memoria. Los que necesitan la imagen en la CPU (efectos OpenFX) no.
+    void setGpuDevice(void* device) { m_gpuDevice = device; }
+    // Archivo que se lee para cada medio (p. ej. su proxy en la vista previa); sin ella, el original.
+    void setPathMapper(std::function<std::string(const core::MediaItem&)> mapper) { m_pathMapper = std::move(mapper); }
     std::shared_ptr<const media::VideoFrame> frame(const core::VideoLayer& layer, int canvasWidth, int canvasHeight);
     FrameBundle build(const core::Project& project, core::FramePos frame);
     void clear();
@@ -109,6 +115,7 @@ private:
         std::string path;
         uint64_t lastUse = 0;
         bool failed = false;
+        bool gpu = false; // decodifica con copia cero
     };
     bool m_hardware;
     size_t m_maxOpen;
@@ -154,6 +161,8 @@ private:
     std::map<std::pair<std::uint64_t, size_t>, OfxSlot> m_ofx;
     std::string m_ofxError;
     double m_frameRate = 30.0;
+    void* m_gpuDevice = nullptr;
+    std::function<std::string(const core::MediaItem&)> m_pathMapper;
 };
 
 // Mezclador de audio de la línea de tiempo: suma todos los tramos que suenan en un intervalo.

@@ -5,6 +5,7 @@
 #include "engine/MediaImport.h"
 #include "engine/Sources.h"
 #include "engine/VideoReader.h"
+#include "render/OffscreenRenderer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -188,4 +189,37 @@ TEST_CASE("Audio al revés: los pitidos suenan al final de su tramo", "[engine][
     CHECK(tone(4.01, 4.09) < 0.02);
     CHECK(tone(1.0, 1.08) < 0.02); // donde sonaría sin invertir no hay nada (en [1, 1,1) del medio → 3,9 s)
     CHECK(tone(0.91, 0.99) > 0.2); // el de 4 s del medio, en [0,9, 1,0)
+}
+
+TEST_CASE("Copia cero: el fotograma decodificado en la GPU se compone igual", "[render][zerocopy]")
+{
+    Project p = Project::createDefault();
+    auto item = engine::probeMediaItem(test::mediaPath("scenes_720p30.mp4"));
+    REQUIRE(item);
+    const Id media = edit::addMedia(p, *item);
+    p.settings.width = 1280;
+    p.settings.height = 720;
+    REQUIRE(edit::placeClip(p, p.videoTracks[0].id, media, 0, 0, 120) != kNoId);
+
+    render::OffscreenRenderer renderer;
+    REQUIRE(renderer.init(1280, 720));
+    void* device = renderer.d3d11Device();
+    if (!device)
+        SKIP("Sin Direct3D 11");
+    engine::VideoSources cpu(false), gpu(true);
+    gpu.setGpuDevice(device);
+    for (FramePos f : {0, 45, 100}) {
+        const auto a = cpu.build(p, f);
+        const auto b = gpu.build(p, f);
+        REQUIRE(b.layers.size() == 1);
+        CHECK(b.layers[0].frame->onGpu());
+        std::vector<uint8_t> pa, pb;
+        REQUIRE(renderer.render(a, pa));
+        REQUIRE(renderer.render(b, pb));
+        double diff = 0;
+        for (size_t i = 0; i < pa.size(); ++i)
+            diff += std::abs(int(pa[i]) - int(pb[i]));
+        INFO("fotograma " << f << ": diferencia media " << diff / double(pa.size()));
+        CHECK(diff / double(pa.size()) < 1.5); // decodificador por CPU frente a GPU: casi idénticos
+    }
 }

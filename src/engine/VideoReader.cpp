@@ -17,11 +17,13 @@ constexpr size_t kMaxCacheBytes = size_t(256) << 20;
 
 size_t frameBytes(const media::VideoFrame& f)
 {
+    if (f.onGpu()) // memoria de vídeo, pero cuenta igual
+        return size_t(f.width) * size_t(f.height) * 3 / 2 * (f.format == media::PixelFormat::P016 ? 2 : 1);
     return f.y.size() + f.uv.size() + f.rgba.size();
 }
 } // namespace
 
-bool VideoReader::open(const std::string& path, bool hardware, std::string* error)
+bool VideoReader::open(const std::string& path, bool hardware, std::string* error, void* gpuDevice)
 {
     m_current.reset();
     m_next.reset();
@@ -29,7 +31,7 @@ bool VideoReader::open(const std::string& path, bool hardware, std::string* erro
     m_cache.clear();
     m_cacheBytes = 0;
     // 10 bits o más se conservan (P016) para la composición y el HDR.
-    return m_decoder.open(path, media::VideoDecoderOptions{hardware, true}, error);
+    return m_decoder.open(path, media::VideoDecoderOptions{hardware, true, hardware ? gpuDevice : nullptr}, error);
 }
 
 std::shared_ptr<media::VideoFrame> VideoReader::decodeNext()

@@ -221,12 +221,15 @@ TEST_CASE("Rendimiento de la exportación en cadena (1080p60, codificador por GP
     const Project p = projectWith("count_1080p60.mp4", 1920, 1080, {60, 1});
     auto s = settingsFor(dir.filePath("perf.mp4"), p);
     s.videoCodec = "h264_nvenc";
-    exporting::ExportProgress progress;
-    REQUIRE(runExport(p, s, &progress)); // 180 fotogramas
-    std::printf("[export] cadena 1080p60 NVENC: %.0f fps (decodificar %.1f · componer %.1f · codificar %.1f ms)\n",
-                progress.fps, progress.decodeMs, progress.renderMs, progress.encodeMs);
-    // La suma secuencial de las etapas daría menos de lo que logra la cadena.
-    CHECK(progress.fps > 1000.0 / (progress.decodeMs + progress.renderMs + progress.encodeMs));
+    for (bool hardware : {true, false}) {
+        s.hardwareDecoding = hardware;
+        exporting::ExportProgress progress;
+        REQUIRE(runExport(p, s, &progress)); // 180 fotogramas
+        std::printf("[export] cadena 1080p60 NVENC, decodificación por %s: %.0f fps (decodificar %.1f · componer %.1f · codificar %.1f ms)\n",
+                    hardware ? "GPU" : "CPU", progress.fps, progress.decodeMs, progress.renderMs, progress.encodeMs);
+        // La suma secuencial de las etapas daría menos de lo que logra la cadena.
+        CHECK(progress.fps > 1000.0 / (progress.decodeMs + progress.renderMs + progress.encodeMs));
+    }
 }
 
 TEST_CASE("Los títulos y transformaciones llegan al archivo exportado", "[export][f2]")

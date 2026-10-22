@@ -1327,7 +1327,7 @@
     </message>
     <message>
         <source>Los cambios se aplican a todos (los valores mostrados son los del primero). Arrastra en una zona vacía de la línea de tiempo para seleccionar con un recuadro.</source>
-        <translation>Changes apply to all of them (the values shown are the first one's). Drag on an empty area of the timeline to select with a box.</translation>
+        <translation>Changes apply to all of them (the values shown are the first one&apos;s). Drag on an empty area of the timeline to select with a box.</translation>
     </message>
     <message>
         <source>Clips activos</source>
@@ -1874,6 +1874,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Atajos de &amp;teclado…</source>
         <translation>&amp;Keyboard shortcuts…</translation>
     </message>
+    <message>
+        <source>Usar &amp;proxies en la vista previa</source>
+        <translation>Use &amp;proxies in the preview</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -1924,6 +1928,30 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Crear multicámara alineada al inicio</source>
         <translation>Create multicam aligned at the start</translation>
+    </message>
+    <message>
+        <source>Proxy</source>
+        <translation>Proxy</translation>
+    </message>
+    <message>
+        <source>Proxy %1 %</source>
+        <translation>Proxy %1 %</translation>
+    </message>
+    <message>
+        <source>La vista previa usa una copia ligera; la exportación, el original</source>
+        <translation>The preview uses a lightweight copy; export uses the original</translation>
+    </message>
+    <message>
+        <source>Creando una copia ligera para la vista previa</source>
+        <translation>Creating a lightweight copy for the preview</translation>
+    </message>
+    <message>
+        <source>Crear proxy</source>
+        <translation>Create proxy</translation>
+    </message>
+    <message>
+        <source>Borrar proxy</source>
+        <translation>Delete proxy</translation>
     </message>
 </context>
 <context>
@@ -2600,6 +2628,10 @@ Do you want to recover it instead of opening “%2”?</translation>
             <numerusform>Edit %n clip</numerusform>
             <numerusform>Edit %n clips</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>No se pudo crear el proxy de «%1»: %2</source>
+        <translation>Could not create the proxy for “%1”: %2</translation>
     </message>
 </context>
 <context>

@@ -15,6 +15,9 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <memory>
+#include <atomic>
+#include <map>
+#include <mutex>
 #include <optional>
 
 // Controlador del proyecto abierto: une la interfaz con el núcleo (historial, ediciones, archivo),
@@ -268,6 +271,18 @@ public:
     Q_INVOKABLE void setMulticamAngle(qint64 clipId, int angle);
     Q_INVOKABLE void setMulticamAudio(qint64 clipId, int audioAngle); // −1 = el del ángulo que se ve
 
+    // --- Proxies: copias ligeras de los medios pesados para la vista previa ---
+    Q_PROPERTY(bool useProxies READ useProxies WRITE setUseProxies NOTIFY proxiesChanged)
+    Q_PROPERTY(int proxyRevision READ proxyRevision NOTIFY proxiesChanged) // cambia con cada estado
+    bool useProxies() const;
+    void setUseProxies(bool on);
+    int proxyRevision() const { return m_proxyRevision; }
+    // "" (sin proxy), "ready" o el porcentaje mientras se crea ("37").
+    Q_INVOKABLE QString proxyState(qint64 mediaId) const;
+    Q_INVOKABLE void createProxy(qint64 mediaId);
+    Q_INVOKABLE void removeProxy(qint64 mediaId);
+    QString proxyFolder() const;
+
     // --- Efectos OpenFX (ProjectControllerOfx.cpp) ---
     // Plugins instalados: {id, label, group, description}.
     Q_PROPERTY(QVariantList ofxPlugins READ ofxPlugins NOTIFY ofxPluginsChanged)
@@ -321,6 +336,7 @@ signals:
     void templatesChanged();
     void scriptsChanged();
     void ofxPluginsChanged();
+    void proxiesChanged();
 
 private:
     movix::core::FramePos playheadRel(const movix::core::Clip& c) const;
@@ -334,6 +350,21 @@ private:
     movix::core::History m_history;
     std::shared_ptr<const movix::core::Project> m_snapshot;
     bool m_multicamView = false;
+    // Proxies listos (ruta del original → proxy) y si se usan: lo consulta el hilo del reproductor.
+    struct ProxyIndex {
+        std::mutex mutex;
+        bool enabled = true;
+        std::map<std::string, std::string> ready;
+    };
+    std::shared_ptr<ProxyIndex> m_proxies = std::make_shared<ProxyIndex>();
+    std::map<std::string, int> m_proxyBuilding; // ruta → porcentaje
+    int m_proxyRevision = 0;
+    void queueProxies(); // los que faltan de los medios pesados
+    void startProxy(const movix::core::MediaItem& media);
+    void runNextProxy();
+    std::vector<movix::core::MediaItem> m_proxyQueue;
+    bool m_proxyRunning = false;
+    std::shared_ptr<std::atomic<bool>> m_proxyCancel = std::make_shared<std::atomic<bool>>(false);
     TemplateStore m_templates;
     QVariantList m_scripts;
     QUrl m_fileUrl;

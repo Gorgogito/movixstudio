@@ -13,6 +13,9 @@ namespace movix::media {
 struct VideoDecoderOptions {
     bool hardware = true;      // intentar D3D11VA (Windows) y, si falla, usar CPU
     bool highBitDepth = false; // fuentes de más de 8 bits en P016 (si no, siempre NV12 de 8 bits)
+    // ID3D11Device* del compositor: se decodifica en él y los fotogramas se quedan en la GPU
+    // (VideoFrame::onGpu) en vez de bajar a memoria. Solo con `hardware`.
+    void* d3d11Device = nullptr;
 };
 
 // Decodificador de video síncrono: un demuxer propio por instancia, salida NV12 de 8 bits (o P016
@@ -73,6 +76,7 @@ private:
     bool m_hasPending = false;
     bool m_flushing = false;     // ya se envió el paquete nulo al decodificador
     bool m_lastFrameWasHw = false;
+    std::unique_ptr<class GpuTexturePool> m_gpuPool; // copia cero
 };
 
 } // namespace movix::media

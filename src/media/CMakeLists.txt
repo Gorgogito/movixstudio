@@ -13,6 +13,7 @@ add_library(movix_media STATIC
     ImageDecoder.h ImageDecoder.cpp
     AudioFilter.h AudioFilter.cpp
     TempoFilter.h TempoFilter.cpp
+    GpuFrames.h GpuFrames.cpp
 )
 
 target_include_directories(movix_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -20,3 +21,6 @@ target_link_libraries(movix_media
     PUBLIC
         FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale FFmpeg::swresample FFmpeg::avfilter
 )
+if(WIN32)
+    target_link_libraries(movix_media PRIVATE d3d11) # copia cero (GpuFrames)
+endif()

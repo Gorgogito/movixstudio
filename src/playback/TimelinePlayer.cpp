@@ -108,9 +108,20 @@ double TimelinePlayer::frameRate() const
     return p ? p->settings.frameRate.value() : 30.0;
 }
 
+void TimelinePlayer::setPathMapper(std::function<std::string(const core::MediaItem&)> mapper)
+{
+    {
+        std::lock_guard lock(m_videoMutex);
+        m_pathMapper = std::move(mapper);
+        ++m_pathMapperVersion;
+    }
+    m_videoCv.notify_all();
+}
+
 void TimelinePlayer::videoLoop()
 {
     engine::VideoSources sources(m_options.hardwareDecoding);
+    uint64_t mapperVersion = 0;
     sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
     sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
     for (;;) {
@@ -127,6 +138,10 @@ void TimelinePlayer::videoLoop()
         }
         const core::FramePos k = m_nextFrame;
         const uint64_t serial = m_videoSerial;
+        if (mapperVersion != m_pathMapperVersion) {
+            sources.setPathMapper(m_pathMapper);
+            mapperVersion = m_pathMapperVersion;
+        }
         lock.unlock();
 
         const auto proj = project();

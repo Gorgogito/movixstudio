@@ -288,7 +288,14 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Selección por recuadro (arrastrar en una zona vacía; Ctrl o Mayús añade) y edición de varios
       clips a la vez en el inspector: activos, opacidad, escala, volumen, velocidad, al revés,
       fundidos y pegar el color, cada cambio en un solo paso de deshacer
-- [ ] Proxies automáticos y decodificación de copia cero (exportar 1080p60 a más de ~94 fps)
+- [x] Proxies automáticos: los medios de más de 1080p se copian a 540p (H.264, una clave cada
+      medio segundo) en segundo plano; la vista previa los usa y la exportación, el original.
+      Se reconocen en otros proyectos, se crean o borran a mano desde el menú del medio y se
+      desactivan en Ver → Usar proxies en la vista previa
+- [x] Exportación más rápida: conversión a NV12 en la GPU (sin bajar RGBA) y decodificación de
+      copia cero con D3D11VA en el mismo dispositivo que compone. 1080p60 con NVENC: de ~115 a
+      ~190 fps (decodificar 1,1 · componer 3,1 · codificar 4,0 ms); el límite es el codificador.
+      La vista previa todavía baja los fotogramas a memoria
 - [ ] Visor HDR, corrección en luz lineal, puntos de máscara animables
 - [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas
       con fundidos

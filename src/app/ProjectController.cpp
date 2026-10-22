@@ -11,17 +11,22 @@
 #include "core/Timeline.h"
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
+#include "engine/Proxy.h"
 #include "media/MediaInfo.h"
 
 #include <QColor>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QPointer>
 #include <QSaveFile>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QThreadPool>
+#include <QTimer>
 
 using namespace movix;
 using namespace movix::core;
@@ -60,6 +65,15 @@ ProjectController::ProjectController(QObject* parent)
     refresh();
     reloadScripts();
     movix::ofx::Registry::instance().setExtraDirs({ofxFolder().toStdString()}); // se buscan al pedirlos
+    m_proxies->enabled = QSettings().value(QStringLiteral("vista/proxies"), true).toBool();
+    // El reproductor lee el proxy de un medio si está listo y se usan (desde su hilo).
+    m_player->setPathMapper([index = m_proxies](const MediaItem& m) {
+        std::lock_guard lock(index->mutex);
+        if (index->enabled)
+            if (auto it = index->ready.find(m.path); it != index->ready.end())
+                return it->second;
+        return m.path;
+    });
 }
 
 ProjectController::~ProjectController() = default;
@@ -145,6 +159,7 @@ void ProjectController::resetTo(Project project, const QUrl& url)
     m_autosavedRevision = m_history.revision();
     refresh();
     emit fileChanged();
+    queueProxies();
 }
 
 void ProjectController::undo()
@@ -368,6 +383,156 @@ bool ProjectController::newFromTemplate(const QString& name)
         emit errorOccurred(tr("No se encontraron %n archivos de medios:\n%1", nullptr, int(result.missingMedia.size()))
                                .arg(result.missingMedia.join(QLatin1Char('\n'))));
     return true;
+}
+
+// --- Proxies ---
+
+QString ProjectController::proxyFolder() const
+{
+    return qEnvironmentVariableIsSet("MOVIX_PROXY_DIR") ? qEnvironmentVariable("MOVIX_PROXY_DIR")
+                                                       : QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/proxies");
+}
+
+bool ProjectController::useProxies() const
+{
+    std::lock_guard lock(m_proxies->mutex);
+    return m_proxies->enabled;
+}
+
+void ProjectController::setUseProxies(bool on)
+{
+    {
+        std::lock_guard lock(m_proxies->mutex);
+        if (m_proxies->enabled == on)
+            return;
+        m_proxies->enabled = on;
+    }
+    QSettings().setValue(QStringLiteral("vista/proxies"), on);
+    ++m_proxyRevision;
+    emit proxiesChanged();
+    refresh(); // el visor vuelve a leer con el archivo que toque
+}
+
+QString ProjectController::proxyState(qint64 mediaId) const
+{
+    const MediaItem* m = project().findMedia(Id(mediaId));
+    if (!m)
+        return {};
+    if (auto it = m_proxyBuilding.find(m->path); it != m_proxyBuilding.end())
+        return QString::number(it->second);
+    std::lock_guard lock(m_proxies->mutex);
+    return m_proxies->ready.count(m->path) ? QStringLiteral("ready") : QString();
+}
+
+void ProjectController::queueProxies()
+{
+    const std::string dir = proxyFolder().toStdString();
+    bool changed = false;
+    for (const MediaItem& m : project().media) {
+        if (!m.hasVideo || m.isStill || m_proxyBuilding.count(m.path))
+            continue;
+        {
+            std::lock_guard lock(m_proxies->mutex);
+            if (m_proxies->ready.count(m.path))
+                continue;
+        }
+        const std::string proxy = engine::proxyPathFor(dir, m);
+        if (QFileInfo::exists(QString::fromStdString(proxy))) { // de una sesión anterior
+            std::lock_guard lock(m_proxies->mutex);
+            m_proxies->ready[m.path] = proxy;
+            changed = true;
+        } else if (engine::needsProxy(m)) {
+            startProxy(m);
+        }
+    }
+    if (changed) {
+        ++m_proxyRevision;
+        emit proxiesChanged();
+        refresh();
+    }
+}
+
+void ProjectController::createProxy(qint64 mediaId)
+{
+    if (const MediaItem* m = project().findMedia(Id(mediaId)); m && m->hasVideo && !m->isStill && !m_proxyBuilding.count(m->path))
+        startProxy(*m);
+}
+
+void ProjectController::removeProxy(qint64 mediaId)
+{
+    const MediaItem* m = project().findMedia(Id(mediaId));
+    if (!m)
+        return;
+    std::string proxy;
+    {
+        std::lock_guard lock(m_proxies->mutex);
+        auto it = m_proxies->ready.find(m->path);
+        if (it == m_proxies->ready.end())
+            return;
+        proxy = it->second;
+        m_proxies->ready.erase(it);
+    }
+    refresh(); // primero deja de leerse; el archivo se borra cuando el lector lo suelta
+    QTimer::singleShot(2000, this, [proxy] { QFile::remove(QString::fromStdString(proxy)); });
+    ++m_proxyRevision;
+    emit proxiesChanged();
+}
+
+void ProjectController::startProxy(const MediaItem& media)
+{
+    m_proxyBuilding[media.path] = 0;
+    m_proxyQueue.push_back(media);
+    ++m_proxyRevision;
+    emit proxiesChanged();
+    runNextProxy();
+}
+
+void ProjectController::runNextProxy()
+{
+    // De uno en uno: cada proxy ya usa todos los núcleos.
+    if (m_proxyRunning || m_proxyQueue.empty())
+        return;
+    m_proxyRunning = true;
+    const MediaItem media = m_proxyQueue.front();
+    m_proxyQueue.erase(m_proxyQueue.begin());
+    const std::string out = engine::proxyPathFor(proxyFolder().toStdString(), media);
+    QPointer<ProjectController> self(this);
+    auto cancel = m_proxyCancel;
+    QThreadPool::globalInstance()->start([self, media, out, cancel] {
+        int last = 0;
+        std::string error;
+        const bool ok = engine::buildProxy(media, out, &error, [&](double f) {
+            const int percent = int(f * 100);
+            if (percent >= last + 2) {
+                last = percent;
+                QMetaObject::invokeMethod(self, [self, path = media.path, percent] {
+                    if (self && self->m_proxyBuilding.count(path)) {
+                        self->m_proxyBuilding[path] = percent;
+                        ++self->m_proxyRevision;
+                        emit self->proxiesChanged();
+                    }
+                }, Qt::QueuedConnection);
+            }
+        }, [cancel] { return cancel->load(); });
+        QMetaObject::invokeMethod(self, [self, media, out, ok, error] {
+            if (!self)
+                return;
+            self->m_proxyBuilding.erase(media.path);
+            self->m_proxyRunning = false;
+            if (ok) {
+                std::lock_guard lock(self->m_proxies->mutex);
+                self->m_proxies->ready[media.path] = out;
+            } else if (!self->m_proxyCancel->load()) {
+                emit self->errorOccurred(tr("No se pudo crear el proxy de «%1»: %2")
+                                             .arg(QString::fromStdString(media.name), QString::fromStdString(error)));
+            }
+            ++self->m_proxyRevision;
+            emit self->proxiesChanged();
+            if (ok)
+                self->refresh();
+            self->runNextProxy();
+        }, Qt::QueuedConnection);
+    });
 }
 
 // --- Scripts ---
@@ -627,6 +792,7 @@ void ProjectController::discardAutosave()
 
 void ProjectController::shutdown()
 {
+    *m_proxyCancel = true; // un proxy a medias no debe retrasar el cierre
     m_player->pause();
     m_sourcePlayer->pause();
     m_exporter.cancel();
@@ -684,6 +850,7 @@ void ProjectController::finishImport()
                 edit::addMedia(p, item);
             return true;
         });
+        queueProxies();
     }
     if (!m_importErrors.isEmpty()) {
         emit errorOccurred(tr("No se pudieron importar algunos archivos:\n%1").arg(m_importErrors.join(QLatin1Char('\n'))));

@@ -14,7 +14,8 @@ namespace movix::engine {
 // (clips al revés) decodifica por bloques y los guarda, para no buscar en cada fotograma.
 class VideoReader {
 public:
-    bool open(const std::string& path, bool hardware, std::string* error = nullptr);
+    // `gpuDevice` (ID3D11Device*): copia cero, los fotogramas se quedan en la GPU de ese dispositivo.
+    bool open(const std::string& path, bool hardware, std::string* error = nullptr, void* gpuDevice = nullptr);
 
     // Fotograma visible en el instante `t` del medio (el último con pts ≤ t). Más allá del final
     // devuelve el último fotograma. nullptr solo si el medio no tiene ninguno.

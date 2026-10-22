@@ -18,6 +18,7 @@ struct VideoEncoderSettings {
     std::string preset;            // vacío = valor recomendado para el códec
     bool input16 = false;          // writeVideo recibe RGBA de 16 bits por canal (little endian)
     bool tenBit = false;           // codificar a 10 bits (falla si el códec no lo admite)
+    int gop = 0;                   // > 0: fotogramas entre claves (si no, unos 2 s)
     // Señal de la imagen: SDR Rec.709, o HDR Rec.2020 con PQ (HDR10) o HLG.
     enum class Signal { SDR, PQ, HLG } signal = Signal::SDR;
 };
@@ -55,6 +56,10 @@ public:
     bool open(const EncoderSettings& settings, std::string* error = nullptr);
     // Siguiente fotograma de video (RGBA de 8 bits, o de 16 con input16; `stride` bytes por fila).
     bool writeVideo(const uint8_t* rgba, int stride);
+    // Lo mismo desde NV12 ya convertido (BT.709, rango limitado; Y y luego UV intercalado, sin
+    // relleno): sin conversión en la CPU. Solo si acceptsNv12().
+    bool writeVideoNv12(const uint8_t* nv12);
+    bool acceptsNv12() const;
     // Audio intercalado al formato de AudioEncoderSettings.
     bool writeAudio(const float* samples, int frames);
     // Vacía los codificadores y cierra el archivo.

@@ -12,6 +12,7 @@
 #include <climits>
 #include <condition_variable>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -51,6 +52,8 @@ public:
 
     // Sustituye el proyecto; conserva la posición (limitada a la nueva duración).
     void setProject(std::shared_ptr<const core::Project> project);
+    // Archivo que se decodifica para cada medio (proxies); se aplica en el siguiente fotograma.
+    void setPathMapper(std::function<std::string(const core::MediaItem&)> mapper);
     std::shared_ptr<const core::Project> project() const;
 
     Q_INVOKABLE void play();
@@ -128,6 +131,8 @@ private:
     static constexpr size_t kMaxQueued = 6;
     std::thread m_videoThread;
     mutable std::mutex m_videoMutex;
+    std::function<std::string(const core::MediaItem&)> m_pathMapper; // con m_videoMutex
+    uint64_t m_pathMapperVersion = 0;
     std::condition_variable m_videoCv;
     std::deque<std::shared_ptr<engine::FrameBundle>> m_videoQueue;
     std::shared_ptr<engine::FrameBundle> m_displayed;
