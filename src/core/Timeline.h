@@ -2,6 +2,7 @@
 
 #include "core/Project.h"
 
+#include <algorithm>
 #include <vector>
 
 // Evaluación de la línea de tiempo: qué se ve y qué se oye en cada instante. La usan por igual
@@ -85,6 +86,21 @@ struct AudioSegment {
 // video (salvo pistas silenciadas o audio separado). Incluye volumen de pista y de clip,
 // fundidos y el fundido cruzado de las transiciones.
 std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1);
+
+// Cuadrícula de la vista multicámara (Project::multicamGrid): ángulo a ángulo de izquierda a derecha
+// y de arriba abajo. Las medidas son fracciones del lienzo.
+struct MulticamGrid {
+    int cols = 1;
+    int rows = 1;
+    struct Rect {
+        double x = 0, y = 0, width = 1, height = 1;
+    };
+    double scale() const { return 1.0 / double(std::max(cols, rows)); } // escala de cada ángulo
+    Rect cell(int angle) const;  // celda del ángulo
+    Rect image(int angle) const; // parte de la celda que ocupa su imagen (centrada)
+    int angleAt(double x, double y, int angles) const; // −1 fuera de las imágenes
+};
+MulticamGrid multicamGridFor(int angles);
 
 // Partes de una transición en un corte: [corte - before, corte + after).
 struct TransitionSpan {

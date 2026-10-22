@@ -160,9 +160,33 @@ Rectangle {
                 }
                 Button {
                     visible: inspector.info.isCompound === true
-                    text: qsTr("Abrir clip compuesto")
+                    text: inspector.info.isMulticam ? qsTr("Abrir para ajustar la sincronía") : qsTr("Abrir clip compuesto")
                     focusPolicy: Qt.NoFocus
                     onClicked: inspector.project.openCompound(inspector.info.clipId)
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: inspector.info.isMulticam === true
+                    SmallLabel { text: qsTr("Ángulo"); Layout.preferredWidth: 60 }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        focusPolicy: Qt.NoFocus
+                        model: inspector.info.multicam?.angles ?? []
+                        currentIndex: inspector.info.multicam?.angle ?? 0
+                        onActivated: (i) => inspector.project.setMulticamAngle(inspector.info.clipId, i)
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: inspector.info.isMulticam === true
+                    SmallLabel { text: qsTr("Audio"); Layout.preferredWidth: 60 }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        focusPolicy: Qt.NoFocus
+                        model: [qsTr("El del ángulo que se ve")].concat(inspector.info.multicam?.audioSources ?? [])
+                        currentIndex: (inspector.info.multicam?.audioAngle ?? -1) + 1
+                        onActivated: (i) => inspector.project.setMulticamAudio(inspector.info.clipId, i - 1)
+                    }
                 }
                 InfoRow { label: qsTr("Pista"); value: inspector.info.track ?? "" }
                 InfoRow { label: qsTr("Inicio"); value: inspector.project.timecode(inspector.info.start ?? 0) }

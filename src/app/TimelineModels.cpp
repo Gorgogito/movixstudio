@@ -163,6 +163,12 @@ QHash<int, QByteArray> ClipListModel::roleNames() const
 void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
 {
     std::vector<Item> next;
+    // Multicámara: la secuencia y el ángulo que se ve.
+    auto multicamName = [](const Project& p, const Clip& c) {
+        const auto* angles = p.videoTracksOf(c.sequenceId);
+        const QString angle = angles && c.angle < int(angles->size()) ? QString::fromStdString((*angles)[size_t(c.angle)].name) : QString();
+        return QStringLiteral("%1 · %2").arg(QString::fromStdString(p.sequenceName(c.sequenceId)), angle);
+    };
     auto collect = [&](const std::vector<Track>& tracks, TrackKind kind) {
         for (int ti = 0; ti < int(tracks.size()); ++ti) {
             const Track& t = tracks[size_t(ti)];
@@ -170,6 +176,7 @@ void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
                 const MediaItem* m = c.isGenerated() ? nullptr : project.findMedia(c.mediaId);
                 // Los títulos se identifican por su texto (primera línea); los compuestos, por su secuencia.
                 const QString name = c.title          ? QString::fromStdString(c.title->text).section(QLatin1Char('\n'), 0, 0)
+                                     : c.isMulticam() ? multicamName(project, c)
                                      : c.isCompound() ? QString::fromStdString(project.sequenceName(c.sequenceId))
                                      : m              ? QString::fromStdString(m->name)
                                                       : QString();

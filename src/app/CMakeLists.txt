@@ -77,6 +77,7 @@ qt_add_qml_module(MovixStudio
         qml/TtsDialog.qml
         qml/TranslateDialog.qml
         qml/UpdateBanner.qml
+        qml/MulticamOverlay.qml
     RESOURCES
         ${MOVIX_ICONS}
 )

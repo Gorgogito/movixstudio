@@ -1,6 +1,7 @@
 # movix_ai: IA local. Catálogo y descarga de modelos, cliente del proceso de IA y los algoritmos
 # que ese proceso ejecuta: whisper.cpp (transcripción, detección de voz), ONNX Runtime (texto a voz,
-# traducción, separación de voces), eSpeak NG (fonemas), SentencePiece y DSP propio (ritmo, escenas).
+# traducción, separación de voces), eSpeak NG (fonemas), SentencePiece y DSP propio (ritmo, escenas,
+# sincronización por audio).
 find_package(whisper CONFIG REQUIRED)
 # SentencePiece (vcpkg) es estática y sin configuración CMake: depende de protobuf-lite y abseil.
 find_package(protobuf CONFIG REQUIRED)
@@ -17,6 +18,7 @@ add_library(movix_ai STATIC
     Speech.h Speech.cpp
     Scenes.h Scenes.cpp
     Beats.h Beats.cpp
+    AudioSync.h AudioSync.cpp
     Onnx.h Onnx.cpp
     Tts.h Tts.cpp
     Translate.h Translate.cpp

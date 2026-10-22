@@ -15,6 +15,8 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
 - Intercambio de la línea de tiempo con otros editores (DaVinci Resolve, Premiere, Kdenlive…) en
   formato **OpenTimelineIO** (`.otio`): importar y exportar pistas, clips, transiciones, velocidad,
   títulos, compuestos y marcadores.
+- **Multicámara**: varias cámaras (y un micrófono aparte) sincronizadas automáticamente por el
+  audio; vista de todos los ángulos en cuadrícula y corte en directo con las teclas 1–9.
 
 **Novedades de F5** — en local, en la GPU cuando la hay (cualquier GPU con Vulkan)
 - Quitar el fondo sin pantalla verde (personas o cualquier sujeto) o recortar un objeto con un
@@ -177,6 +179,7 @@ real (tiempos por palabra dentro de ±0,15 s), detectan sus tramos de voz, usan 
 | Modelos de la UI | 600 ediciones aleatorias validadas con `QAbstractItemModelTester` |
 | IA (F4) | Whisper sobre voz sintetizada (idioma, palabras, tiempos), Silero VAD, proceso de IA con cola/cancelación/caída, descarga multiarchivo verificada, subtítulos y SRT, silencios y cortes por tramos, RNNoise (−15 dB de ruido sin desfase), ritmo a 92/120/150 BPM (±35 ms), cortes de escena exactos, Kokoro → Whisper (ida y vuelta), traducción es↔en, HTDemucs (voz/percusión separadas, correlación > 0,8), integración con los controladores reales |
 | IA visual (F5) | BiRefNet y SAM 2 separan sujeto/fondo (1,0 / 0,0) y lo siguen por el clip; mate en el motor (invertible, en el `.mxproj`); rastreador con error < 1 px; Real-ESRGAN recupera la nitidez del original; RIFE crea una sola bola nítida en la posición intermedia (±6 px); reencuadre, escalado y cámara lenta de punta a punta con los controladores |
+| Multicámara (F6) | Sincronía por audio ±1 ms (sintética) y ±10 ms con dos cámaras AAC y un micrófono reales; sin falsos positivos con grabaciones ajenas o mudas; cambio de ángulo, audio fijo o que sigue al video, romper, `.mxproj` y OTIO; la cuadrícula en la GPU coincide celda a celda con cada ángulo; controlador real de punta a punta |
 
 ## Licencia
 

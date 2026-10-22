@@ -1261,6 +1261,18 @@
         <source>Descargar el modelo de reducción de ruido (0,3 MB)</source>
         <translation>Download the noise reduction model (0.3 MB)</translation>
     </message>
+    <message>
+        <source>Abrir para ajustar la sincronía</source>
+        <translation>Open to adjust the sync</translation>
+    </message>
+    <message>
+        <source>Ángulo</source>
+        <translation>Angle</translation>
+    </message>
+    <message>
+        <source>El del ángulo que se ve</source>
+        <translation>From the angle on screen</translation>
+    </message>
 </context>
 <context>
     <name>LibraryPanel</name>
@@ -1782,6 +1794,18 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Importa videos, audio o imágenes, o arrástralos aquí desde el explorador.</source>
         <translation>Import video, audio or images, or drag files here from the file explorer.</translation>
     </message>
+    <message>
+        <source>Crear multicámara con los %1 elegidos (sincronizar por el audio)</source>
+        <translation>Create multicam from the %1 chosen (sync by audio)</translation>
+    </message>
+    <message>
+        <source>Crear multicámara (elige varios con Ctrl+clic)</source>
+        <translation>Create multicam (choose several with Ctrl+click)</translation>
+    </message>
+    <message>
+        <source>Crear multicámara alineada al inicio</source>
+        <translation>Create multicam aligned at the start</translation>
+    </message>
 </context>
 <context>
     <name>ModelCatalog</name>
@@ -1887,6 +1911,13 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Abrir carpeta</source>
         <translation>Open folder</translation>
+    </message>
+</context>
+<context>
+    <name>MulticamOverlay</name>
+    <message>
+        <source>Audio: %1</source>
+        <translation>Audio: %1</translation>
     </message>
 </context>
 <context>
@@ -2282,6 +2313,53 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Línea de tiempo exportada a «%1». Los efectos de imagen (color, máscaras, transformaciones…) no se incluyen.</source>
         <translation>Timeline exported to “%1”. Image effects (color, masks, transforms…) are not included.</translation>
+    </message>
+    <message>
+        <source>%1 (vacía)</source>
+        <translation>%1 (empty)</translation>
+    </message>
+    <message>
+        <source>Cambiar de ángulo</source>
+        <translation>Switch angle</translation>
+    </message>
+    <message>
+        <source>Ángulo de la multicámara</source>
+        <translation>Multicam angle</translation>
+    </message>
+    <message>
+        <source>Audio de la multicámara</source>
+        <translation>Multicam audio</translation>
+    </message>
+    <message>
+        <source>Para una multicámara hacen falta al menos dos grabaciones (de video o audio, no imágenes) y una de ellas con video.</source>
+        <translation>A multicam needs at least two recordings (video or audio, not images), one of them with video.</translation>
+    </message>
+    <message>
+        <source>Multicámara</source>
+        <translation>Multicam</translation>
+    </message>
+    <message>
+        <source>Multicámara %1</source>
+        <translation>Multicam %1</translation>
+    </message>
+    <message>
+        <source>Crear multicámara</source>
+        <translation>Create multicam</translation>
+    </message>
+    <message>
+        <source>No se pudo crear la multicámara.</source>
+        <translation>Could not create the multicam.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Multicámara con %n ángulos. Reproduce y pulsa 1–%1 (o haz clic en un ángulo) para cortar a él.</source>
+        <translation>
+            <numerusform>Multicam with %n angle. Play and press 1–%1 (or click an angle) to cut to it.</numerusform>
+            <numerusform>Multicam with %n angles. Play and press 1–%1 (or click an angle) to cut to it.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No se pudo sincronizar por el audio: %1 (se alineó al inicio).</source>
+        <translation>Could not sync by audio: %1 (aligned at the start).</translation>
     </message>
 </context>
 <context>
@@ -2943,6 +3021,14 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Scopes</source>
         <translation>Scopes</translation>
+    </message>
+    <message>
+        <source>Multicámara</source>
+        <translation>Multicam</translation>
+    </message>
+    <message>
+        <source>Ver todos los ángulos de los clips multicámara (1–9 corta a un ángulo)</source>
+        <translation>Show every angle of multicam clips (1–9 cuts to an angle)</translation>
     </message>
 </context>
 <context>

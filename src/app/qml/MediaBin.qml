@@ -12,6 +12,8 @@ Rectangle {
     required property ProjectController project
     signal importRequested()
     signal previewRequested(var mediaId)
+    // Medios elegidos (Ctrl+clic añade o quita): para crear una multicámara.
+    property var picked: []
 
     color: Theme.surface
 
@@ -68,6 +70,7 @@ Rectangle {
                 required property string thumbnail
                 required property int usage
                 required property int index
+                readonly property bool isPicked: bin.picked.indexOf(tile.mediaId) >= 0
 
                 width: grid.cellWidth
                 height: grid.cellHeight
@@ -78,7 +81,7 @@ Rectangle {
                     anchors.margins: 4
                     radius: Theme.radius
                     color: hover.hovered || dragArea.drag.active ? Theme.surfaceHover : Theme.surfaceRaised
-                    border.color: grid.currentIndex === tile.index ? Theme.accent : "transparent"
+                    border.color: tile.isPicked ? Theme.accent : "transparent"
                     border.width: 2
 
                     Drag.active: dragArea.drag.active
@@ -164,7 +167,13 @@ Rectangle {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         drag.target: dragProxy
-                        onPressed: grid.currentIndex = tile.index
+                        onPressed: (mouse) => {
+                            grid.currentIndex = tile.index
+                            if (mouse.modifiers & Qt.ControlModifier)
+                                bin.picked = tile.isPicked ? bin.picked.filter(id => id !== tile.mediaId) : bin.picked.concat([tile.mediaId])
+                            else if (!tile.isPicked || mouse.button === Qt.LeftButton)
+                                bin.picked = [tile.mediaId]
+                        }
                         onClicked: (mouse) => {
                             if (mouse.button === Qt.RightButton)
                                 contextMenu.popup()
@@ -177,6 +186,18 @@ Rectangle {
                         id: contextMenu
                         MenuItem { text: qsTr("Vista previa"); onTriggered: bin.previewRequested(tile.mediaId) }
                         MenuItem { text: qsTr("Añadir a la línea de tiempo"); onTriggered: bin.project.appendToTimeline(tile.mediaId) }
+                        MenuSeparator {}
+                        MenuItem {
+                            text: bin.picked.length >= 2 ? qsTr("Crear multicámara con los %1 elegidos (sincronizar por el audio)").arg(bin.picked.length)
+                                                         : qsTr("Crear multicámara (elige varios con Ctrl+clic)")
+                            enabled: bin.picked.length >= 2
+                            onTriggered: bin.project.createMulticam(bin.picked, true)
+                        }
+                        MenuItem {
+                            text: qsTr("Crear multicámara alineada al inicio")
+                            enabled: bin.picked.length >= 2
+                            onTriggered: bin.project.createMulticam(bin.picked, false)
+                        }
                         MenuSeparator {}
                         MenuItem {
                             text: tile.usage > 0 ? qsTr("Quitar del proyecto (y sus clips)") : qsTr("Quitar del proyecto")

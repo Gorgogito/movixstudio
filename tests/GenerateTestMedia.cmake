@@ -102,3 +102,22 @@ set(ext .mp4)
 make_media(subject_ball.mp4
     -f lavfi -i "color=c=gray:s=640x360:r=10:d=1,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"
     -c:v libx264 -preset veryfast -crf 12)
+
+# 11) Multicámara: la misma voz grabada por dos cámaras y un micrófono aparte, con desfases conocidos
+#     respecto de mc_cam1 (que empieza con la voz): mc_cam2 empieza 1,7 s después, más baja, filtrada
+#     y con ruido; mc_mic empieza 0,6 s después, sin agudos.
+set(ext .mp4)
+make_media(mc_cam1.mp4
+    -f lavfi -i "testsrc2=s=640x360:r=30:d=6"
+    -i "${CMAKE_CURRENT_LIST_DIR}/data/speech_es.flac"
+    -map 0:v -map 1:a -t 6 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000)
+make_media(mc_cam2.mp4
+    -f lavfi -i "smptehdbars=s=640x360:r=30:d=6"
+    -ss 1.7 -i "${CMAKE_CURRENT_LIST_DIR}/data/speech_es.flac"
+    -f lavfi -i "anoisesrc=color=pink:amplitude=0.02:r=48000:seed=3"
+    -filter_complex "[1:a][2:a]amix=inputs=2:duration=first:normalize=0,volume=0.5,highpass=f=200"
+    -map 0:v -t 6 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000)
+set(ext .wav)
+make_media(mc_mic.wav
+    -ss 0.6 -i "${CMAKE_CURRENT_LIST_DIR}/data/speech_es.flac"
+    -af "aresample=48000,lowpass=f=5000" -t 8 -c:a pcm_s16le)

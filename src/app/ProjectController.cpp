@@ -1,9 +1,12 @@
 #include "ProjectController.h"
 
+#include "ai/AudioSync.h"
+
 #include "EffectNames.h"
 
 #include "core/Edits.h"
 #include "core/Otio.h"
+#include "core/Timeline.h"
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
 #include "media/MediaInfo.h"
@@ -111,7 +114,13 @@ void ProjectController::refresh()
     m_media.sync(project());
     m_tracks.sync(project());
     m_clips.sync(project(), m_selection);
-    m_player->setProject(m_snapshot);
+    if (m_multicamView) { // solo la vista previa: la exportación usa m_snapshot
+        auto preview = std::make_shared<Project>(*m_snapshot);
+        preview->multicamGrid = true;
+        m_player->setProject(preview);
+    } else {
+        m_player->setProject(m_snapshot);
+    }
     emit historyChanged();
     emit timelineChanged();
     emit selectionChanged();
@@ -274,6 +283,161 @@ bool ProjectController::exportOtio(const QUrl& url)
     emit notice(tr("Línea de tiempo exportada a «%1». Los efectos de imagen (color, máscaras, transformaciones…) no se incluyen.")
                     .arg(QFileInfo(path).fileName()));
     return true;
+}
+
+// --- Multicámara ---
+
+namespace {
+
+QVariantMap multicamInfo(const Project& p, const Clip& c)
+{
+    QVariantList angles, audio;
+    if (const auto* v = p.videoTracksOf(c.sequenceId))
+        for (const Track& t : *v)
+            angles.append(QString::fromStdString(t.name));
+    audio = angles;
+    if (const auto* a = p.audioTracksOf(c.sequenceId)) // todas: el índice es el de audioAngle
+        for (const Track& t : *a)
+            audio.append(t.clips.empty() ? ProjectController::tr("%1 (vacía)").arg(QString::fromStdString(t.name))
+                                         : QString::fromStdString(t.name));
+    // Rectángulo de cada ángulo en la cuadrícula (fracciones del lienzo) para el visor.
+    QVariantList cells;
+    const MulticamGrid grid = multicamGridFor(int(angles.size()));
+    for (int a = 0; a < int(angles.size()); ++a) {
+        const auto r = grid.image(a);
+        cells.append(QVariant(QVariantList{r.x, r.y, r.width, r.height})); // un elemento, no cuatro
+    }
+    return {{"clipId", qint64(c.id)}, {"angle", c.angle},   {"audioAngle", c.audioAngle},
+            {"angles", angles},       {"audioSources", audio}, {"cells", cells}};
+}
+
+const Clip* multicamClipAt(const Project& p, FramePos frame)
+{
+    for (auto it = p.videoTracks.rbegin(); it != p.videoTracks.rend(); ++it) {
+        if (it->hidden)
+            continue;
+        if (const Clip* c = edit::clipAt(*it, frame); c && c->isMulticam())
+            return c;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+void ProjectController::setMulticamView(bool on)
+{
+    if (m_multicamView == on)
+        return;
+    m_multicamView = on;
+    refresh();
+    emit multicamViewChanged();
+}
+
+QVariantMap ProjectController::multicamAt(qint64 frame) const
+{
+    const Clip* c = multicamClipAt(project(), FramePos(frame));
+    return c ? multicamInfo(project(), *c) : QVariantMap();
+}
+
+bool ProjectController::switchAngle(int angle)
+{
+    const FramePos frame = m_player->positionFrame();
+    const Clip* c = multicamClipAt(project(), frame);
+    if (!c)
+        return false;
+    const Id clipId = c->id;
+    const int before = c->angle;
+    Id result = kNoId;
+    apply(tr("Cambiar de ángulo"), [&](Project& p) {
+        result = edit::switchAngle(p, clipId, frame, angle);
+        return result != kNoId && (result != clipId || before != angle);
+    });
+    return result != kNoId;
+}
+
+void ProjectController::setMulticamAngle(qint64 clipId, int angle)
+{
+    apply(tr("Ángulo de la multicámara"), [&](Project& p) { return edit::setMulticamAngle(p, Id(clipId), angle); });
+}
+
+void ProjectController::setMulticamAudio(qint64 clipId, int audioAngle)
+{
+    apply(tr("Audio de la multicámara"), [&](Project& p) { return edit::setMulticamAudio(p, Id(clipId), audioAngle); });
+}
+
+void ProjectController::createMulticam(const QVariantList& mediaIds, bool syncByAudio)
+{
+    std::vector<Id> ids;
+    std::vector<std::string> paths;
+    for (const QVariant& v : mediaIds) {
+        const MediaItem* m = project().findMedia(Id(v.toLongLong()));
+        if (!m || m->isStill || std::find(ids.begin(), ids.end(), m->id) != ids.end())
+            continue;
+        ids.push_back(m->id);
+        paths.push_back(m->path);
+    }
+    const bool anyVideo = std::any_of(ids.begin(), ids.end(), [&](Id id) { return project().findMedia(id)->hasVideo; });
+    if (ids.size() < 2 || !anyVideo) {
+        emit errorOccurred(tr("Para una multicámara hacen falta al menos dos grabaciones (de video o audio, no imágenes) y una de ellas con video."));
+        return;
+    }
+    ++m_importing;
+    emit importingChanged();
+    QThreadPool::globalInstance()->start([this, ids, paths, syncByAudio] {
+        ai::SyncResult sync;
+        if (syncByAudio)
+            sync = ai::syncFilesByAudio(paths);
+        QMetaObject::invokeMethod(this, [this, ids, syncByAudio, sync] {
+            if (--m_importing == 0)
+                finishImport();
+            emit importingChanged();
+            // Los medios pudieron quitarse mientras se sincronizaba.
+            std::vector<edit::MulticamSource> sources;
+            QStringList unsynced;
+            for (size_t i = 0; i < ids.size(); ++i) {
+                const MediaItem* m = project().findMedia(ids[i]);
+                if (!m)
+                    continue;
+                const bool ok = syncByAudio && i < sync.synced.size() && sync.synced[i];
+                sources.push_back({ids[i], ok ? sync.offsets[i] : 0});
+                if (syncByAudio && !ok)
+                    unsynced.append(QString::fromStdString(m->name));
+            }
+            int count = 1;
+            for (const Sequence& seq : project().sequences)
+                count += QString::fromStdString(seq.name).startsWith(tr("Multicámara")) ? 1 : 0;
+            const std::string name = tr("Multicámara %1").arg(count).toStdString();
+            Id clip = kNoId;
+            const bool ok = apply(tr("Crear multicámara"), [&](Project& p) {
+                for (const auto& src : sources)
+                    if (const MediaItem* m = p.findMedia(src.mediaId); m && m->hasVideo) {
+                        edit::matchSettingsToMedia(p, *m); // solo si la línea de tiempo está vacía
+                        break;
+                    }
+                const Track* track = firstUnlocked(p.videoTracks);
+                if (!track)
+                    return false;
+                clip = edit::createMulticam(p, sources, name, track->id, p.duration());
+                return clip != kNoId;
+            });
+            if (!ok) {
+                emit errorOccurred(tr("No se pudo crear la multicámara."));
+                return;
+            }
+            m_selection = {clip};
+            m_clips.sync(project(), m_selection);
+            emit selectionChanged();
+            m_player->seekFrame(project().findClip(clip)->start);
+            setMulticamView(true);
+            const int angles = edit::multicamAngles(project(), *project().findClip(clip));
+            QString text = tr("Multicámara con %n ángulos. Reproduce y pulsa 1–%1 (o haz clic en un ángulo) para cortar a él.", nullptr, angles)
+                               .arg(std::min(angles, 9));
+            if (!unsynced.isEmpty())
+                emit errorOccurred(text + QLatin1Char('\n') + tr("No se pudo sincronizar por el audio: %1 (se alineó al inicio).").arg(unsynced.join(QStringLiteral(", "))));
+            else
+                emit notice(text);
+        }, Qt::QueuedConnection);
+    });
 }
 
 // --- Autoguardado y recuperación ---
@@ -1000,6 +1164,7 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
                  : m               ? QString::fromStdString(m->name)
                                    : QString()},
         {"isCompound", c->isCompound()},
+        {"isMulticam", c->isMulticam()},
         {"track", t ? QString::fromStdString(t->name) : QString()},
         {"trackId", qint64(t->id)},
         {"trackVolume", t->volume},
@@ -1049,6 +1214,8 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
             {"background", ts.background ? colorName(ts.background) : QString()},
         };
     }
+    if (c->isMulticam())
+        info["multicam"] = multicamInfo(project(), *c);
     return info;
 }
 

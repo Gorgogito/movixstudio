@@ -120,17 +120,47 @@ private:
     // audio y, al final, el audio de los clips de video.
     QJsonObject sequenceStack(Id sequence) const
     {
-        QJsonArray children;
+        static const std::vector<Track> none;
         const auto* video = m_p.videoTracksOf(sequence);
         const auto* audio = m_p.audioTracksOf(sequence);
-        if (video)
-            for (const Track& t : *video)
-                children.append(track(t, TrackKind::Video, t.clips, false));
-        if (audio)
-            for (const Track& t : *audio)
-                children.append(track(t, TrackKind::Audio, t.clips, false));
-        if (video) {
-            for (const Track& t : *video) {
+        return stackOf(sequence, video ? *video : none, audio ? *audio : none);
+    }
+
+    // Un clip multicámara se exporta como lo que se ve y se oye: el ángulo elegido y su audio
+    // (OTIO no tiene multicámara; los demás editores apilarían todos los ángulos).
+    QJsonObject multicamStack(const Clip& mc) const
+    {
+        const auto* nv = m_p.videoTracksOf(mc.sequenceId);
+        const auto* na = m_p.audioTracksOf(mc.sequenceId);
+        std::vector<Track> video, audio;
+        if (nv && mc.angle < int(nv->size()))
+            video.push_back((*nv)[size_t(mc.angle)]);
+        const int source = mc.audioAngle >= 0 ? mc.audioAngle : mc.angle;
+        if (nv && na && source != mc.angle) {
+            for (Track& t : video)
+                for (Clip& c : t.clips)
+                    c.audioDetached = true;
+            const int videoCount = int(nv->size());
+            if (source < videoCount) {
+                Track t = (*nv)[size_t(source)];
+                std::erase_if(t.clips, [&](const Clip& c) { return !hasLinkedAudio(c); });
+                audio.push_back(std::move(t));
+            } else if (source - videoCount < int(na->size())) {
+                audio.push_back((*na)[size_t(source - videoCount)]);
+            }
+        }
+        return stackOf(mc.sequenceId, video, audio);
+    }
+
+    QJsonObject stackOf(Id sequence, const std::vector<Track>& video, const std::vector<Track>& audio) const
+    {
+        QJsonArray children;
+        for (const Track& t : video)
+            children.append(track(t, TrackKind::Video, t.clips, false));
+        for (const Track& t : audio)
+            children.append(track(t, TrackKind::Audio, t.clips, false));
+        {
+            for (const Track& t : video) {
                 std::vector<Clip> linked;
                 for (const Clip& c : t.clips)
                     if (hasLinkedAudio(c))
@@ -253,7 +283,7 @@ private:
         const QJsonObject sourceRange = timeRange(toValue(c.sourceIn), double(c.duration), m_rate);
 
         if (c.isCompound()) {
-            QJsonObject stack = sequenceStack(c.sequenceId);
+            QJsonObject stack = c.isMulticam() ? multicamStack(c) : sequenceStack(c.sequenceId);
             stack["source_range"] = sourceRange;
             stack["effects"] = effects;
             stack["enabled"] = c.enabled;

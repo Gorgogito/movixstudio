@@ -204,6 +204,8 @@ bool Project::validate(std::string* why) const
                     if (c.transitionIn.duration > std::min(prev->duration, c.duration))
                         return fail("Transición más larga que sus clips: " + cid);
                 }
+                if (c.angle < -1 || c.audioAngle < -1 || (c.angle >= 0 && !c.isCompound()))
+                    return fail("Ángulo de multicámara inválido: " + cid);
                 prevEnd = c.end();
                 prev = &c;
                 if (c.title) {

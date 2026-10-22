@@ -376,7 +376,35 @@ std::vector<Id> breakCompound(Project& p, Id clipId)
     const auto* na = p.audioTracksOf(comp.sequenceId);
     if (!nv || !na)
         return {};
-    const std::vector<Track> nestedVideo = *nv, nestedAudio = *na; // copias: el proyecto cambia abajo
+    std::vector<Track> nestedVideo = *nv, nestedAudio = *na; // copias: el proyecto cambia abajo
+    if (comp.isMulticam()) {
+        // Solo el ángulo que se ve y el audio que suena.
+        const int videoCount = int(nestedVideo.size());
+        const int source = comp.audioAngle >= 0 ? comp.audioAngle : comp.angle;
+        std::vector<Track> video, audio;
+        if (comp.angle < videoCount)
+            video.push_back(nestedVideo[size_t(comp.angle)]);
+        if (source != comp.angle) {
+            for (Track& t : video)
+                for (Clip& c : t.clips)
+                    c.audioDetached = true; // su audio no es el que suena
+            if (source < videoCount) {
+                Track t = nestedVideo[size_t(source)];
+                t.kind = TrackKind::Audio;
+                std::erase_if(t.clips, [&](const Clip& c) {
+                    const MediaItem* m = c.title || c.isCompound() ? nullptr : p.findMedia(c.mediaId);
+                    return !m || !m->hasAudio || c.audioDetached;
+                });
+                for (Clip& c : t.clips)
+                    c.fadeIn = c.fadeOut = 0;
+                audio.push_back(std::move(t));
+            } else if (source - videoCount < int(nestedAudio.size())) {
+                audio.push_back(nestedAudio[size_t(source - videoCount)]);
+            }
+        }
+        nestedVideo = std::move(video);
+        nestedAudio = std::move(audio);
+    }
     const TrackKind kind = loc.track->kind;
     const size_t base = size_t(std::distance(p.tracksOf(kind).data(), loc.track));
     loc.track->clips.erase(loc.track->clips.begin() + std::ptrdiff_t(loc.index));
@@ -410,6 +438,109 @@ std::vector<Id> breakCompound(Project& p, Id clipId)
     place(nestedAudio, TrackKind::Audio, kind == TrackKind::Audio ? base : 0);
     normalize(p);
     return created;
+}
+
+// --- Multicámara ---
+
+Id createMulticam(Project& p, const std::vector<MulticamSource>& sources, const std::string& name, Id trackId, FramePos at)
+{
+    Track* target = p.findTrack(trackId);
+    if (!target || target->locked || target->kind != TrackKind::Video || sources.empty())
+        return kNoId;
+    TimeUs origin = INT64_MAX;
+    for (const MulticamSource& src : sources) {
+        const MediaItem* m = p.findMedia(src.mediaId);
+        if (!m || (!m->hasVideo && !m->hasAudio) || m->isStill)
+            return kNoId;
+        origin = std::min(origin, src.offset);
+    }
+
+    Sequence seq;
+    seq.id = p.newId();
+    seq.name = name;
+    FramePos length = 0;
+    for (const MulticamSource& src : sources) {
+        const MediaItem& m = *p.findMedia(src.mediaId);
+        auto& list = m.hasVideo ? seq.videoTracks : seq.audioTracks;
+        Track t = newTrack(p, m.hasVideo ? TrackKind::Video : TrackKind::Audio, int(list.size()) + 1);
+        t.name = m.name; // el nombre del ángulo
+        Clip c;
+        c.id = p.newId();
+        c.mediaId = m.id;
+        // Lo que empezó antes que la grabación más temprana se recorta (no cabe antes de 0).
+        c.start = p.settings.timeToFrame(src.offset - origin);
+        c.duration = p.settings.framesIn(m.duration);
+        if (c.duration <= 0)
+            return kNoId;
+        length = std::max(length, c.end());
+        t.clips.push_back(std::move(c));
+        list.push_back(std::move(t));
+    }
+    if (seq.videoTracks.empty())
+        return kNoId; // hace falta al menos un ángulo con imagen
+    if (seq.audioTracks.empty())
+        seq.audioTracks.push_back(newTrack(p, TrackKind::Audio, 1));
+    const int videoCount = int(seq.videoTracks.size());
+    const bool externalAudio = !seq.audioTracks.front().clips.empty();
+
+    Clip mc;
+    mc.id = p.newId();
+    mc.sequenceId = seq.id;
+    mc.start = std::max<FramePos>(0, at);
+    mc.duration = length;
+    mc.angle = 0;
+    mc.audioAngle = externalAudio ? videoCount : -1; // el micrófono aparte, si lo hay
+    p.sequences.push_back(std::move(seq));
+    return placePrepared(p, *p.findTrack(trackId), std::move(mc), PlaceMode::Overwrite);
+}
+
+int multicamAngles(const Project& p, const Clip& c)
+{
+    const auto* tracks = c.isMulticam() ? p.videoTracksOf(c.sequenceId) : nullptr;
+    return tracks ? int(tracks->size()) : 0;
+}
+
+int multicamAudioSources(const Project& p, const Clip& c)
+{
+    const auto* audio = c.isMulticam() ? p.audioTracksOf(c.sequenceId) : nullptr;
+    return audio ? multicamAngles(p, c) + int(audio->size()) : 0;
+}
+
+bool setMulticamAngle(Project& p, Id clipId, int angle)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->locked || !loc.clip()->isMulticam())
+        return false;
+    Clip& c = *loc.clip();
+    if (angle < 0 || angle >= multicamAngles(p, c) || c.angle == angle)
+        return false;
+    c.angle = angle;
+    return true;
+}
+
+bool setMulticamAudio(Project& p, Id clipId, int audioAngle)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->locked || !loc.clip()->isMulticam())
+        return false;
+    Clip& c = *loc.clip();
+    if (audioAngle < -1 || audioAngle >= multicamAudioSources(p, c) || c.audioAngle == audioAngle)
+        return false;
+    c.audioAngle = audioAngle;
+    return true;
+}
+
+Id switchAngle(Project& p, Id clipId, FramePos at, int angle)
+{
+    const Clip* c = p.findClip(clipId);
+    if (!c || !c->isMulticam() || angle < 0 || angle >= multicamAngles(p, *c) || at < c->start || at >= c->end())
+        return kNoId;
+    if (c->angle == angle)
+        return clipId;
+    const Id target = at == c->start ? clipId : splitClip(p, clipId, at);
+    if (target == kNoId || !setMulticamAngle(p, target, angle))
+        return kNoId;
+    return target;
 }
 
 bool openSequence(Project& p, Id sequence)

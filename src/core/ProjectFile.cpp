@@ -319,6 +319,8 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
         };
         if (c.denoise > 0)
             o["denoise"] = c.denoise;
+        if (c.isMulticam())
+            o["multicam"] = QJsonObject{{"angle", c.angle}, {"audioAngle", c.audioAngle}};
         if (c.title)
             o["title"] = titleToJson(*c.title);
         if (c.transitionIn.active())
@@ -401,6 +403,11 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         clip.audioFadeIn = c["audioFades"].toArray().at(0).toInteger();
         clip.audioFadeOut = c["audioFades"].toArray().at(1).toInteger();
         clip.audioDetached = c["audioDetached"].toBool();
+        if (c.contains("multicam") && clip.isCompound()) {
+            const QJsonObject mc = c["multicam"].toObject();
+            clip.angle = std::max(0, mc["angle"].toInt());
+            clip.audioAngle = std::max(-1, mc["audioAngle"].toInt(-1));
+        }
         clip.denoise = std::clamp(c["denoise"].toDouble(0.0), 0.0, 1.0);
         if (c.contains("title"))
             clip.title = titleFromJson(c["title"].toObject());

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <span>
 
 namespace movix::core {
 
@@ -31,7 +32,7 @@ std::uint64_t instanceKey(std::uint64_t outer, Id clip)
     return h | (1ull << 63); // nunca coincide con un id de la línea de tiempo activa
 }
 
-std::vector<VideoLayer> layersOf(const Project& p, const std::vector<Track>& tracks, FramePos frame, std::uint64_t outer, int depth);
+std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks, FramePos frame, std::uint64_t outer, int depth);
 
 bool contributesVideo(const Project& p, const Clip& c)
 {
@@ -57,8 +58,27 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
         l.compound = true;
         const FramePos nestedFrame = p.settings.timeToFrame(std::max<TimeUs>(0, sourceTimeAt(p.settings, c, f)));
         const auto* tracks = p.videoTracksOf(c.sequenceId);
-        if (tracks && depth < kMaxNesting)
+        if (!tracks || depth >= kMaxNesting) {
+        } else if (!c.isMulticam()) {
             l.nested = layersOf(p, *tracks, nestedFrame, l.instance, depth + 1);
+        } else if (p.multicamGrid) {
+            // Todos los ángulos, cada uno reducido a su celda (de izquierda a derecha y de arriba abajo).
+            const int angles = int(tracks->size());
+            const MulticamGrid grid = multicamGridFor(angles);
+            for (int a = 0; a < angles; ++a) {
+                VideoLayer cell;
+                cell.clipId = c.id;
+                cell.instance = instanceKey(l.instance, Id(a) + 1);
+                cell.trackIndex = a;
+                cell.compound = true;
+                const auto rect = grid.cell(a);
+                cell.transform = {rect.x + rect.width / 2 - 0.5, rect.y + rect.height / 2 - 0.5, grid.scale(), 0.0};
+                cell.nested = layersOf(p, std::span(&(*tracks)[size_t(a)], 1), nestedFrame, cell.instance, depth + 1);
+                l.nested.push_back(std::move(cell));
+            }
+        } else if (c.angle < int(tracks->size())) {
+            l.nested = layersOf(p, std::span(&(*tracks)[size_t(c.angle)], 1), nestedFrame, l.instance, depth + 1);
+        }
     } else {
         l.media = p.findMedia(c.mediaId);
         l.mediaId = c.mediaId;
@@ -137,6 +157,37 @@ void applyTransition(TransitionType type, double t, VideoLayer& a, VideoLayer& b
 
 } // namespace
 
+MulticamGrid multicamGridFor(int angles)
+{
+    MulticamGrid g;
+    g.cols = std::max(1, int(std::ceil(std::sqrt(double(std::max(1, angles))))));
+    g.rows = std::max(1, (std::max(1, angles) + g.cols - 1) / g.cols);
+    return g;
+}
+
+MulticamGrid::Rect MulticamGrid::cell(int angle) const
+{
+    const double w = 1.0 / cols, h = 1.0 / rows;
+    return {double(angle % cols) * w, double(angle / cols) * h, w, h};
+}
+
+MulticamGrid::Rect MulticamGrid::image(int angle) const
+{
+    const Rect c = cell(angle);
+    const double s = scale();
+    return {c.x + (c.width - s) / 2, c.y + (c.height - s) / 2, s, s};
+}
+
+int MulticamGrid::angleAt(double x, double y, int angles) const
+{
+    for (int a = 0; a < angles; ++a) {
+        const Rect r = image(a);
+        if (x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
+            return a;
+    }
+    return -1;
+}
+
 TransitionSpan transitionSpan(const TransitionIn& t)
 {
     if (!t.active())
@@ -146,7 +197,7 @@ TransitionSpan transitionSpan(const TransitionIn& t)
 
 namespace {
 
-std::vector<VideoLayer> layersOf(const Project& p, const std::vector<Track>& tracks, FramePos frame, std::uint64_t outer, int depth)
+std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks, FramePos frame, std::uint64_t outer, int depth)
 {
     std::vector<VideoLayer> layers;
     for (size_t ti = 0; ti < tracks.size(); ++ti) {
@@ -202,7 +253,7 @@ std::vector<VideoLayer> videoLayersAt(const Project& p, FramePos frame)
 
 namespace {
 
-void collectAudio(const Project& p, const std::vector<Track>& vtracks, const std::vector<Track>& atracks, TimeUs t0, TimeUs t1,
+void collectAudio(const Project& p, std::span<const Track> vtracks, std::span<const Track> atracks, TimeUs t0, TimeUs t1,
                   std::uint64_t outer, int depth, std::vector<AudioSegment>& segments)
 {
     const auto& s = p.settings;
@@ -263,8 +314,16 @@ void collectAudio(const Project& p, const std::vector<Track>& vtracks, const std
                 const auto* na = p.audioTracksOf(c.sequenceId);
                 if (!nv || !na || depth >= kMaxNesting)
                     continue;
+                std::span<const Track> sv = *nv, sa = *na;
+                if (c.isMulticam()) { // solo la pista del ángulo que suena
+                    const int source = c.audioAngle >= 0 ? c.audioAngle : c.angle;
+                    const int videoCount = int(nv->size());
+                    sv = source < videoCount ? sv.subspan(size_t(source), 1) : std::span<const Track>();
+                    sa = source >= videoCount && source - videoCount < int(na->size()) ? sa.subspan(size_t(source - videoCount), 1)
+                                                                                      : std::span<const Track>();
+                }
                 std::vector<AudioSegment> nested;
-                collectAudio(p, *nv, *na, sourceTimeAtTime(s, c, from), sourceTimeAtTime(s, c, to), instanceKey(outer, c.id),
+                collectAudio(p, sv, sa, sourceTimeAtTime(s, c, from), sourceTimeAtTime(s, c, to), instanceKey(outer, c.id),
                              depth + 1, nested);
                 auto toOuter = [&](TimeUs nt) { return cs + TimeUs(std::llround(double(nt - c.sourceIn) / c.speed)); };
                 for (AudioSegment n : nested) {

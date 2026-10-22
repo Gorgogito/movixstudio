@@ -140,6 +140,11 @@ struct Clip {
     Id id = kNoId;
     Id mediaId = kNoId;    // kNoId en los clips generados (títulos) y en los compuestos
     Id sequenceId = kNoId; // clip compuesto: la secuencia que contiene (sourceIn es su instante)
+    // Clip multicámara (compuesto con angle ≥ 0): cada pista de video de su secuencia es un ángulo
+    // y solo se ve `angle`. El audio es el del ángulo `audioAngle`: −1 = el del ángulo que se ve;
+    // 0..V−1 = el de una pista de video; V.. = una pista de audio (V = pistas de video).
+    int angle = -1;
+    int audioAngle = -1;
     FramePos start = 0;    // posición en la línea de tiempo
     FramePos duration = 0;
     TimeUs sourceIn = 0;   // instante del medio que se ve/oye en `start`
@@ -164,6 +169,7 @@ struct Clip {
 
     FramePos end() const { return start + duration; }
     bool isCompound() const { return sequenceId != kNoId; }
+    bool isMulticam() const { return isCompound() && angle >= 0; }
     bool isGenerated() const { return title.has_value() || isCompound(); }
     bool operator==(const Clip&) const = default;
 };
@@ -215,6 +221,9 @@ struct Project {
     std::string activeName;       // nombre de la secuencia activa
     std::vector<Id> sequencePath; // secuencias abiertas antes de la activa (para volver)
     Id nextId = 1;
+    // Solo para la vista previa (no se guarda): los clips multicámara muestran todos sus ángulos
+    // en una cuadrícula en vez del elegido.
+    bool multicamGrid = false;
 
     static Project createDefault();
 

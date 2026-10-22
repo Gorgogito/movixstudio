@@ -85,6 +85,15 @@ Rectangle {
                     visible: !panel.sourceMode
                 }
                 ModeButton {
+                    text: qsTr("Multicámara")
+                    visible: !panel.sourceMode
+                    active: panel.project.multicamView
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: qsTr("Ver todos los ángulos de los clips multicámara (1–9 corta a un ángulo)")
+                    onClicked: panel.project.multicamView = !panel.project.multicamView
+                }
+                ModeButton {
                     text: qsTr("Scopes")
                     active: panel.scopesVisible
                     onClicked: panel.scopesVisible = !panel.scopesVisible
@@ -114,9 +123,15 @@ Rectangle {
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontNormal
                 }
+                MulticamOverlay {
+                    anchors.fill: parent
+                    visible: !panel.sourceMode && panel.project.multicamView
+                    project: panel.project
+                    player: panel.project.player
+                }
                 TransformOverlay {
                     anchors.fill: parent
-                    visible: !panel.sourceMode && !panel.activePlayer.playing
+                    visible: !panel.sourceMode && !panel.activePlayer.playing && !panel.project.multicamView
                     project: panel.project
                     mode: panel.overlayMode
                     maskIndex: panel.overlayMaskIndex

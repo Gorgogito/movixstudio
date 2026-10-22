@@ -225,6 +225,22 @@ public:
     Q_INVOKABLE QVariantList snapPoints(const QVariantList& excludeClipIds) const;
     Q_INVOKABLE QString timecode(qint64 frame) const;
 
+    // --- Multicámara ---
+    // Vista del visor con todos los ángulos de los clips multicámara en cuadrícula.
+    Q_PROPERTY(bool multicamView READ multicamView WRITE setMulticamView NOTIFY multicamViewChanged)
+    bool multicamView() const { return m_multicamView; }
+    void setMulticamView(bool on);
+    // Crea un clip multicámara con los medios (sincronizados por su audio o alineados al inicio) al
+    // final de la línea de tiempo. Se hace en segundo plano (`importing`).
+    Q_INVOKABLE void createMulticam(const QVariantList& mediaIds, bool syncByAudio);
+    // Clip multicámara visible en el fotograma (el de la pista de video más alta): {clipId, angle,
+    // audioAngle, angles: [nombres], audioSources: [nombres]}; vacío si no hay.
+    Q_INVOKABLE QVariantMap multicamAt(qint64 frame) const;
+    // Corta en el cabezal al ángulo indicado del clip multicámara visible (también reproduciendo).
+    Q_INVOKABLE bool switchAngle(int angle);
+    Q_INVOKABLE void setMulticamAngle(qint64 clipId, int angle);
+    Q_INVOKABLE void setMulticamAudio(qint64 clipId, int audioAngle); // −1 = el del ángulo que se ve
+
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);
     Q_INVOKABLE void clearSelection();
@@ -248,6 +264,7 @@ signals:
     void recoveryAvailable(const QString& when);
     void clipboardChanged();
     void insertModeChanged();
+    void multicamViewChanged();
 
 private:
     movix::core::FramePos playheadRel(const movix::core::Clip& c) const;
@@ -260,6 +277,7 @@ private:
 
     movix::core::History m_history;
     std::shared_ptr<const movix::core::Project> m_snapshot;
+    bool m_multicamView = false;
     QUrl m_fileUrl;
     MediaListModel m_media;
     TrackListModel m_tracks;

@@ -155,6 +155,24 @@ bool renameSequence(Project& p, Id sequence, const std::string& name);
 // ¿Contiene `sequence` (directa o indirectamente) a `target`?
 bool sequenceContains(const Project& p, Id sequence, Id target);
 
+// --- Multicámara ---
+struct MulticamSource {
+    Id mediaId = kNoId;
+    TimeUs offset = 0; // instante en que empieza el medio respecto de los demás (sincronía)
+};
+// Crea una secuencia multicámara (un ángulo por medio con imagen, en ese orden, con su audio; los
+// medios solo de audio, en pistas de audio) y coloca su clip en la pista de video `trackId` desde
+// `at`, sobrescribiendo. Se ve el primer ángulo; suena el primer audio aparte si lo hay y, si no,
+// el del ángulo que se ve. Devuelve el id del clip.
+Id createMulticam(Project& p, const std::vector<MulticamSource>& sources, const std::string& name, Id trackId, FramePos at);
+int multicamAngles(const Project& p, const Clip& c);       // ángulos con imagen (0 si no es multicámara)
+int multicamAudioSources(const Project& p, const Clip& c); // ángulos + pistas de audio
+bool setMulticamAngle(Project& p, Id clipId, int angle);
+bool setMulticamAudio(Project& p, Id clipId, int audioAngle); // −1 = el del ángulo que se ve
+// Pasa al ángulo desde `at` (dividiendo el clip si `at` no es su inicio). Devuelve el clip que lo
+// muestra o kNoId.
+Id switchAngle(Project& p, Id clipId, FramePos at, int angle);
+
 // --- Transcripción y subtítulos ---
 bool setTranscript(Project& p, Id mediaId, TranscriptRef transcript); // nullptr la quita
 // Crea una pista de video encima de todas con un título por subtítulo (redondeados a fotogramas,

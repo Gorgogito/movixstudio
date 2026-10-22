@@ -151,6 +151,16 @@ ApplicationWindow {
     Shortcut { sequence: "-"; onActivated: timeline.zoomBy(1 / 1.5) }
     Shortcut { sequence: "Shift+Z"; onActivated: timeline.fitAll() }
     Shortcut { sequence: "N"; onActivated: timeline.snapping = !timeline.snapping }
+    // Multicámara: 1–9 cortan al ángulo en el cabezal (también reproduciendo).
+    Instantiator {
+        model: 9
+        delegate: Shortcut {
+            required property int index
+            sequence: String(index + 1)
+            enabled: project.multicamView
+            onActivated: { viewer.showTimeline(); project.switchAngle(index) }
+        }
+    }
 
     menuBar: MenuBar {
         Menu {

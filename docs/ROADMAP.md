@@ -244,7 +244,16 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       relativas, colecciones y medios que faltan (se conservan para reconectarlos). Verificado con
       la biblioteca oficial (OpenTimelineIO 0.18 lee lo que exportamos y un archivo suyo se importa
       en las pruebas). Los efectos de imagen no tienen equivalente en OTIO y no se exportan
-- [ ] Multicámara
+- [x] Multicámara: se eligen varias grabaciones en la biblioteca (Ctrl+clic) y se crea un clip
+      multicámara sincronizado por el audio (GCC-PHAT a 8 kHz, desfase con precisión de
+      submuestra; las que no se pueden sincronizar se alinean al inicio y se avisa) o alineado al
+      inicio. Es un compuesto cuya secuencia tiene un ángulo por pista de video (y los micrófonos
+      aparte en pistas de audio); el clip guarda el ángulo que se ve y el audio que suena (el del
+      ángulo o uno fijo). Vista «Multicámara» del visor: todos los ángulos en cuadrícula (la compone
+      el propio reproductor), rotulados, con el activo resaltado; las teclas 1–9 o un clic cortan
+      al ángulo en el cabezal, también reproduciendo. Se ajusta la sincronía abriendo el clip; al
+      romperlo queda el ángulo y el audio elegidos; en OTIO se exporta lo que se ve y se oye.
+      `.mxproj` v7
 - [ ] Plantillas propias, plugins/scripting, OpenFX
 - [ ] Linux y macOS
 

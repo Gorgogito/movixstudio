@@ -32,6 +32,7 @@ add_executable(movix_tests
     test_ai_vision.cpp
     test_updates.cpp
     test_otio.cpp
+    test_multicam.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
