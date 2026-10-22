@@ -154,6 +154,14 @@ struct PathPoint {
     bool operator==(const PathPoint&) const = default;
 };
 
+// Keyframe de la forma de una máscara de forma libre: todos sus puntos a la vez.
+struct PathKey {
+    std::int64_t frame = 0;
+    std::vector<PathPoint> points;
+    Interpolation interp = Interpolation::Linear; // cómo se llega al keyframe siguiente
+    bool operator==(const PathKey&) const = default;
+};
+
 // Máscara en coordenadas de la propia capa (se mueve con ella). x/y es el centro en fracciones del
 // ancho/alto de la capa; width/height, el tamaño de su caja en esas fracciones; feather, el ancho
 // del borde suave en fracción del alto de la capa. En la lineal, la línea pasa por x/y con el
@@ -169,8 +177,12 @@ struct Mask {
     Animated rotation{0.0}; // grados, sentido horario
     Animated feather{0.02};
     bool invert = false;
-    std::vector<PathPoint> points;
+    std::vector<PathPoint> points; // forma sin keyframes
+    std::vector<PathKey> pathKeys; // con ellos la forma se anima; todos tienen los mismos puntos
     bool active() const { return shape != MaskShape::None; }
+    // Forma en el fotograma `rel` (relativo al clip): interpola punto a punto entre keyframes.
+    std::vector<PathPoint> pathAt(std::int64_t rel) const;
+    const PathKey* pathKeyAt(std::int64_t rel) const;
     bool operator==(const Mask&) const = default;
 };
 

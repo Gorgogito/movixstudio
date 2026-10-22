@@ -213,3 +213,44 @@ TEST_CASE("Selección por recuadro y edición de varios clips", "[app][multisele
     if (const QString dump = qEnvironmentVariable("MOVIX_UI_DUMP"); !dump.isEmpty())
         REQUIRE(project.saveAs(QUrl::fromLocalFile(dump)));
 }
+
+TEST_CASE("Forma de máscara animada desde la aplicación", "[app][keyframes][mask]")
+{
+    ProjectController project;
+    const qint64 clip = addTitle(project);
+    auto* player = project.player();
+    REQUIRE(project.addMask(clip, "path") == 0);
+    auto shapeAt = [&](FramePos frame) {
+        player->seekFrame(frame);
+        return project.clipGeometry(clip)["masks"].toList()[0].toMap()["points"].toList();
+    };
+    const QVariantList start = shapeAt(0);
+    REQUIRE(start.size() == 5);
+
+    player->seekFrame(0);
+    project.toggleKeyframe(clip, "mask.0.path");
+    CHECK(project.propertyState(clip, "mask.0.path")["keyHere"].toBool());
+    // Mover todos los puntos en 60 crea el segundo keyframe.
+    QVariantList moved;
+    for (const QVariant& v : start) {
+        QVariantList pt = v.toList();
+        pt[1] = pt[1].toDouble() + 0.3;
+        moved.append(QVariant(pt));
+    }
+    player->seekFrame(60);
+    project.setMaskPoints(clip, 0, moved);
+    project.endInteraction();
+    CHECK(project.propertyState(clip, "mask.0.path")["keyHere"].toBool());
+    CHECK(project.propertyState(clip, "mask.0.path")["hasPrev"].toBool());
+    CHECK(project.keyframeFrames(clip).contains(QVariant(qint64(60))));
+    const double y0 = start[0].toList()[1].toDouble();
+    CHECK(shapeAt(30)[0].toList()[1].toDouble() == Approx(y0 + 0.15));
+    CHECK(shapeAt(90)[0].toList()[1].toDouble() == Approx(y0 + 0.3));
+
+    player->seekFrame(0);
+    project.setKeyInterpolation(clip, "mask.0.path", "hold");
+    CHECK(project.propertyState(clip, "mask.0.path")["interp"].toString() == "hold");
+    CHECK(shapeAt(30)[0].toList()[1].toDouble() == Approx(y0));
+    project.undo();
+    CHECK(shapeAt(30)[0].toList()[1].toDouble() == Approx(y0 + 0.15));
+}

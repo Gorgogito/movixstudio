@@ -1031,6 +1031,15 @@ std::optional<NamedProperty> propertyFromName(const QString& name)
     return std::nullopt;
 }
 
+// "mask.<índice>.path": los keyframes de la forma de una máscara de forma libre.
+std::optional<int> maskPathFromName(const QString& name)
+{
+    const QStringList parts = name.split(QLatin1Char('.'));
+    bool ok = false;
+    const int index = parts.size() == 3 && parts[0] == QLatin1String("mask") && parts[2] == QLatin1String("path") ? parts[1].toInt(&ok) : -1;
+    return ok && index >= 0 ? std::optional<int>(index) : std::nullopt;
+}
+
 const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
 
 TransitionType transitionFromName(const QString& name)
@@ -1068,6 +1077,11 @@ void ProjectController::toggleKeyframe(qint64 clipId, const QString& prop)
 {
     const auto property = propertyFromName(prop);
     const Clip* c = project().findClip(Id(clipId));
+    if (const auto mask = maskPathFromName(prop); mask && c) {
+        const FramePos rel = std::clamp<FramePos>(playheadRel(*c), 0, c->duration - 1);
+        apply(tr("Keyframe"), [&](Project& p) { return edit::toggleMaskPathKey(p, Id(clipId), *mask, rel); });
+        return;
+    }
     if (!property || !c)
         return;
     const FramePos rel = playheadRel(*c);
@@ -1085,6 +1099,18 @@ QVariantMap ProjectController::propertyState(qint64 clipId, const QString& prop)
 {
     const auto property = propertyFromName(prop);
     const Clip* c = project().findClip(Id(clipId));
+    if (const auto mask = maskPathFromName(prop); mask && c && size_t(*mask) < c->masks.size()) {
+        const Mask& m = c->masks[size_t(*mask)];
+        const FramePos rel = std::clamp<FramePos>(playheadRel(*c), 0, c->duration - 1);
+        bool prev = false, next = false;
+        for (const PathKey& k : m.pathKeys) {
+            prev = prev || k.frame < rel;
+            next = next || k.frame > rel;
+        }
+        const PathKey* here = m.pathKeyAt(rel);
+        return {{"animated", !m.pathKeys.empty()}, {"keyHere", here != nullptr},
+                {"interp", here ? interpolationName(here->interp) : QString()}, {"hasPrev", prev}, {"hasNext", next}};
+    }
     if (!property || !c)
         return {};
     const Animated* animated = edit::property(*c, property->prop, property->maskIndex);
@@ -1111,6 +1137,12 @@ void ProjectController::setKeyInterpolation(qint64 clipId, const QString& prop, 
                              : interp == QLatin1String("smooth") ? Interpolation::Smooth
                                                                  : Interpolation::Linear;
     const FramePos rel = playheadRel(*c);
+    if (const auto mask = maskPathFromName(prop)) {
+        const FramePos r = std::clamp<FramePos>(rel, 0, c->duration - 1);
+        apply(tr("Interpolación del keyframe"),
+              [&](Project& p) { return edit::setMaskPathKeyInterpolation(p, Id(clipId), *mask, r, mode); });
+        return;
+    }
     if (prop == QLatin1String("color")) {
         const FramePos r = std::clamp<FramePos>(rel, 0, c->duration - 1);
         apply(tr("Interpolación del keyframe"), [&](Project& p) { return edit::setColorKeyInterpolation(p, Id(clipId), r, mode); });
@@ -1138,6 +1170,9 @@ QVariantList ProjectController::keyframeFrames(qint64 clipId) const
                     frames.insert(c->start + k.frame);
         for (const GradeKey& k : c->color.keys)
             frames.insert(c->start + k.frame);
+        for (const Mask& m : c->masks)
+            for (const PathKey& k : m.pathKeys)
+                frames.insert(c->start + k.frame);
     }
     QVariantList out;
     for (qint64 f : frames)
@@ -1182,7 +1217,7 @@ QVariantMap ProjectController::clipGeometry(qint64 clipId) const
     QVariantList masks;
     for (const Mask& m : c->masks) {
         QVariantList points;
-        for (const PathPoint& pt : m.points)
+        for (const PathPoint& pt : m.pathAt(rel))
             points.append(QVariant(QVariantList{pt.x, pt.y, pt.inX, pt.inY, pt.outX, pt.outY}));
         masks.append(QVariantMap{{"shape", QLatin1String(movix::app::kMaskShapeNames[int(m.shape)])},
                                  {"x", m.x.at(rel)},

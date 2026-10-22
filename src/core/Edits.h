@@ -116,7 +116,12 @@ int addMask(Project& p, Id clipId, MaskShape shape); // devuelve el índice o -1
 bool removeMask(Project& p, Id clipId, int index);
 bool setMaskShape(Project& p, Id clipId, int index, MaskShape shape);
 bool setMaskOptions(Project& p, Id clipId, int index, MaskMode mode, bool invert);
-bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points);
+// Con keyframes de forma, cambia (o crea) el del fotograma `rel`; añadir o quitar un punto lo hace en
+// todos los keyframes.
+bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points, FramePos rel = 0);
+// Añade un keyframe con la forma en `rel` o lo quita si ya existe.
+bool toggleMaskPathKey(Project& p, Id clipId, int index, FramePos rel);
+bool setMaskPathKeyInterpolation(Project& p, Id clipId, int index, FramePos rel, Interpolation interp);
 bool setBlendMode(Project& p, Id clipId, BlendMode mode);
 // Sustituye el medio de un clip conservando su posición y duración (p. ej. por una versión
 // procesada que empieza en `sourceIn`). Falla si el medio nuevo no alcanza para la duración.

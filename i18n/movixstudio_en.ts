@@ -782,6 +782,30 @@
         <source>Quitar</source>
         <translation>Remove</translation>
     </message>
+    <message>
+        <source>Forma animada</source>
+        <translation>Animated shape</translation>
+    </message>
+    <message>
+        <source>Forma</source>
+        <translation>Shape</translation>
+    </message>
+    <message>
+        <source>Keyframe anterior</source>
+        <translation>Previous keyframe</translation>
+    </message>
+    <message>
+        <source>Añadir keyframe de la forma en el cabezal (luego mueve los puntos en otro instante)</source>
+        <translation>Add a shape keyframe at the playhead (then move the points at another time)</translation>
+    </message>
+    <message>
+        <source>Quitar el keyframe de la forma en el cabezal</source>
+        <translation>Remove the shape keyframe at the playhead</translation>
+    </message>
+    <message>
+        <source>Keyframe siguiente</source>
+        <translation>Next keyframe</translation>
+    </message>
 </context>
 <context>
     <name>ExportController</name>

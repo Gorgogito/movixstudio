@@ -151,6 +151,37 @@ void AnimatedGrade::set(std::int64_t rel, const ColorGrade& g)
     setKey(rel, g, existing ? existing->interp : Interpolation::Linear);
 }
 
+std::vector<PathPoint> Mask::pathAt(std::int64_t rel) const
+{
+    if (pathKeys.empty())
+        return points;
+    if (rel <= pathKeys.front().frame)
+        return pathKeys.front().points;
+    if (rel >= pathKeys.back().frame)
+        return pathKeys.back().points;
+    auto next = std::upper_bound(pathKeys.begin(), pathKeys.end(), rel, [](std::int64_t f, const PathKey& k) { return f < k.frame; });
+    auto prev = next - 1;
+    const double t = easeFor(prev->interp, double(rel - prev->frame) / double(next->frame - prev->frame));
+    if (t <= 0.0 || prev->points.size() != next->points.size())
+        return prev->points;
+    std::vector<PathPoint> out(prev->points.size());
+    auto mix = [t](double a, double b) { return a + (b - a) * t; };
+    for (size_t i = 0; i < out.size(); ++i) {
+        const PathPoint& a = prev->points[i];
+        const PathPoint& b = next->points[i];
+        out[i] = {mix(a.x, b.x), mix(a.y, b.y), mix(a.inX, b.inX), mix(a.inY, b.inY), mix(a.outX, b.outX), mix(a.outY, b.outY)};
+    }
+    return out;
+}
+
+const PathKey* Mask::pathKeyAt(std::int64_t rel) const
+{
+    for (const PathKey& k : pathKeys)
+        if (k.frame == rel)
+            return &k;
+    return nullptr;
+}
+
 std::vector<PathPoint> defaultMaskPath()
 {
     std::vector<PathPoint> pts;

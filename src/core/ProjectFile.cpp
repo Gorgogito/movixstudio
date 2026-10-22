@@ -268,11 +268,21 @@ QJsonObject maskToJson(const Mask& m)
                   {"height", animatedToJson(m.height)},
                   {"rotation", animatedToJson(m.rotation)},
                   {"feather", animatedToJson(m.feather)}};
-    if (!m.points.empty()) {
+    auto pointsToJson = [](const std::vector<PathPoint>& points) {
         QJsonArray pts;
-        for (const PathPoint& pt : m.points)
+        for (const PathPoint& pt : points)
             pts.append(QJsonArray{pt.x, pt.y, pt.inX, pt.inY, pt.outX, pt.outY});
-        o["points"] = pts;
+        return pts;
+    };
+    if (!m.points.empty())
+        o["points"] = pointsToJson(m.points);
+    if (!m.pathKeys.empty()) {
+        QJsonArray keys;
+        for (const PathKey& k : m.pathKeys)
+            keys.append(QJsonObject{{"frame", qint64(k.frame)},
+                                    {"interp", QLatin1String(kInterpolationNames[int(k.interp)])},
+                                    {"points", pointsToJson(k.points)}});
+        o["pathKeys"] = keys;
     }
     return o;
 }
@@ -290,11 +300,25 @@ Mask maskFromJson(const QJsonObject& m)
     mask.height = animatedFromJson(m["height"], def.height.value);
     mask.rotation = animatedFromJson(m["rotation"], def.rotation.value);
     mask.feather = animatedFromJson(m["feather"], def.feather.value);
-    for (const QJsonValue& v : m["points"].toArray()) {
-        const QJsonArray a = v.toArray();
-        mask.points.push_back({a.at(0).toDouble(), a.at(1).toDouble(), a.at(2).toDouble(), a.at(3).toDouble(), a.at(4).toDouble(),
-                               a.at(5).toDouble()});
+    auto pointsFromJson = [](const QJsonArray& arr) {
+        std::vector<PathPoint> points;
+        for (const QJsonValue& v : arr) {
+            const QJsonArray a = v.toArray();
+            points.push_back({a.at(0).toDouble(), a.at(1).toDouble(), a.at(2).toDouble(), a.at(3).toDouble(), a.at(4).toDouble(),
+                              a.at(5).toDouble()});
+        }
+        return points;
+    };
+    mask.points = pointsFromJson(m["points"].toArray());
+    for (const QJsonValue& v : m["pathKeys"].toArray()) {
+        const QJsonObject k = v.toObject();
+        PathKey key{k["frame"].toInteger(), pointsFromJson(k["points"].toArray()),
+                    enumFromName(k["interp"].toString(), kInterpolationNames, Interpolation::Linear)};
+        // Todos los keyframes con los mismos puntos (como al editarlos).
+        if (key.points.size() >= 3 && (mask.pathKeys.empty() || key.points.size() == mask.pathKeys.front().points.size()))
+            mask.pathKeys.push_back(std::move(key));
     }
+    std::sort(mask.pathKeys.begin(), mask.pathKeys.end(), [](const PathKey& a, const PathKey& b) { return a.frame < b.frame; });
     return mask;
 }
 

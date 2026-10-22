@@ -1,5 +1,6 @@
 #include "color/ColorMath.h"
 #include "core/Edits.h"
+#include "core/ProjectFile.h"
 #include "core/Timeline.h"
 #include "engine/Sources.h"
 #include "render/MaskRenderer.h"
@@ -245,5 +246,68 @@ TEST_CASE("Edición de máscaras múltiples", "[core][f3]")
     const auto layers = videoLayersAt(p, 0);
     CHECK(layers[0].masks.size() == kMaxMasks - 1);
     CHECK(engine::masksNeedRaster(layers[0].masks));
+    CHECK(p.validate());
+}
+
+TEST_CASE("Forma de máscara animada: keyframes de todos los puntos", "[core][f3][mask]")
+{
+    Project p = Project::createDefault();
+    const Id clip = edit::placeTitle(p, p.videoTracks[0].id, 0, 100, TitleStyle{});
+    REQUIRE(edit::addMask(p, clip, MaskShape::Path) == 0);
+    const std::vector<PathPoint> square{{-0.5, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {-0.5, 0.5}};
+    REQUIRE(edit::setMaskPoints(p, clip, 0, square));
+    const Mask& m = p.findClip(clip)->masks[0];
+
+    // Sin keyframes, editar cambia la forma fija.
+    CHECK(m.pathAt(50) == square);
+    // Keyframe en 10 y otra forma en 30 (crea el segundo keyframe).
+    REQUIRE(edit::toggleMaskPathKey(p, clip, 0, 10));
+    std::vector<PathPoint> moved = square;
+    for (PathPoint& pt : moved)
+        pt.x += 0.2;
+    REQUIRE(edit::setMaskPoints(p, clip, 0, moved, 30));
+    REQUIRE(m.pathKeys.size() == 2);
+    CHECK(m.pathAt(0)[0].x == Approx(-0.5));  // antes del primero, el primero
+    CHECK(m.pathAt(20)[0].x == Approx(-0.4)); // a mitad, a mitad
+    CHECK(m.pathAt(90)[0].x == Approx(-0.3));
+    CHECK(videoLayersAt(p, 20)[0].masks[0].points[2].x == Approx(0.6));
+
+    // Interpolación: mantener salta en el siguiente.
+    REQUIRE(edit::setMaskPathKeyInterpolation(p, clip, 0, 10, Interpolation::Hold));
+    CHECK(m.pathAt(29)[0].x == Approx(-0.5));
+    CHECK(m.pathAt(30)[0].x == Approx(-0.3));
+
+    // Añadir un punto (entre el 1 y el 2) en un keyframe lo añade en todos.
+    std::vector<PathPoint> five = m.pathAt(30);
+    five.insert(five.begin() + 2, PathPoint{0.9, 0.0});
+    REQUIRE(edit::setMaskPoints(p, clip, 0, five, 30));
+    REQUIRE(m.pathKeys[0].points.size() == 5);
+    CHECK(m.pathKeys[0].points[2].x == Approx(0.5)); // punto medio del lado en el otro keyframe
+    CHECK(m.pathKeys[0].points[2].y == Approx(0.0));
+    CHECK(m.pathKeys[1].points[2].x == Approx(0.9));
+    // Y quitarlo, también.
+    std::vector<PathPoint> four = m.pathAt(10);
+    four.erase(four.begin() + 2);
+    REQUIRE(edit::setMaskPoints(p, clip, 0, four, 10));
+    CHECK(m.pathKeys[0].points.size() == 4);
+    CHECK(m.pathKeys[1].points.size() == 4);
+    CHECK(m.pathKeys[1].points[0].x == Approx(-0.3));
+
+    // Se guarda y se carga.
+    const auto loaded = deserializeProject(serializeProject(p, QStringLiteral("C:/x/p.mxproj")), QStringLiteral("C:/x/p.mxproj"));
+    REQUIRE(loaded.project);
+    CHECK(loaded.project->findClip(clip)->masks[0] == m);
+
+    // Recortar el inicio desplaza los keyframes para que sigan en el mismo instante.
+    REQUIRE(edit::trimClip(p, clip, edit::Edge::Start, 5));
+    CHECK(p.findClip(clip)->masks[0].pathKeys[0].frame == 5);
+
+    // Quitar el último keyframe deja su forma fija.
+    Mask& mm = p.findClip(clip)->masks[0];
+    REQUIRE(edit::toggleMaskPathKey(p, clip, 0, mm.pathKeys[1].frame));
+    const auto last = mm.pathKeys[0].points;
+    REQUIRE(edit::toggleMaskPathKey(p, clip, 0, mm.pathKeys[0].frame));
+    CHECK(mm.pathKeys.empty());
+    CHECK(mm.points == last);
     CHECK(p.validate());
 }

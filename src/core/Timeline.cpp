@@ -104,7 +104,7 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
         LayerMask lm{m.shape, m.invert, m.x.at(rel), m.y.at(rel), m.width.at(rel), m.height.at(rel), m.rotation.at(rel),
                      std::max(0.0, m.feather.at(rel)), m.mode, {}};
         if (m.shape == MaskShape::Path)
-            lm.points = m.points;
+            lm.points = m.pathAt(rel);
         l.masks.push_back(std::move(lm));
     }
     if (c.matte.active() && !c.isCompound() && !c.title)

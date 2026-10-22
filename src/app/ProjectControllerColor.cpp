@@ -423,8 +423,12 @@ void ProjectController::setMaskPoints(qint64 clipId, int index, const QVariantLi
             pts.push_back({a[0].toDouble(), a[1].toDouble(), a.value(2).toDouble(), a.value(3).toDouble(), a.value(4).toDouble(),
                            a.value(5).toDouble()});
     }
-    apply(tr("Forma de la máscara"), [&](Project& p) { return edit::setMaskPoints(p, Id(clipId), index, pts); },
-          QStringLiteral("maskpts:%1:%2").arg(clipId).arg(index));
+    const Clip* c = project().findClip(Id(clipId));
+    if (!c)
+        return;
+    const FramePos rel = std::clamp<FramePos>(playheadRel(*c), 0, c->duration - 1);
+    apply(tr("Forma de la máscara"), [&](Project& p) { return edit::setMaskPoints(p, Id(clipId), index, pts, rel); },
+          QStringLiteral("maskpts:%1:%2:%3").arg(clipId).arg(index).arg(rel));
 }
 
 QVariantList ProjectController::smoothMaskPoints(const QVariantList& points, bool smooth) const

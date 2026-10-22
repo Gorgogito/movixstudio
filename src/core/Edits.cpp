@@ -45,6 +45,9 @@ void forEachKeyFrame(Clip& c, const auto& fn)
     });
     for (GradeKey& k : c.color.keys)
         fn(k.frame);
+    for (Mask& m : c.masks)
+        for (PathKey& k : m.pathKeys)
+            fn(k.frame);
 }
 
 // Desplaza los keyframes cuando cambia el inicio del clip, para que sigan en el mismo instante.
@@ -1515,7 +1518,26 @@ bool setMaskOptions(Project& p, Id clipId, int index, MaskMode mode, bool invert
     return true;
 }
 
-bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points)
+namespace {
+void upsertPathKey(Mask& m, FramePos rel, std::vector<PathPoint> points, Interpolation interp)
+{
+    auto it = std::lower_bound(m.pathKeys.begin(), m.pathKeys.end(), rel, [](const PathKey& k, FramePos f) { return k.frame < f; });
+    if (it != m.pathKeys.end() && it->frame == rel) {
+        it->points = std::move(points);
+        it->interp = interp;
+    } else {
+        m.pathKeys.insert(it, PathKey{rel, std::move(points), interp});
+    }
+}
+
+// Punto nuevo entre `a` y `b` (sin tangentes): para añadirlo a los demás keyframes de la forma.
+PathPoint midpoint(const PathPoint& a, const PathPoint& b)
+{
+    return {(a.x + b.x) / 2, (a.y + b.y) / 2};
+}
+} // namespace
+
+bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> points, FramePos rel)
 {
     Clip* c = nullptr;
     if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size() || points.size() < 3
@@ -1525,10 +1547,72 @@ bool setMaskPoints(Project& p, Id clipId, int index, std::vector<PathPoint> poin
         for (double* v : {&pt.x, &pt.y, &pt.inX, &pt.inY, &pt.outX, &pt.outY})
             *v = std::clamp(*v, -4.0, 4.0);
     Mask& m = c->masks[size_t(index)];
-    if (m.points == points)
+    if (m.pathKeys.empty()) {
+        if (m.points == points)
+            return false;
+        m.points = std::move(points);
+        return true;
+    }
+    // Con keyframes se cambia (o se crea) el del fotograma; añadir o quitar un punto se hace en todos.
+    const std::vector<PathPoint> current = m.pathAt(rel);
+    if (current == points)
         return false;
-    m.points = std::move(points);
+    if (points.size() != current.size()) {
+        const size_t n = current.size();
+        size_t at = 0;
+        if (points.size() == n + 1) {
+            while (at < n && current[at] == points[at])
+                ++at;
+            for (PathKey& k : m.pathKeys)
+                k.points.insert(k.points.begin() + std::ptrdiff_t(at), midpoint(k.points[(at + n - 1) % n], k.points[at % n]));
+        } else if (points.size() + 1 == n) {
+            while (at < points.size() && current[at] == points[at])
+                ++at;
+            for (PathKey& k : m.pathKeys)
+                k.points.erase(k.points.begin() + std::ptrdiff_t(at));
+        } else { // otra forma distinta: deja de estar animada
+            m.pathKeys.clear();
+            m.points = std::move(points);
+            return true;
+        }
+    }
+    const PathKey* existing = m.pathKeyAt(rel);
+    upsertPathKey(m, rel, std::move(points), existing ? existing->interp : Interpolation::Linear);
     return true;
+}
+
+bool toggleMaskPathKey(Project& p, Id clipId, int index, FramePos rel)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size())
+        return false;
+    Mask& m = c->masks[size_t(index)];
+    if (m.shape != MaskShape::Path)
+        return false;
+    auto it = std::find_if(m.pathKeys.begin(), m.pathKeys.end(), [&](const PathKey& k) { return k.frame == rel; });
+    if (it != m.pathKeys.end()) {
+        if (m.pathKeys.size() == 1) // al quitar el último, su forma queda fija
+            m.points = it->points;
+        m.pathKeys.erase(it);
+    } else {
+        upsertPathKey(m, rel, m.pathAt(rel), Interpolation::Linear);
+    }
+    return true;
+}
+
+bool setMaskPathKeyInterpolation(Project& p, Id clipId, int index, FramePos rel, Interpolation interp)
+{
+    Clip* c = nullptr;
+    if (!isEditableVideoClip(p, clipId, c) || index < 0 || size_t(index) >= c->masks.size())
+        return false;
+    for (PathKey& k : c->masks[size_t(index)].pathKeys)
+        if (k.frame == rel) {
+            if (k.interp == interp)
+                return false;
+            k.interp = interp;
+            return true;
+        }
+    return false;
 }
 
 bool setBlendMode(Project& p, Id clipId, BlendMode mode)

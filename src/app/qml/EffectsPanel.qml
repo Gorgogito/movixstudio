@@ -312,6 +312,60 @@ ColumnLayout {
         }
         PropertyRow { project: panel.project; clipId: panel.clipId; prop: maskProps.base + "rotation"; label: qsTr("Rotación"); from: -180; to: 180; suffix: "°" }
         PropertyRow { project: panel.project; clipId: panel.clipId; prop: maskProps.base + "feather"; label: qsTr("Difuminado"); from: 0; to: 0.5; displayScale: 100; suffix: "%" }
+        // Keyframes de la forma: todos los puntos a la vez.
+        RowLayout {
+            id: pathKeys
+            visible: maskProps.mask.shape === "path"
+            Layout.fillWidth: true
+            spacing: 4
+            readonly property string prop: maskProps.base + "path"
+            property var state_: ({})
+            function refresh() {
+                state_ = panel.clipId !== undefined && visible ? panel.project.propertyState(panel.clipId, prop) : ({})
+            }
+            Component.onCompleted: refresh()
+            onVisibleChanged: refresh()
+            onPropChanged: refresh()
+            Connections {
+                target: panel.project
+                function onHistoryChanged() { pathKeys.refresh() }
+            }
+            Connections {
+                target: panel.project.player
+                function onPositionChanged() { pathKeys.refresh() }
+            }
+            Text {
+                text: pathKeys.state_.animated === true ? qsTr("Forma animada") : qsTr("Forma")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall + 1
+                Layout.fillWidth: true
+            }
+            IconButton {
+                size: 22
+                text: "‹"
+                display: AbstractButton.TextOnly
+                enabled: pathKeys.state_.hasPrev === true
+                tip: qsTr("Keyframe anterior")
+                onClicked: panel.project.jumpToKeyframe(panel.clipId, false)
+            }
+            KeyframeButton {
+                keyHere: pathKeys.state_.keyHere === true
+                animated: pathKeys.state_.animated === true
+                interp: pathKeys.state_.interp || "linear"
+                addTip: qsTr("Añadir keyframe de la forma en el cabezal (luego mueve los puntos en otro instante)")
+                removeTip: qsTr("Quitar el keyframe de la forma en el cabezal")
+                onToggled: panel.project.toggleKeyframe(panel.clipId, pathKeys.prop)
+                onInterpolationChosen: (mode) => panel.project.setKeyInterpolation(panel.clipId, pathKeys.prop, mode)
+            }
+            IconButton {
+                size: 22
+                text: "›"
+                display: AbstractButton.TextOnly
+                enabled: pathKeys.state_.hasNext === true
+                tip: qsTr("Keyframe siguiente")
+                onClicked: panel.project.jumpToKeyframe(panel.clipId, true)
+            }
+        }
         RowLayout {
             visible: maskProps.mask.shape === "path"
             Layout.fillWidth: true

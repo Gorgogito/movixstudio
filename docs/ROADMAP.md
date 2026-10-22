@@ -296,7 +296,10 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       copia cero con D3D11VA en el mismo dispositivo que compone. 1080p60 con NVENC: de ~115 a
       ~190 fps (decodificar 1,1 · componer 3,1 · codificar 4,0 ms); el límite es el codificador.
       La vista previa todavía baja los fotogramas a memoria
-- [ ] Visor HDR, corrección en luz lineal, puntos de máscara animables
+- [x] Forma animada de las máscaras de forma libre: keyframes de todos los puntos a la vez
+      (fila «Forma» del panel de efectos); mover los puntos en otro instante crea su keyframe y
+      añadir o quitar un punto lo hace en todos los keyframes
+- [ ] Visor HDR, corrección en luz lineal
 - [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas
       con fundidos
 - [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO
