@@ -261,8 +261,22 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       ([docs/SCRIPTS.md](SCRIPTS.md)): menú Scripts con cinco incluidos y los de la carpeta del
       usuario. Un script es un paso de deshacer y, si falla, no cambia nada; sin acceso a archivos
       ni red y con un límite de 10 s
-- [ ] OpenFX
+- [x] OpenFX: anfitrión propio (`src/ofx`, sobre las cabeceras oficiales 1.4, BSD-3) para plugins
+      de efectos de terceros en los clips con imagen. Busca en `OFX_PLUGIN_PATH`,
+      `%CommonProgramFiles%\OFX\Plugins` y la carpeta del usuario; describe cada plugin una vez y
+      crea una instancia por aparición del clip. Suites de propiedades, efecto, parámetros, memoria,
+      hilos y mensajes; imágenes RGBA de 8 bits o en coma flotante, fotograma completo, de abajo
+      arriba como pide OFX; un fallo dentro del plugin no cierra el editor. Pestaña Efectos: añadir,
+      activar, reordenar y quitar, con controles generados (números, casillas, listas, colores,
+      vectores). `.mxproj` v8. Verificado con un plugin propio hecho con la biblioteca de apoyo
+      oficial y con cuatro ejemplos del repositorio de OpenFX (API en C y biblioteca de apoyo)
 - [ ] Linux y macOS
+
+### Limitaciones de OpenFX
+
+- Sin animación de los parámetros, sin interfaces propias de los plugins (overlays) y sin contextos
+  que no sean filtros (generadores, transiciones). No se aplican a clips compuestos.
+- Se renderiza en la CPU en 8 bits por canal (un clip HDR pierde su rango al pasar por un efecto).
 
 ### Pendiente de comprobar
 

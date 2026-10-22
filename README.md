@@ -17,6 +17,8 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
   títulos, compuestos y marcadores.
 - **Multicámara**: varias cámaras (y un micrófono aparte) sincronizadas automáticamente por el
   audio; vista de todos los ángulos en cuadrícula y corte en directo con las teclas 1–9.
+- **Plantillas propias** de título y de proyecto, **scripts** en JavaScript para automatizar la
+  edición ([docs/SCRIPTS.md](docs/SCRIPTS.md)) y **efectos OpenFX** de terceros en los clips.
 
 **Novedades de F5** — en local, en la GPU cuando la hay (cualquier GPU con Vulkan)
 - Quitar el fondo sin pantalla verde (personas o cualquier sujeto) o recortar un objeto con un

@@ -108,6 +108,9 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
     }
     if (c.matte.active() && !c.isCompound() && !c.title)
         l.matte = &c.matte;
+    if (!c.ofx.empty() && !c.isCompound())
+        l.ofx = &c.ofx;
+    l.clipFrame = rel;
     l.blend = c.blend;
     if (!extended)
         l.opacity *= fadeFactor(c.fadeIn, c.fadeOut, rel, c.duration);

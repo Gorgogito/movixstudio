@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -126,6 +127,17 @@ struct AiMatte {
     bool active() const { return !path.empty(); }
     bool operator==(const AiMatte&) const = default;
 };
+
+// Efecto OpenFX de un clip (plugin de terceros, ver ofx/OfxHost.h): el plugin y los valores de sus
+// parámetros; los que faltan toman su valor por defecto. Se aplican en orden sobre la imagen del
+// clip, antes de la corrección de color.
+struct OfxEffect {
+    std::string pluginId;
+    bool enabled = true;
+    std::map<std::string, std::vector<double>> params;
+    bool operator==(const OfxEffect&) const = default;
+};
+inline constexpr size_t kMaxOfxEffects = 16;
 
 enum class MaskShape { None, Rectangle, Ellipse, Linear, Path };
 // Cómo se combina una máscara con las anteriores del clip.

@@ -35,11 +35,12 @@ add_executable(movix_tests
     test_multicam.cpp
     test_templates.cpp
     test_scripts.cpp
+    test_ofx.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.h ${PROJECT_SOURCE_DIR}/src/app/TimelineModels.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.h ${PROJECT_SOURCE_DIR}/src/app/ThumbnailProvider.cpp
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
     ${PROJECT_SOURCE_DIR}/src/app/ProjectController.h ${PROJECT_SOURCE_DIR}/src/app/ProjectController.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerColor.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerColor.cpp ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerOfx.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ExportController.h ${PROJECT_SOURCE_DIR}/src/app/ExportController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/AiController.h ${PROJECT_SOURCE_DIR}/src/app/AiController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/UpdateController.h ${PROJECT_SOURCE_DIR}/src/app/UpdateController.cpp
@@ -65,6 +66,16 @@ target_compile_definitions(movix_tests PRIVATE
     MOVIX_AI_WORKER="$<TARGET_FILE:movix-ai-worker>")
 add_dependencies(movix_tests movix-ai-worker)
 
+# Plugin OpenFX de prueba, empaquetado como los de terceros (Nombre.ofx.bundle/Contents/Win64/Nombre.ofx).
+find_package(unofficial-openfx CONFIG REQUIRED)
+add_library(MovixTestGain MODULE ofx/MovixTestGain.cpp)
+target_link_libraries(MovixTestGain PRIVATE unofficial::openfx::OfxSupport)
+target_compile_definitions(MovixTestGain PRIVATE _HAS_AUTO_PTR_ETC=1) # la biblioteca de apoyo de OFX usa std::auto_ptr
+set_target_properties(MovixTestGain PROPERTIES PREFIX "" SUFFIX ".ofx"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ofx/MovixTestGain.ofx.bundle/Contents/Win64")
+target_compile_definitions(movix_tests PRIVATE MOVIX_TEST_OFX_DIR="${CMAKE_CURRENT_BINARY_DIR}/ofx")
+add_dependencies(movix_tests MovixTestGain)
+
 # Las DLL de FFmpeg junto al ejecutable de pruebas.
 add_custom_command(TARGET movix_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} $<TARGET_FILE_DIR:movix_tests>)
@@ -72,14 +83,16 @@ add_custom_command(TARGET movix_tests POST_BUILD
 add_test(NAME generate_test_media
     COMMAND ${CMAKE_COMMAND} -DFFMPEG_EXE=${FFMPEG_EXE} -DOUT_DIR=${MOVIX_TEST_MEDIA_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/GenerateTestMedia.cmake)
-set_tests_properties(generate_test_media PROPERTIES FIXTURES_SETUP test_media)
+set_tests_properties(generate_test_media PROPERTIES FIXTURES_SETUP test_data)
 add_test(NAME download_test_models
     COMMAND ${CMAKE_COMMAND} -DOUT_DIR=${MOVIX_TEST_MODELS_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/DownloadTestModels.cmake)
-set_tests_properties(download_test_models PROPERTIES FIXTURES_SETUP test_models TIMEOUT 1800)
+set_tests_properties(download_test_models PROPERTIES FIXTURES_SETUP test_data TIMEOUT 1800)
 
 include(Catch)
 catch_discover_tests(movix_tests
     DISCOVERY_MODE PRE_TEST
     DL_PATHS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}"
-    PROPERTIES FIXTURES_REQUIRED "test_media;test_models")
+    # Un solo valor: una lista aquí se desarma en pares propiedad/valor (Catch2 ya añade
+    # SKIP_RETURN_CODE para las pruebas que se saltan).
+    PROPERTIES FIXTURES_REQUIRED test_data)
 

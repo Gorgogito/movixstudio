@@ -10,7 +10,7 @@ qt_add_executable(MovixStudio WIN32
     ThumbnailProvider.h ThumbnailProvider.cpp
     Waveform.h Waveform.cpp
     TimelineModels.h TimelineModels.cpp
-    ProjectController.h ProjectController.cpp ProjectControllerColor.cpp
+    ProjectController.h ProjectController.cpp ProjectControllerColor.cpp ProjectControllerOfx.cpp
     ExportController.h ExportController.cpp
     AiController.h AiController.cpp
     UpdateController.h UpdateController.cpp
@@ -81,6 +81,7 @@ qt_add_qml_module(MovixStudio
         qml/UpdateBanner.qml
         qml/MulticamOverlay.qml
         qml/NameDialog.qml
+        qml/OfxEffects.qml
     RESOURCES
         ${MOVIX_ICONS}
 )

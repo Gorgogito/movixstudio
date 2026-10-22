@@ -57,6 +57,9 @@ struct VideoLayer {
     ChromaKey chromaKey;
     std::vector<LayerMask> masks;
     const AiMatte* matte = nullptr; // mate de IA (el instante es el de `sourceTime`)
+    // Efectos OpenFX del clip (nullptr si no tiene) y el fotograma dentro del clip que se evalúa.
+    const std::vector<OfxEffect>* ofx = nullptr;
+    FramePos clipFrame = 0;
     BlendMode blend = BlendMode::Normal;
     // Clip compuesto: capas de su secuencia en el fotograma que corresponde (de abajo arriba).
     bool compound = false;

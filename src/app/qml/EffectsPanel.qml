@@ -4,7 +4,8 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import MovixStudio
 
-// Efectos de composición del clip: clave de croma (fondo verde/azul) y máscara de forma.
+// Efectos de composición del clip: recorte por IA, clave de croma (fondo verde/azul), máscaras y
+// efectos OpenFX.
 ColumnLayout {
     id: panel
 
@@ -336,5 +337,12 @@ ColumnLayout {
                   ? qsTr("En el visor: arrastra los puntos o el centro; doble clic añade un punto y clic derecho en un punto lo quita.")
                   : qsTr("Arrastra la máscara en el visor para moverla; sus valores admiten keyframes.")
         }
+    }
+
+    // ---- Efectos OpenFX (plugins de terceros) ----
+    OfxEffects {
+        visible: panel.info.isCompound !== true
+        project: panel.project
+        info: panel.info
     }
 }

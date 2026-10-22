@@ -1,6 +1,7 @@
 #include "ProjectController.h"
 
 #include "ScriptHost.h"
+#include "ofx/OfxHost.h"
 #include "ai/AudioSync.h"
 
 #include "EffectNames.h"
@@ -58,6 +59,7 @@ ProjectController::ProjectController(QObject* parent)
     m_autosaveTimer.start();
     refresh();
     reloadScripts();
+    movix::ofx::Registry::instance().setExtraDirs({ofxFolder().toStdString()}); // se buscan al pedirlos
 }
 
 ProjectController::~ProjectController() = default;

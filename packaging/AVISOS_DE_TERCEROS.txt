@@ -16,6 +16,7 @@ ONNX Runtime WebGPU (incluye Dawn) 0.4.0        MIT / BSD-3-Clause      onnxrunt
 whisper.cpp                        1.8.6        MIT                     whisper-cpp
 ggml                               0.26.0       MIT                     ggml
 OpenColorIO                        2.6.0        BSD-3-Clause            opencolorio
+OpenFX (cabeceras de la API)       1.4          BSD-3-Clause            openfx
 eSpeak NG                          1.52.0       GPL-3.0-or-later        espeak-ng
 SentencePiece                      0.2.1        Apache-2.0              sentencepiece
 Protocol Buffers                   6.33.4       BSD-3-Clause            protobuf

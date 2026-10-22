@@ -10,6 +10,7 @@
     "espeak-ng",
     "miniaudio",
     "opencolorio",
+    "openfx",
     "sentencepiece",
     {
       "name": "ggml",

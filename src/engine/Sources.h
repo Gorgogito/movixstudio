@@ -5,10 +5,13 @@
 #include "core/Timeline.h"
 #include "engine/AudioReader.h"
 #include "engine/VideoReader.h"
+#include "ofx/OfxHost.h"
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -85,6 +88,8 @@ public:
     FrameBundle build(const core::Project& project, core::FramePos frame);
     void clear();
     size_t openCount() const { return m_readers.size(); }
+    // Último error de un efecto OpenFX (plugin que falta o que falló); se borra al leerlo.
+    std::string takeOfxError() { return std::exchange(m_ofxError, {}); }
 
 private:
     std::shared_ptr<const media::VideoFrame> still(const std::string& path);
@@ -94,6 +99,8 @@ private:
     // Opacidad del mate de IA de la capa (multiplicada por sus máscaras), o nullptr si no se puede leer.
     std::shared_ptr<const MaskImage> matteImage(const core::VideoLayer& layer, const std::vector<core::LayerMask>& masks);
     void buildLayers(const std::vector<core::VideoLayer>& layers, FrameBundle& bundle);
+    // Aplica los efectos OpenFX de la capa; si ninguno se puede aplicar, devuelve el fotograma igual.
+    std::shared_ptr<const media::VideoFrame> applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f);
 
     struct Entry {
         std::unique_ptr<VideoReader> reader;
@@ -134,6 +141,16 @@ private:
         std::shared_ptr<const MaskImage> image;
     };
     std::unordered_map<std::uint64_t, CachedMatte> m_matteCache; // por aparición del clip
+    // Instancias OpenFX por aparición del clip y posición del efecto (el plugin guarda estado).
+    struct OfxSlot {
+        std::string pluginId;
+        std::unique_ptr<ofx::Effect> effect;
+        bool failed = false; // no se pudo crear: no se reintenta mientras no cambie el plugin
+        uint64_t lastUse = 0;
+    };
+    std::map<std::pair<std::uint64_t, size_t>, OfxSlot> m_ofx;
+    std::string m_ofxError;
+    double m_frameRate = 30.0;
 };
 
 // Mezclador de audio de la línea de tiempo: suma todos los tramos que suenan en un intervalo.

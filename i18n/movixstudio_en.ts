@@ -1346,7 +1346,7 @@
     </message>
     <message>
         <source>Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal. Guarda los tuyos como plantilla desde las propiedades de un título.</source>
-        <translation>Drag a title onto the timeline or double-click to add it at the playhead. Save your own as templates from a title's properties.</translation>
+        <translation>Drag a title onto the timeline or double-click to add it at the playhead. Save your own as templates from a title&apos;s properties.</translation>
     </message>
 </context>
 <context>
@@ -1801,7 +1801,7 @@ Do you want to recover it instead of opening “%2”?</translation>
     </message>
     <message>
         <source>Nombre de la plantilla. Guarda los ajustes, las pistas, los títulos, los marcadores y los medios del proyecto (con el mismo nombre se sustituye).</source>
-        <translation>Template name. It keeps the project's settings, tracks, titles, markers and media (an existing one with the same name is replaced).</translation>
+        <translation>Template name. It keeps the project&apos;s settings, tracks, titles, markers and media (an existing one with the same name is replaced).</translation>
     </message>
 </context>
 <context>
@@ -1972,15 +1972,15 @@ Do you want to recover it instead of opening “%2”?</translation>
     <name>NameDialog</name>
     <message>
         <source>Nombre</source>
-        <translation type="unfinished">Name</translation>
+        <translation>Name</translation>
     </message>
     <message>
         <source>Guardar</source>
-        <translation type="unfinished">Save</translation>
+        <translation>Save</translation>
     </message>
     <message>
         <source>Cancelar</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -1992,6 +1992,37 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>La GPU no admite una textura de %1×%2.</source>
         <translation>The GPU does not support a %1×%2 texture.</translation>
+    </message>
+</context>
+<context>
+    <name>OfxEffects</name>
+    <message>
+        <source>Efectos OpenFX</source>
+        <translation>OpenFX effects</translation>
+    </message>
+    <message>
+        <source>Añadir efecto…</source>
+        <translation>Add effect…</translation>
+    </message>
+    <message>
+        <source>Carpeta de plugins</source>
+        <translation>Plugin folder</translation>
+    </message>
+    <message>
+        <source>Buscar de nuevo</source>
+        <translation>Scan again</translation>
+    </message>
+    <message>
+        <source> (no instalado)</source>
+        <translation> (not installed)</translation>
+    </message>
+    <message>
+        <source>Quitar el efecto</source>
+        <translation>Remove the effect</translation>
+    </message>
+    <message>
+        <source>No hay plugins OpenFX instalados. Instálalos en la carpeta de plugins de MovixStudio o en la carpeta común de OpenFX del sistema y pulsa «Buscar de nuevo».</source>
+        <translation>No OpenFX plugins are installed. Install them in MovixStudio's plugin folder or in the system-wide OpenFX folder and press “Scan again”.</translation>
     </message>
 </context>
 <context>
@@ -2455,6 +2486,30 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>«%1» no cambió nada.</source>
         <translation>“%1” changed nothing.</translation>
+    </message>
+    <message>
+        <source>Añadir efecto «%1»</source>
+        <translation>Add effect “%1”</translation>
+    </message>
+    <message>
+        <source>Quitar efecto</source>
+        <translation>Remove effect</translation>
+    </message>
+    <message>
+        <source>Activar efecto</source>
+        <translation>Enable effect</translation>
+    </message>
+    <message>
+        <source>Desactivar efecto</source>
+        <translation>Disable effect</translation>
+    </message>
+    <message>
+        <source>Reordenar efectos</source>
+        <translation>Reorder effects</translation>
+    </message>
+    <message>
+        <source>Ajustar efecto</source>
+        <translation>Adjust effect</translation>
     </message>
 </context>
 <context>

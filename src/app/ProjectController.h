@@ -264,6 +264,22 @@ public:
     Q_INVOKABLE void setMulticamAngle(qint64 clipId, int angle);
     Q_INVOKABLE void setMulticamAudio(qint64 clipId, int audioAngle); // −1 = el del ángulo que se ve
 
+    // --- Efectos OpenFX (ProjectControllerOfx.cpp) ---
+    // Plugins instalados: {id, label, group, description}.
+    Q_PROPERTY(QVariantList ofxPlugins READ ofxPlugins NOTIFY ofxPluginsChanged)
+    QVariantList ofxPlugins() const;
+    Q_INVOKABLE void rescanOfx();
+    Q_INVOKABLE void openOfxFolder();
+    QString ofxFolder() const;
+    // Efectos del clip con la definición de sus parámetros y su valor: {index, pluginId, label,
+    // enabled, installed, params: [{name, label, hint, type, value, defaults, min, max, options}]}.
+    Q_INVOKABLE QVariantList ofxEffects(qint64 clipId) const;
+    Q_INVOKABLE void addOfxEffect(qint64 clipId, const QString& pluginId);
+    Q_INVOKABLE void removeOfxEffect(qint64 clipId, int index);
+    Q_INVOKABLE void setOfxEnabled(qint64 clipId, int index, bool enabled);
+    Q_INVOKABLE void moveOfxEffect(qint64 clipId, int from, int to);
+    Q_INVOKABLE void setOfxParam(qint64 clipId, int index, const QString& name, const QVariantList& value);
+
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);
     Q_INVOKABLE void clearSelection();
@@ -290,6 +306,7 @@ signals:
     void multicamViewChanged();
     void templatesChanged();
     void scriptsChanged();
+    void ofxPluginsChanged();
 
 private:
     movix::core::FramePos playheadRel(const movix::core::Clip& c) const;

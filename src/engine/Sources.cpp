@@ -1,6 +1,7 @@
 #include "engine/Sources.h"
 
 #include "color/Ocio.h"
+#include "media/FrameConvert.h"
 #include "media/ImageDecoder.h"
 
 #include <algorithm>
@@ -36,6 +37,7 @@ void VideoSources::clear()
     m_cubeFiles.clear();
     m_maskCache.clear();
     m_matteCache.clear();
+    m_ofx.clear();
 }
 
 bool masksNeedRaster(const std::vector<core::LayerMask>& masks)
@@ -196,7 +198,11 @@ FrameBundle VideoSources::build(const core::Project& project, core::FramePos fra
         m_colorMode = bundle.colorMode;
         m_lutCache.clear();
     }
+    m_frameRate = project.settings.frameRate.value();
+    ++m_tick;
     buildLayers(core::videoLayersAt(project, frame), bundle);
+    // Las instancias OpenFX de clips que ya no se ven se liberan pasado un rato.
+    std::erase_if(m_ofx, [&](const auto& kv) { return m_tick - kv.second.lastUse > 600; });
     return bundle;
 }
 
@@ -220,6 +226,8 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
             f = this->frame(layer, bundle.canvasWidth, bundle.canvasHeight);
             if (!f)
                 continue;
+            if (layer.ofx)
+                f = applyOfx(layer, std::move(f));
             layerW = int(std::lround(f->height * f->displayAspect()));
             layerH = f->height;
         }
@@ -241,6 +249,63 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
         out.blend = layer.blend;
         bundle.layers.push_back(std::move(out));
     }
+}
+
+std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f)
+{
+    const bool any = std::any_of(layer.ofx->begin(), layer.ofx->end(), [](const core::OfxEffect& e) { return e.enabled; });
+    if (!any || f->width <= 0 || f->height <= 0)
+        return f;
+    const int w = f->width, h = f->height;
+    std::vector<uint8_t> rgba;
+    if (f->format == media::PixelFormat::RGBA)
+        rgba = f->rgba;
+    else if (!media::frameToRgba(*f, w, h, rgba))
+        return f;
+    std::vector<uint8_t> out(rgba.size());
+    bool applied = false;
+    for (size_t i = 0; i < layer.ofx->size(); ++i) {
+        const core::OfxEffect& e = (*layer.ofx)[i];
+        if (!e.enabled)
+            continue;
+        OfxSlot& slot = m_ofx[{layer.instance, i}];
+        slot.lastUse = m_tick;
+        if (slot.pluginId != e.pluginId || (slot.effect && (slot.effect->width() != w || slot.effect->height() != h))) {
+            slot.effect.reset();
+            slot.failed = false;
+            slot.pluginId = e.pluginId;
+        }
+        if (!slot.effect && !slot.failed) {
+            std::string error;
+            slot.effect = ofx::Effect::create(e.pluginId, w, h, m_frameRate, &error);
+            slot.failed = !slot.effect;
+            if (slot.failed)
+                m_ofxError = error;
+        }
+        if (!slot.effect)
+            continue;
+        std::string error;
+        if (!slot.effect->render(ofx::withDefaults(slot.effect->plugin(), e.params), double(layer.clipFrame), rgba.data(), out.data(), &error)) {
+            m_ofxError = error;
+            continue;
+        }
+        std::swap(rgba, out);
+        applied = true;
+    }
+    if (!applied)
+        return f;
+    auto result = std::make_shared<media::VideoFrame>();
+    result->format = media::PixelFormat::RGBA;
+    result->width = w;
+    result->height = h;
+    result->sampleAspect = f->sampleAspect;
+    result->pts = f->pts;
+    result->duration = f->duration;
+    result->colorSpace = f->colorSpace;
+    result->transfer = f->transfer;
+    result->fullRange = true;
+    result->rgba = std::move(rgba);
+    return result;
 }
 
 AudioReader* AudioMixer::readerFor(core::Id clipId)

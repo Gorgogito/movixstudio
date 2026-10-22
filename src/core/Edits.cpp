@@ -1459,6 +1459,68 @@ bool setBlendMode(Project& p, Id clipId, BlendMode mode)
     return true;
 }
 
+namespace {
+Clip* ofxClip(Project& p, Id clipId)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->locked || loc.track->kind != TrackKind::Video || loc.clip()->isCompound())
+        return nullptr;
+    return loc.clip();
+}
+} // namespace
+
+int addOfxEffect(Project& p, Id clipId, const std::string& pluginId)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || pluginId.empty() || c->ofx.size() >= kMaxOfxEffects)
+        return -1;
+    c->ofx.push_back({pluginId, true, {}});
+    return int(c->ofx.size()) - 1;
+}
+
+bool removeOfxEffect(Project& p, Id clipId, int index)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || index < 0 || index >= int(c->ofx.size()))
+        return false;
+    c->ofx.erase(c->ofx.begin() + index);
+    return true;
+}
+
+bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || index < 0 || index >= int(c->ofx.size()) || c->ofx[size_t(index)].enabled == enabled)
+        return false;
+    c->ofx[size_t(index)].enabled = enabled;
+    return true;
+}
+
+bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || index < 0 || index >= int(c->ofx.size()) || name.empty() || value.empty())
+        return false;
+    auto& params = c->ofx[size_t(index)].params;
+    auto it = params.find(name);
+    if (it != params.end() && it->second == value)
+        return false;
+    params[name] = std::move(value);
+    return true;
+}
+
+bool moveOfxEffect(Project& p, Id clipId, int from, int to)
+{
+    Clip* c = ofxClip(p, clipId);
+    const int n = c ? int(c->ofx.size()) : 0;
+    if (!c || from < 0 || from >= n || to < 0 || to >= n || from == to)
+        return false;
+    OfxEffect e = std::move(c->ofx[size_t(from)]);
+    c->ofx.erase(c->ofx.begin() + from);
+    c->ofx.insert(c->ofx.begin() + to, std::move(e));
+    return true;
+}
+
 Id detachAudio(Project& p, Id clipId)
 {
     auto loc = p.locateClip(clipId);

@@ -328,6 +328,20 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
                                             {"duration", qint64(c.transitionIn.duration)}};
         if (!c.color.isIdentity())
             o["color"] = animatedGradeToJson(c.color, projectDir);
+        if (!c.ofx.empty()) {
+            QJsonArray effects;
+            for (const OfxEffect& e : c.ofx) {
+                QJsonObject params;
+                for (const auto& [name, value] : e.params) {
+                    QJsonArray v;
+                    for (double x : value)
+                        v.append(x);
+                    params[QString::fromStdString(name)] = v;
+                }
+                effects.append(QJsonObject{{"plugin", QString::fromStdString(e.pluginId)}, {"enabled", e.enabled}, {"params", params}});
+            }
+            o["ofx"] = effects;
+        }
         if (c.matte.active()) {
             const QString path = QString::fromStdString(c.matte.path);
             o["matte"] = QJsonObject{{"path", QDir::fromNativeSeparators(path)},
@@ -418,6 +432,22 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         }
         if (c.contains("color"))
             clip.color = animatedGradeFromJson(c["color"].toObject(), projectDir, missing);
+        for (const QJsonValue& ev : c["ofx"].toArray()) {
+            const QJsonObject eo = ev.toObject();
+            OfxEffect e;
+            e.pluginId = eo["plugin"].toString().toStdString();
+            e.enabled = eo["enabled"].toBool(true);
+            const QJsonObject params = eo["params"].toObject();
+            for (auto it = params.begin(); it != params.end(); ++it) {
+                std::vector<double> v;
+                for (const QJsonValue& x : it.value().toArray())
+                    v.push_back(x.toDouble());
+                if (!v.empty())
+                    e.params[it.key().toStdString()] = std::move(v);
+            }
+            if (!e.pluginId.empty() && clip.ofx.size() < kMaxOfxEffects)
+                clip.ofx.push_back(std::move(e));
+        }
         if (c.contains("matte")) {
             const QJsonObject m = c["matte"].toObject();
             QString path = m["path"].toString();

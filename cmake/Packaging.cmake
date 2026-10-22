@@ -59,7 +59,7 @@ install(FILES "${PROJECT_SOURCE_DIR}/packaging/licenses/LGPL-3.0.txt" DESTINATIO
 install(FILES "${_ffmpeg_bin}/../LICENSE.txt" DESTINATION licenses/ffmpeg)
 install(FILES ${ONNXRUNTIME_LICENSE_FILES} DESTINATION licenses/onnxruntime)
 install(FILES ${ONNXRUNTIME_WEBGPU_LICENSE_FILES} DESTINATION licenses/onnxruntime-webgpu)
-foreach(_port abseil bzip2 espeak-ng expat ggml imath liblzma miniaudio minizip-ng opencolorio protobuf
+foreach(_port abseil bzip2 espeak-ng expat ggml imath liblzma miniaudio minizip-ng opencolorio openfx protobuf
               pystring sentencepiece vulkan-loader whisper-cpp yaml-cpp zlib zstd)
     set(_copyright "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${_port}/copyright")
     if(NOT EXISTS "${_copyright}")

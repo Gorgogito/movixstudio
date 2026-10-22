@@ -122,6 +122,12 @@ bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn);
 // Mate de IA del clip (solo clips de video con medio). Un AiMatte vacío lo quita.
 bool setMatte(Project& p, Id clipId, const AiMatte& matte);
 
+// Efectos OpenFX (clips con imagen que no son compuestos). Devuelven si hubo cambio.
+int addOfxEffect(Project& p, Id clipId, const std::string& pluginId); // índice o −1
+bool removeOfxEffect(Project& p, Id clipId, int index);
+bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled);
+bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value);
+bool moveOfxEffect(Project& p, Id clipId, int from, int to);
 // Separa el audio de un clip de video a una pista de audio libre (o nueva). Devuelve el clip de audio.
 Id detachAudio(Project& p, Id clipId);
 
