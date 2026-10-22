@@ -35,6 +35,10 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
 QJsonObject transcriptToJson(const Transcript& t);
 Transcript transcriptFromJson(const QJsonObject& o);
 
+// Estilo de un título en JSON (lo usan el archivo de proyecto y el intercambio OTIO).
+QJsonObject titleToJson(const TitleStyle& s);
+TitleStyle titleFromJson(const QJsonObject& o);
+
 // Escritura atómica: o se guarda completo o el archivo anterior queda intacto.
 bool saveProjectFile(const Project& project, const QString& path, QString* error = nullptr);
 LoadResult loadProjectFile(const QString& path);

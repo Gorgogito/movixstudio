@@ -9,6 +9,7 @@ add_library(movix_core STATIC
     ProjectFile.h ProjectFile.cpp
     Timeline.h Timeline.cpp
     Transcript.h Transcript.cpp
+    Otio.h Otio.cpp
 )
 
 target_include_directories(movix_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

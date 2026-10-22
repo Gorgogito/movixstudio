@@ -76,6 +76,8 @@ std::uint32_t argbFromJson(const QJsonValue& v, std::uint32_t fallback)
     return ok ? c : fallback;
 }
 
+} // namespace
+
 QJsonObject titleToJson(const TitleStyle& s)
 {
     return QJsonObject{
@@ -109,6 +111,8 @@ TitleStyle titleFromJson(const QJsonObject& o)
     s.background = argbFromJson(o["background"], s.background);
     return s;
 }
+
+namespace {
 
 QJsonArray wheelToJson(const ColorWheel& w)
 {

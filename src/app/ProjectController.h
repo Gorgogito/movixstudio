@@ -98,6 +98,10 @@ public:
     Q_INVOKABLE void recoverAutosave();
     Q_INVOKABLE void discardAutosave();
     Q_INVOKABLE void shutdown(); // cierre ordenado: elimina el autoguardado
+    // Intercambio con OpenTimelineIO: importar crea un proyecto nuevo (sin guardar) con la línea
+    // de tiempo; exportar escribe la secuencia principal.
+    Q_INVOKABLE void importOtio(const QUrl& url);
+    Q_INVOKABLE bool exportOtio(const QUrl& url);
 
     // --- Medios ---
     Q_INVOKABLE void importFiles(const QList<QUrl>& urls);

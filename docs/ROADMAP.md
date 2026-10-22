@@ -235,7 +235,15 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       como mucho una vez al día y desactivable, o desde Ayuda; con el MSI instalado descarga el
       instalador, comprueba su SHA-256 (resumen que publica GitHub) y lo abre al cerrar la
       aplicación; si no, ofrece la página de la versión. Se puede omitir una versión
-- [ ] OpenTimelineIO (importar y exportar la línea de tiempo)
+- [x] OpenTimelineIO: importar y exportar la línea de tiempo (`.otio`, Archivo o arrastrando el
+      archivo) con lector y escritor propios en `core/Otio` (vcpkg no tiene OTIO y el formato es
+      JSON). Viajan pistas (ocultas/silenciadas), clips, huecos, transiciones, velocidad
+      (`LinearTimeWarp`), títulos (`GeneratorReference`), compuestos (pilas anidadas) y marcadores.
+      El audio de los clips de video sale en pistas de audio aparte y al importar se vuelve a unir
+      al clip de video que coincide. Admite `Clip.1`/`Clip.2`, medios con código de tiempo, rutas
+      relativas, colecciones y medios que faltan (se conservan para reconectarlos). Verificado con
+      la biblioteca oficial (OpenTimelineIO 0.18 lee lo que exportamos y un archivo suyo se importa
+      en las pruebas). Los efectos de imagen no tienen equivalente en OTIO y no se exportan
 - [ ] Multicámara
 - [ ] Plantillas propias, plugins/scripting, OpenFX
 - [ ] Linux y macOS
@@ -245,5 +253,10 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - La instalación real del MSI (asistente, accesos directos, asociación de archivos, desinstalación
   y actualización entre versiones) en un equipo: se verificó su contenido extrayéndolo, con una
   prueba de humo de la IA y la aplicación sin nada más en el PATH.
+- Abrir en DaVinci Resolve / Kdenlive un `.otio` exportado (y al revés) con proyectos reales.
+- Fallo intermitente ya existente en la reducción de ruido (no en OTIO): la prueba `[denoise]` se
+  cae a veces (SIGSEGV dentro de `Denoiser::init`) o no filtra la segunda vez (≈ 1 de cada 3
+  ejecuciones aisladas; la batería completa pasó). `ffmpeg.exe` 9.0 da salidas distintas en cada
+  ejecución de `arnndn` con la misma entrada, aunque sin caerse ni cambiar su nivel de ruido.
 - Publicar la primera versión en https://github.com/Gorgogito/movixstudio/releases con el MSI
   adjunto (nombre `MovixStudio-<versión>-win64.msi`), para que la búsqueda de actualizaciones la encuentre.

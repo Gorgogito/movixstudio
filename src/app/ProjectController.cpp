@@ -3,6 +3,7 @@
 #include "EffectNames.h"
 
 #include "core/Edits.h"
+#include "core/Otio.h"
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
 #include "media/MediaInfo.h"
@@ -220,6 +221,61 @@ void ProjectController::setProjectSettings(int width, int height, int fpsNum, in
     });
 }
 
+// --- OpenTimelineIO ---
+
+void ProjectController::importOtio(const QUrl& url)
+{
+    const QString path = url.toLocalFile();
+    if (path.isEmpty())
+        return;
+    ++m_importing;
+    emit importingChanged();
+    // Se sondean todos sus medios: en segundo plano, como al importarlos.
+    QThreadPool::globalInstance()->start([this, path, url] {
+        auto result = std::make_shared<otio::ImportResult>(otio::importFile(path, [](const std::string& media) {
+            return engine::probeMediaItem(media);
+        }));
+        QMetaObject::invokeMethod(this, [this, url, result] {
+            if (result->project) {
+                resetTo(std::move(*result->project), QUrl());
+                m_history.markDirty(); // aún no tiene archivo de proyecto
+                emit historyChanged();
+                discardAutosave();
+                QStringList problems;
+                if (!result->missingMedia.isEmpty())
+                    problems.append(tr("No se encontraron %n archivos de medios:\n%1", nullptr, int(result->missingMedia.size()))
+                                        .arg(result->missingMedia.join(QLatin1Char('\n'))));
+                if (!result->warnings.isEmpty())
+                    problems.append(tr("Algunos elementos no se importaron:\n%1").arg(result->warnings.join(QLatin1Char('\n'))));
+                if (problems.isEmpty())
+                    emit notice(tr("Línea de tiempo importada de «%1».").arg(QFileInfo(url.toLocalFile()).fileName()));
+                else
+                    emit errorOccurred(problems.join(QStringLiteral("\n\n")));
+            } else {
+                emit errorOccurred(tr("No se pudo importar la línea de tiempo: %1").arg(result->error));
+            }
+            if (--m_importing == 0)
+                finishImport();
+            emit importingChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+bool ProjectController::exportOtio(const QUrl& url)
+{
+    QString path = url.toLocalFile();
+    if (QFileInfo(path).suffix().compare(QLatin1String(otio::kOtioExtension), Qt::CaseInsensitive) != 0)
+        path += QLatin1Char('.') + QLatin1String(otio::kOtioExtension);
+    QString error;
+    if (!otio::exportFile(project(), path, &error)) {
+        emit errorOccurred(tr("No se pudo exportar la línea de tiempo: %1").arg(error));
+        return false;
+    }
+    emit notice(tr("Línea de tiempo exportada a «%1». Los efectos de imagen (color, máscaras, transformaciones…) no se incluyen.")
+                    .arg(QFileInfo(path).fileName()));
+    return true;
+}
+
 // --- Autoguardado y recuperación ---
 
 QString ProjectController::autosavePath() const
@@ -291,6 +347,10 @@ void ProjectController::importFiles(const QList<QUrl>& urls)
             continue;
         if (QFileInfo(path).suffix().compare(QLatin1String(kProjectExtension), Qt::CaseInsensitive) == 0) {
             openProject(url);
+            continue;
+        }
+        if (QFileInfo(path).suffix().compare(QLatin1String(otio::kOtioExtension), Qt::CaseInsensitive) == 0) {
+            importOtio(url);
             continue;
         }
         const bool already = std::any_of(project().media.begin(), project().media.end(),

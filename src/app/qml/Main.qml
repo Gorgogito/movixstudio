@@ -162,6 +162,8 @@ ApplicationWindow {
             MenuSeparator {}
             MenuItem { text: qsTr("&Importar medios…") + "\tCtrl+I"; onTriggered: importDialog.open() }
             MenuItem { text: qsTr("&Exportar video…") + "\tCtrl+E"; onTriggered: exportDialog.open() }
+            MenuItem { text: qsTr("Importar línea de tiempo (&OTIO)…"); onTriggered: window.guard(() => otioImportDialog.open()) }
+            MenuItem { text: qsTr("Exportar línea de tiempo (O&TIO)…"); onTriggered: otioExportDialog.open() }
             MenuSeparator {}
             MenuItem { text: qsTr("Ajustes del &proyecto…"); onTriggered: settingsDialog.open() }
             MenuSeparator {}
@@ -511,6 +513,20 @@ ApplicationWindow {
         title: qsTr("Importar subtítulos")
         nameFilters: [qsTr("Subtítulos SubRip") + " (*.srt)", qsTr("Todos los archivos") + " (*)"]
         onAccepted: ai.importSrt(selectedFile)
+    }
+    FileDialog {
+        id: otioImportDialog
+        title: qsTr("Importar línea de tiempo")
+        nameFilters: [qsTr("OpenTimelineIO") + " (*.otio)"]
+        onAccepted: project.importOtio(selectedFile)
+    }
+    FileDialog {
+        id: otioExportDialog
+        title: qsTr("Exportar línea de tiempo")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "otio"
+        nameFilters: [qsTr("OpenTimelineIO") + " (*.otio)"]
+        onAccepted: project.exportOtio(selectedFile)
     }
     FileDialog {
         id: srtExportDialog

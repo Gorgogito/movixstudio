@@ -1723,6 +1723,26 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Descartar y abrir «%1»</source>
         <translation>Discard and open “%1”</translation>
     </message>
+    <message>
+        <source>Importar línea de tiempo (&amp;OTIO)…</source>
+        <translation>Import timeline (&amp;OTIO)…</translation>
+    </message>
+    <message>
+        <source>Exportar línea de tiempo (O&amp;TIO)…</source>
+        <translation>Export timeline (O&amp;TIO)…</translation>
+    </message>
+    <message>
+        <source>Importar línea de tiempo</source>
+        <translation>Import timeline</translation>
+    </message>
+    <message>
+        <source>OpenTimelineIO</source>
+        <translation>OpenTimelineIO</translation>
+    </message>
+    <message>
+        <source>Exportar línea de tiempo</source>
+        <translation>Export timeline</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -1878,6 +1898,65 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>La GPU no admite una textura de %1×%2.</source>
         <translation>The GPU does not support a %1×%2 texture.</translation>
+    </message>
+</context>
+<context>
+    <name>Otio</name>
+    <message>
+        <source>La línea de tiempo no se pudo convertir: %1</source>
+        <translation>The timeline could not be converted: %1</translation>
+    </message>
+    <message>
+        <source>Se omitió un elemento fuera de las pistas (%1).</source>
+        <translation>An item outside the tracks was skipped (%1).</translation>
+    </message>
+    <message>
+        <source>Se omitió una pista de tipo «%1».</source>
+        <translation>A track of kind “%1” was skipped.</translation>
+    </message>
+    <message>
+        <source>Se omitieron elementos de tipo %1.</source>
+        <translation>Items of type %1 were skipped.</translation>
+    </message>
+    <message>
+        <source>Se omitieron clips generados de tipo «%1».</source>
+        <translation>Generated clips of kind “%1” were skipped.</translation>
+    </message>
+    <message>
+        <source>Se omitieron clips sin archivo de medio («%1»).</source>
+        <translation>Clips without a media file were skipped (“%1”).</translation>
+    </message>
+    <message>
+        <source>Se omitieron clips con medios que no son archivos locales («%1»).</source>
+        <translation>Clips whose media are not local files were skipped (“%1”).</translation>
+    </message>
+    <message>
+        <source>Los clips en reversa o congelados se importan a velocidad normal.</source>
+        <translation>Reversed or frozen clips are imported at normal speed.</translation>
+    </message>
+    <message>
+        <source>No se importó el efecto «%1».</source>
+        <translation>The “%1” effect was not imported.</translation>
+    </message>
+    <message>
+        <source>«%1» no tiene video: se omitieron sus clips de video.</source>
+        <translation>“%1” has no video: its video clips were skipped.</translation>
+    </message>
+    <message>
+        <source>«%1» no tiene audio: se omitieron sus clips de audio.</source>
+        <translation>“%1” has no audio: its audio clips were skipped.</translation>
+    </message>
+    <message>
+        <source>El archivo no es un OTIO válido (%1).</source>
+        <translation>The file is not a valid OTIO file (%1).</translation>
+    </message>
+    <message>
+        <source>El archivo no contiene ninguna línea de tiempo de OpenTimelineIO.</source>
+        <translation>The file does not contain any OpenTimelineIO timeline.</translation>
+    </message>
+    <message>
+        <source>No se pudo abrir el archivo: %1</source>
+        <translation>Could not open the file: %1</translation>
     </message>
 </context>
 <context>
@@ -2181,6 +2260,28 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Quitar el recorte</source>
         <translation>Remove cutout</translation>
+    </message>
+    <message>
+        <source>Algunos elementos no se importaron:
+%1</source>
+        <translation>Some items were not imported:
+%1</translation>
+    </message>
+    <message>
+        <source>Línea de tiempo importada de «%1».</source>
+        <translation>Timeline imported from “%1”.</translation>
+    </message>
+    <message>
+        <source>No se pudo importar la línea de tiempo: %1</source>
+        <translation>Could not import the timeline: %1</translation>
+    </message>
+    <message>
+        <source>No se pudo exportar la línea de tiempo: %1</source>
+        <translation>Could not export the timeline: %1</translation>
+    </message>
+    <message>
+        <source>Línea de tiempo exportada a «%1». Los efectos de imagen (color, máscaras, transformaciones…) no se incluyen.</source>
+        <translation>Timeline exported to “%1”. Image effects (color, masks, transforms…) are not included.</translation>
     </message>
 </context>
 <context>

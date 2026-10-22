@@ -12,6 +12,9 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
   sobre la versión anterior) y ZIP portable; ningún componente propietario en la distribución.
 - Búsqueda de versiones nuevas al iniciar (desactivable) o desde Ayuda: con el instalador, descarga
   la actualización, comprueba su SHA-256 y la instala.
+- Intercambio de la línea de tiempo con otros editores (DaVinci Resolve, Premiere, Kdenlive…) en
+  formato **OpenTimelineIO** (`.otio`): importar y exportar pistas, clips, transiciones, velocidad,
+  títulos, compuestos y marcadores.
 
 **Novedades de F5** — en local, en la GPU cuando la hay (cualquier GPU con Vulkan)
 - Quitar el fondo sin pantalla verde (personas o cualquier sujeto) o recortar un objeto con un
@@ -166,7 +169,7 @@ real (tiempos por palabra dentro de ±0,15 s), detectan sus tramos de voz, usan 
 | Área | Qué se verifica |
 |---|---|
 | Medios | Sondeo; 180/180 fotogramas con timestamps exactos; búsqueda idéntica al bit; GPU ≡ CPU; HEVC 10 bits, VP9; remuestreo y búsqueda de audio exactos; sincronía A/V < 5 ms |
-| Núcleo | Conversión fotograma↔tiempo (también 29,97); cada edición y sus límites; cambio de fps; 3000 ediciones aleatorias con invariantes y deshacer/rehacer exactos; ida y vuelta del `.mxproj`, rutas relativas y archivos dañados |
+| Núcleo | Conversión fotograma↔tiempo (también 29,97); cada edición y sus límites; cambio de fps; 3000 ediciones aleatorias con invariantes y deshacer/rehacer exactos; ida y vuelta del `.mxproj`, rutas relativas y archivos dañados; ida y vuelta de OTIO y un `.otio` escrito por la biblioteca oficial (23,976 fps, código de tiempo, audio separado) |
 | Motor | Fotograma de fuente correcto por capa y decodificación en orden; mezcla exacta a la muestra, volumen, suma y silenciado |
 | Compositor | Colores BT.709, ajuste de aspecto con bandas, apilado de capas y orientación (render fuera de pantalla) |
 | Exportación | Fidelidad frente a la fuente (PSNR), sincronía A/V tras exportar, cada códec disponible, cambio de resolución/aspecto, cancelación |
