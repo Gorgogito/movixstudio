@@ -841,7 +841,7 @@ std::optional<NamedProperty> propertyFromName(const QString& name)
         {"x", edit::Property::PositionX}, {"y", edit::Property::PositionY}, {"scale", edit::Property::Scale},
         {"rotation", edit::Property::Rotation}, {"opacity", edit::Property::Opacity}, {"volume", edit::Property::Volume},
         {"cropLeft", edit::Property::CropLeft}, {"cropTop", edit::Property::CropTop}, {"cropRight", edit::Property::CropRight},
-        {"cropBottom", edit::Property::CropBottom},
+        {"cropBottom", edit::Property::CropBottom}, {"speed", edit::Property::Speed},
     };
     static const QHash<QString, edit::Property> kMask{
         {"x", edit::Property::MaskX}, {"y", edit::Property::MaskY}, {"width", edit::Property::MaskWidth},
@@ -1009,6 +1009,12 @@ QVariantMap ProjectController::clipGeometry(qint64 clipId) const
 void ProjectController::setClipSpeed(qint64 clipId, double speed)
 {
     apply(tr("Velocidad del clip"), [&](Project& p) { return edit::setClipSpeed(p, Id(clipId), speed); });
+}
+
+void ProjectController::setReverse(qint64 clipId, bool reverse)
+{
+    apply(reverse ? tr("Reproducir al revés") : tr("Reproducir hacia delante"),
+          [&](Project& p) { return edit::setReverse(p, Id(clipId), reverse); });
 }
 
 void ProjectController::setFades(qint64 clipId, double inSeconds, double outSeconds, bool audio)
@@ -1330,6 +1336,9 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
         {"duration", qint64(c->duration)},
         {"sourceIn", toSeconds(c->sourceIn)},
         {"speed", c->speed},
+        {"reverse", c->reverse},
+        {"speedRamp", c->hasRamp()},
+        {"canRamp", m && !m->isStill && !c->isGenerated()},
         {"enabled", c->enabled},
         {"hasAudio", m && m->hasAudio && !(t->kind == TrackKind::Video && c->audioDetached)},
         {"canDetachAudio", m && m->hasAudio && t->kind == TrackKind::Video && !c->audioDetached},

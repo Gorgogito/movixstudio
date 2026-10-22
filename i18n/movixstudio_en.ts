@@ -1114,10 +1114,6 @@
         <translation>Speed</translation>
     </message>
     <message>
-        <source>El audio conserva el tono a cualquier velocidad.</source>
-        <translation>Audio keeps its pitch at any speed.</translation>
-    </message>
-    <message>
         <source>Transición de entrada</source>
         <translation>Incoming transition</translation>
     </message>
@@ -1284,6 +1280,22 @@
     <message>
         <source>Nombre de la plantilla (con el mismo nombre se sustituye)</source>
         <translation>Template name (an existing one with the same name is replaced)</translation>
+    </message>
+    <message>
+        <source>Velocidad variable</source>
+        <translation>Variable speed</translation>
+    </message>
+    <message>
+        <source>Al revés</source>
+        <translation>Reverse</translation>
+    </message>
+    <message>
+        <source>Con velocidad variable o al revés, el audio cambia de tono (como una cinta).</source>
+        <translation>With variable speed or in reverse, the audio changes pitch (like tape).</translation>
+    </message>
+    <message>
+        <source>El audio conserva el tono a cualquier velocidad. Añade keyframes a la velocidad variable para hacer rampas.</source>
+        <translation>The audio keeps its pitch at any speed. Add keyframes to the variable speed to make ramps.</translation>
     </message>
 </context>
 <context>
@@ -2022,7 +2034,7 @@ Do you want to recover it instead of opening “%2”?</translation>
     </message>
     <message>
         <source>No hay plugins OpenFX instalados. Instálalos en la carpeta de plugins de MovixStudio o en la carpeta común de OpenFX del sistema y pulsa «Buscar de nuevo».</source>
-        <translation>No OpenFX plugins are installed. Install them in MovixStudio's plugin folder or in the system-wide OpenFX folder and press “Scan again”.</translation>
+        <translation>No OpenFX plugins are installed. Install them in MovixStudio&apos;s plugin folder or in the system-wide OpenFX folder and press “Scan again”.</translation>
     </message>
 </context>
 <context>
@@ -2056,10 +2068,6 @@ Do you want to recover it instead of opening “%2”?</translation>
         <translation>Clips whose media are not local files were skipped (“%1”).</translation>
     </message>
     <message>
-        <source>Los clips en reversa o congelados se importan a velocidad normal.</source>
-        <translation>Reversed or frozen clips are imported at normal speed.</translation>
-    </message>
-    <message>
         <source>No se importó el efecto «%1».</source>
         <translation>The “%1” effect was not imported.</translation>
     </message>
@@ -2082,6 +2090,10 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>No se pudo abrir el archivo: %1</source>
         <translation>Could not open the file: %1</translation>
+    </message>
+    <message>
+        <source>Los clips congelados se importan a velocidad normal.</source>
+        <translation>Frozen clips are imported at normal speed.</translation>
     </message>
 </context>
 <context>
@@ -2510,6 +2522,14 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Ajustar efecto</source>
         <translation>Adjust effect</translation>
+    </message>
+    <message>
+        <source>Reproducir al revés</source>
+        <translation>Play in reverse</translation>
+    </message>
+    <message>
+        <source>Reproducir hacia delante</source>
+        <translation>Play forwards</translation>
     </message>
 </context>
 <context>

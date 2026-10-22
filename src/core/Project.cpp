@@ -262,17 +262,64 @@ bool Project::validate(std::string* why) const
     return true;
 }
 
+TimeUs sourceAdvance(const ProjectSettings& s, const Clip& c, TimeUs offset)
+{
+    if (!c.hasRamp())
+        return c.speed == 1.0 ? offset : static_cast<TimeUs>(std::llround(double(offset) * c.speed));
+    if (offset <= 0)
+        return static_cast<TimeUs>(std::llround(double(offset) * c.speedAt(0)));
+    // Trapecios fotograma a fotograma: la velocidad varía linealmente dentro de cada uno.
+    double acc = 0.0;
+    for (FramePos k = 0;; ++k) {
+        const TimeUs a = s.frameToTime(k), b = s.frameToTime(k + 1);
+        if (offset <= a)
+            break;
+        const TimeUs end = std::min(offset, b);
+        const double v0 = c.speedAt(k), v1 = c.speedAt(k + 1);
+        const double vEnd = v0 + (v1 - v0) * double(end - a) / double(b - a);
+        acc += double(end - a) * (v0 + vEnd) / 2.0;
+        if (end < b)
+            break;
+    }
+    return static_cast<TimeUs>(std::llround(acc));
+}
+
+TimeUs clipSourceSpan(const ProjectSettings& s, const Clip& c)
+{
+    return sourceAdvance(s, c, s.frameToTime(c.duration));
+}
+
+FramePos framesForSource(const ProjectSettings& s, const Clip& c, TimeUs available)
+{
+    if (available <= 0)
+        return 0;
+    if (!c.hasRamp())
+        return s.framesIn(c.speed == 1.0 ? available : TimeUs(double(available) / c.speed));
+    // Fotogramas enteros cuyo final aún queda dentro del medio disponible.
+    double acc = 0.0;
+    for (FramePos k = 0;; ++k) {
+        const double step = double(s.frameToTime(k + 1) - s.frameToTime(k)) * (c.speedAt(k) + c.speedAt(k + 1)) / 2.0;
+        if (acc + step > double(available) + 1.0 || k > (FramePos(1) << 31))
+            return k;
+        acc += step;
+    }
+}
+
 TimeUs sourceTimeAt(const ProjectSettings& s, const Clip& c, FramePos frame)
 {
-    return sourceTimeAtTime(s, c, s.frameToTime(frame));
+    if (!c.reverse)
+        return sourceTimeAtTime(s, c, s.frameToTime(frame));
+    // Al revés, el fotograma muestra el principio (en el medio) del tramo que le corresponde.
+    const TimeUs offsetEnd = s.frameToTime(frame + 1) - s.frameToTime(c.start);
+    return c.sourceIn + clipSourceSpan(s, c) - sourceAdvance(s, c, offsetEnd);
 }
 
 TimeUs sourceTimeAtTime(const ProjectSettings& s, const Clip& c, TimeUs t)
 {
     const TimeUs offset = t - s.frameToTime(c.start);
-    if (c.speed == 1.0)
-        return c.sourceIn + offset;
-    return c.sourceIn + static_cast<TimeUs>(std::llround(double(offset) * c.speed));
+    if (c.reverse)
+        return c.sourceIn + clipSourceSpan(s, c) - sourceAdvance(s, c, offset);
+    return c.sourceIn + sourceAdvance(s, c, offset);
 }
 
 std::string trackKindName(TrackKind kind)

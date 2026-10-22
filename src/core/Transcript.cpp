@@ -76,17 +76,15 @@ std::vector<TimedWord> timelineWords(const Project& p)
     for (const AudioSegment& seg : audioSegmentsIn(p, 0, p.durationTime())) {
         if (!seg.media || !seg.media->transcript || std::max(seg.gainStart, seg.gainEnd) < 0.05f)
             continue;
-        const double speed = seg.speed > 0 ? seg.speed : 1.0;
-        auto toTimeline = [&](TimeUs source) {
-            return seg.timelineStart + TimeUs(std::llround(double(source - seg.sourceStart) / speed));
-        };
         for (const TranscriptWord& w : seg.media->transcript->words) {
-            const TimeUs mid = toTimeline((w.start + w.end) / 2);
+            const TimeUs mid = seg.timelineFor((w.start + w.end) / 2);
             if (mid < seg.timelineStart || mid >= seg.timelineEnd)
                 continue;
+            // (Al revés, el final de la palabra suena antes que su principio.)
+            const TimeUs a = seg.timelineFor(w.start), b = seg.timelineFor(w.end);
             TimedWord tw;
-            tw.start = std::max(seg.timelineStart, toTimeline(w.start));
-            tw.end = std::min(seg.timelineEnd, toTimeline(w.end));
+            tw.start = std::max(seg.timelineStart, std::min(a, b));
+            tw.end = std::min(seg.timelineEnd, std::max(a, b));
             tw.text = w.text;
             tw.clipId = seg.clipId;
             words.push_back(std::move(tw));
@@ -276,11 +274,9 @@ std::vector<FrameRange> silentRanges(const Project& p, const std::map<Id, std::v
         const auto it = speechByMedia.find(seg.media->id);
         if (it == speechByMedia.end())
             continue;
-        const double speed = seg.speed > 0 ? seg.speed : 1.0;
         for (const SpeechRange& r : it->second) {
-            const TimeUs a = seg.timelineStart + TimeUs(std::llround(double(r.start - seg.sourceStart) / speed));
-            const TimeUs b = seg.timelineStart + TimeUs(std::llround(double(r.end - seg.sourceStart) / speed));
-            const TimeUs from = std::max(a, seg.timelineStart), to = std::min(b, seg.timelineEnd);
+            const TimeUs a = seg.timelineFor(r.start), b = seg.timelineFor(r.end);
+            const TimeUs from = std::max(std::min(a, b), seg.timelineStart), to = std::min(std::max(a, b), seg.timelineEnd);
             if (to > from)
                 speech.emplace_back(from, to);
         }

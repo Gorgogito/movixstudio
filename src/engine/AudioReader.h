@@ -21,6 +21,10 @@ public:
     // `denoise` (0..1) aplica la reducción de ruido (RNNoise) si hay modelo (media::denoiseModel()).
     void mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out, double denoise = 0.0);
 
+    // Velocidad variable o al revés: suma `frames` muestras que recorren linealmente el medio de `from`
+    // a `to` (antes que `from` si va hacia atrás), sin conservar el tono.
+    void mixVarispeed(TimeUs from, TimeUs to, int frames, float gainStart, float gainEnd, float* out, double denoise = 0.0);
+
     int seekCount() const { return m_seeks; }
 
 private:
@@ -50,6 +54,13 @@ private:
     media::Denoiser m_denoiser;
     bool m_denoiseOn = false;
     std::vector<float> m_denoised;
+
+    // Ventana de muestras del medio para la lectura a velocidad variable (al revés se lee por
+    // bloques que acaban donde empezó el anterior, así que se busca una vez por bloque).
+    void ensureWindow(TimeUs lo, TimeUs hi, bool forward);
+    std::vector<float> m_win;
+    TimeUs m_winStart = kNoTime;
+    int64_t m_winFrames = 0;
 
     media::TempoFilter m_tempo;
     double m_tempoSpeed = 0.0;     // 0 = sin inicializar

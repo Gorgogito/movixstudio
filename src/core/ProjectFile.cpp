@@ -319,6 +319,10 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
         };
         if (c.denoise > 0)
             o["denoise"] = c.denoise;
+        if (c.hasRamp())
+            o["speedRamp"] = animatedToJson(c.speedRamp);
+        if (c.reverse)
+            o["reverse"] = true;
         if (c.isMulticam())
             o["multicam"] = QJsonObject{{"angle", c.angle}, {"audioAngle", c.audioAngle}};
         if (c.title)
@@ -398,6 +402,8 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         clip.duration = c["duration"].toInteger();
         clip.sourceIn = c["sourceIn"].toInteger();
         clip.speed = c["speed"].toDouble(1.0);
+        clip.speedRamp = c.contains("speedRamp") ? animatedFromJson(c["speedRamp"], clip.speed) : Animated(clip.speed);
+        clip.reverse = c["reverse"].toBool();
         clip.enabled = c["enabled"].toBool(true);
         // Versión 1: el volumen era un número llamado "gain".
         clip.volume = c.contains("volume") ? animatedFromJson(c["volume"], 1.0) : Animated(c["gain"].toDouble(1.0));

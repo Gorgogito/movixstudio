@@ -395,12 +395,35 @@ Rectangle {
                             onActivated: (i) => inspector.project.setClipSpeed(inspector.info.clipId, speeds[i])
                         }
                     }
+                    // Velocidad variable: keyframes de velocidad (rampas); la fija de arriba las quita.
+                    PropertyRow {
+                        visible: inspector.info.canRamp === true
+                        project: inspector.project
+                        clipId: inspector.info.clipId
+                        prop: "speed"
+                        label: qsTr("Velocidad variable")
+                        from: 0.1
+                        to: 4
+                        displayScale: 100
+                        suffix: "%"
+                    }
+                    RowLayout {
+                        visible: inspector.info.canRamp === true
+                        SmallLabel { text: qsTr("Al revés"); Layout.fillWidth: true }
+                        Switch {
+                            focusPolicy: Qt.NoFocus
+                            checked: inspector.info.reverse ?? false
+                            onToggled: inspector.project.setReverse(inspector.info.clipId, checked)
+                        }
+                    }
                     SmallLabel {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         font.pixelSize: Theme.fontSmall
                         color: Theme.textDisabled
-                        text: qsTr("El audio conserva el tono a cualquier velocidad.")
+                        text: inspector.info.speedRamp || inspector.info.reverse
+                              ? qsTr("Con velocidad variable o al revés, el audio cambia de tono (como una cinta).")
+                              : qsTr("El audio conserva el tono a cualquier velocidad. Añade keyframes a la velocidad variable para hacer rampas.")
                     }
                 }
 

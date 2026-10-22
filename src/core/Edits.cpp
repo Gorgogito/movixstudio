@@ -28,7 +28,8 @@ void insertSorted(Track& t, Clip clip)
 void forEachAnimated(Clip& c, const auto& fn)
 {
     Transform& t = c.transform;
-    for (Animated* a : {&t.x, &t.y, &t.scale, &t.rotation, &t.opacity, &t.cropLeft, &t.cropTop, &t.cropRight, &t.cropBottom, &c.volume})
+    for (Animated* a : {&t.x, &t.y, &t.scale, &t.rotation, &t.opacity, &t.cropLeft, &t.cropTop, &t.cropRight, &t.cropBottom, &c.volume,
+                        &c.speedRamp})
         fn(*a);
     for (Mask& m : c.masks)
         for (Animated* a : {&m.x, &m.y, &m.width, &m.height, &m.rotation, &m.feather})
@@ -54,10 +55,13 @@ void shiftKeys(Clip& c, FramePos delta)
     forEachKeyFrame(c, [&](std::int64_t& f) { f += delta; });
 }
 
-// Instante del medio tras avanzar `frames` fotogramas desde el inicio del clip.
+// Inicio (en el medio) del tramo del clip tras avanzar `frames` fotogramas su comienzo: hacia delante
+// avanza; al revés, el comienzo del clip muestra el final del tramo, así que sourceIn no cambia.
 TimeUs advanceSource(const Project& p, const Clip& c, FramePos frames)
 {
-    return std::max<TimeUs>(0, sourceTimeAt(p.settings, c, c.start + frames));
+    if (c.reverse)
+        return c.sourceIn;
+    return std::max<TimeUs>(0, c.sourceIn + sourceAdvance(p.settings, c, p.settings.frameToTime(frames)));
 }
 
 void clampFades(Clip& c)
@@ -69,10 +73,12 @@ void clampFades(Clip& c)
 }
 
 // Parte izquierda (hasta `at`) y derecha (desde `at`) de un clip, con su contenido intacto.
-Clip leftPart(const Clip& c, FramePos at)
+Clip leftPart(const Project& p, const Clip& c, FramePos at)
 {
     Clip left = c;
     left.duration = at - c.start;
+    if (c.reverse) // la izquierda se queda con el final del tramo del medio
+        left.sourceIn = c.sourceIn + clipSourceSpan(p.settings, c) - clipSourceSpan(p.settings, left);
     left.fadeOut = 0;
     left.audioFadeOut = 0;
     clampFades(left);
@@ -105,7 +111,7 @@ void clearRange(Project& p, Track& t, FramePos a, FramePos b)
             continue;
         }
         if (c.start < a)
-            result.push_back(leftPart(c, a));
+            result.push_back(leftPart(p, c, a));
         if (c.end() > b) // la izquierda conserva el id original; la derecha recibe uno nuevo
             result.push_back(rightPart(p, c, b, c.start < a ? p.newId() : c.id));
     }
@@ -119,7 +125,7 @@ void openGap(Project& p, Track& t, FramePos at, FramePos length)
         Clip& c = t.clips[i];
         if (c.start < at && c.end() > at) { // el clip que cruza el punto se divide
             Clip right = rightPart(p, c, at, p.newId());
-            c = leftPart(c, at);
+            c = leftPart(p, c, at);
             t.clips.insert(t.clips.begin() + std::ptrdiff_t(i) + 1, right);
             break;
         }
@@ -147,6 +153,7 @@ void clampValue(Property prop, double& v)
     case Property::Scale: v = std::clamp(v, 0.01, 20.0); break;
     case Property::Opacity: v = std::clamp(v, 0.0, 1.0); break;
     case Property::Volume: v = std::clamp(v, 0.0, 4.0); break;
+    case Property::Speed: v = std::clamp(v, 0.1, 16.0); break;
     case Property::PositionX:
     case Property::PositionY: v = std::clamp(v, -5.0, 5.0); break;
     case Property::Rotation:
@@ -168,7 +175,8 @@ double defaultValue(Property prop)
     switch (prop) {
     case Property::Scale:
     case Property::Opacity:
-    case Property::Volume: return 1.0;
+    case Property::Volume:
+    case Property::Speed: return 1.0;
     case Property::MaskX:
     case Property::MaskY: return 0.5;
     case Property::MaskWidth:
@@ -245,6 +253,8 @@ void normalize(Project& p)
                 Clip& c = t.clips[i];
                 if (c.isCompound()) // la secuencia pudo acortarse mientras se editaba
                     c.duration = std::clamp<FramePos>(maxClipFrames(p, c), 1, c.duration);
+                if (!c.hasRamp())
+                    c.speedRamp.value = c.speed; // el primer keyframe parte de la velocidad fija
                 clampFades(c);
                 if (!c.transitionIn.active()) {
                     c.transitionIn = {};
@@ -422,7 +432,7 @@ std::vector<Id> breakCompound(Project& p, Id clipId)
                 if (piece.start < a)
                     piece = rightPart(p, piece, a, piece.id);
                 if (piece.end() > b)
-                    piece = leftPart(piece, b);
+                    piece = leftPart(p, piece, b);
                 piece.id = p.newId(); // la secuencia original se conserva (deshacer)
                 piece.start += offset;
                 while (p.tracksOf(k).size() <= first + ti)
@@ -777,12 +787,20 @@ FramePos maxClipFrames(const Project& p, const Clip& c)
 {
     if (c.title)
         return p.settings.framesIn(kUnlimitedDuration);
+    TimeUs total = 0; // medio (o secuencia) disponible
     if (c.isCompound()) {
-        const TimeUs remaining = p.settings.frameToTime(p.sequenceDuration(c.sequenceId)) - c.sourceIn;
-        return p.settings.framesIn(c.speed == 1.0 ? remaining : TimeUs(double(remaining) / c.speed));
+        total = p.settings.frameToTime(p.sequenceDuration(c.sequenceId));
+    } else {
+        const MediaItem* m = p.findMedia(c.mediaId);
+        if (!m)
+            return c.duration;
+        if (m->isStill)
+            return p.settings.framesIn(kUnlimitedDuration);
+        total = m->duration;
     }
-    const MediaItem* m = p.findMedia(c.mediaId);
-    return m ? availableFrames(p, *m, c.sourceIn, c.speed) : c.duration;
+    // Al revés, el clip va del final de su tramo hacia el principio del medio.
+    const TimeUs available = c.reverse ? c.sourceIn + clipSourceSpan(p.settings, c) : total - c.sourceIn;
+    return framesForSource(p.settings, c, available);
 }
 
 Id placeClip(Project& p, Id trackId, Id mediaId, FramePos start, TimeUs sourceIn, FramePos duration, PlaceMode mode)
@@ -1027,7 +1045,13 @@ std::optional<FramePos> trimClip(Project& p, Id clipId, Edge edge, FramePos posi
     if (edge == Edge::Start) {
         const FramePos prevEnd = loc.index > 0 ? clips[loc.index - 1].end() : 0;
         // Fotogramas del medio anteriores a sourceIn que se pueden recuperar.
-        const FramePos before = unlimited ? c.start : p.settings.timeToFrame(TimeUs(double(c.sourceIn) / c.speed));
+        // (Al revés, alargar el comienzo muestra medio posterior al final del tramo.)
+        TimeUs recoverable = c.sourceIn;
+        if (c.reverse) {
+            const TimeUs total = c.isCompound() ? p.settings.frameToTime(p.sequenceDuration(c.sequenceId)) : m ? m->duration : 0;
+            recoverable = std::max<TimeUs>(0, total - c.sourceIn - clipSourceSpan(p.settings, c));
+        }
+        const FramePos before = unlimited ? c.start : p.settings.timeToFrame(TimeUs(double(recoverable) / c.speedAt(0)));
         const FramePos lo = std::max(prevEnd, c.start - before);
         const FramePos hi = c.end() - 1;
         const FramePos newStart = std::clamp(position, lo, hi);
@@ -1049,7 +1073,10 @@ std::optional<FramePos> trimClip(Project& p, Id clipId, Edge edge, FramePos posi
     if (hi < lo)
         return std::nullopt;
     const FramePos newEnd = std::clamp(position, lo, hi);
+    const TimeUs spanBefore = clipSourceSpan(p.settings, c);
     c.duration = newEnd - c.start;
+    if (c.reverse) // el final del clip muestra el principio del tramo: se mueve sourceIn
+        c.sourceIn = std::max<TimeUs>(0, c.sourceIn + spanBefore - clipSourceSpan(p.settings, c));
     normalize(p);
     return newEnd;
 }
@@ -1063,7 +1090,7 @@ Id splitClip(Project& p, Id clipId, FramePos at)
     if (at <= c.start || at >= c.end())
         return kNoId;
     Clip right = rightPart(p, c, at, p.newId());
-    c = leftPart(c, at);
+    c = leftPart(p, c, at);
     loc.track->clips.insert(loc.track->clips.begin() + std::ptrdiff_t(loc.index) + 1, right);
     normalize(p);
     return right.id;
@@ -1137,6 +1164,7 @@ Animated* property(Clip& c, Property prop, int maskIndex)
     case Property::Rotation: return &c.transform.rotation;
     case Property::Opacity: return &c.transform.opacity;
     case Property::Volume: return &c.volume;
+    case Property::Speed: return &c.speedRamp;
     case Property::CropLeft: return &c.transform.cropLeft;
     case Property::CropTop: return &c.transform.cropTop;
     case Property::CropRight: return &c.transform.cropRight;
@@ -1156,12 +1184,38 @@ const Animated* property(const Clip& c, Property prop, int maskIndex)
     return property(const_cast<Clip&>(c), prop, maskIndex);
 }
 
+namespace {
+
+// La velocidad variable solo en clips de un medio con duración (no títulos, imágenes ni compuestos).
+bool canRamp(const Project& p, const Clip& c)
+{
+    const MediaItem* m = c.isGenerated() ? nullptr : p.findMedia(c.mediaId);
+    return m && !m->isStill;
+}
+
+// Con velocidad variable el clip no puede pedir más medio del que hay: se acorta si hace falta.
+void fitRamp(Project& p, Clip& c)
+{
+    c.duration = std::clamp<FramePos>(maxClipFrames(p, c), 1, c.duration);
+    clampFades(c);
+}
+
+} // namespace
+
 bool setProperty(Project& p, Id clipId, Property prop, FramePos rel, double value, int maskIndex)
 {
     Clip* c = p.findClip(clipId);
     if (!c || p.trackOfClip(clipId)->locked)
         return false;
     clampValue(prop, value);
+    if (prop == Property::Speed) {
+        if (!c->hasRamp()) // sin keyframes: la velocidad fija (que ajusta la duración)
+            return setClipSpeed(p, clipId, value);
+        const Animated before = c->speedRamp;
+        c->speedRamp.set(rel, value);
+        fitRamp(p, *c);
+        return !(c->speedRamp == before);
+    }
     Animated* a = property(*c, prop, maskIndex);
     if (!a)
         return false;
@@ -1178,9 +1232,18 @@ bool toggleKeyframe(Project& p, Id clipId, Property prop, FramePos rel, int mask
     Animated* a = property(*c, prop, maskIndex);
     if (!a)
         return false;
-    if (a->keyAt(rel))
-        return a->removeKey(rel);
-    a->setKey(rel, a->at(rel));
+    if (prop == Property::Speed) {
+        if (!canRamp(p, *c))
+            return false;
+        c->speedRamp.value = c->speed;
+    }
+    if (a->keyAt(rel)) {
+        a->removeKey(rel);
+    } else {
+        a->setKey(rel, a->at(rel));
+    }
+    if (prop == Property::Speed)
+        fitRamp(p, *c);
     return true;
 }
 
@@ -1207,6 +1270,11 @@ bool resetProperty(Project& p, Id clipId, Property prop, int maskIndex)
     Animated* a = property(*c, prop, maskIndex);
     if (!a)
         return false;
+    if (prop == Property::Speed) { // velocidad normal y sin keyframes (ajusta la duración)
+        const bool hadRamp = c->hasRamp();
+        c->speedRamp = Animated(c->speed);
+        return setClipSpeed(p, clipId, 1.0) || hadRamp;
+    }
     const Animated reset(defaultValue(prop));
     if (*a == reset)
         return false;
@@ -1236,10 +1304,23 @@ bool setClipSpeed(Project& p, Id clipId, double speed)
     probe.speed = speed;
     const FramePos available = m ? availableFrames(p, *m, c.sourceIn, speed) : maxClipFrames(p, probe);
     duration = std::min({duration, available, nextStart - c.start});
+    c.speedRamp = Animated(speed); // una velocidad fija sustituye a la variable
     forEachKeyFrame(c, [&](std::int64_t& f) { f = std::llround(double(f) * ratio); });
     c.speed = speed;
     c.duration = std::max<FramePos>(1, duration);
     normalize(p);
+    return true;
+}
+
+bool setReverse(Project& p, Id clipId, bool reverse)
+{
+    auto loc = p.locateClip(clipId);
+    if (!loc.track || loc.track->locked)
+        return false;
+    Clip& c = *loc.clip();
+    if (c.reverse == reverse || !canRamp(p, c))
+        return false;
+    c.reverse = reverse; // el mismo tramo del medio: sourceIn es su principio en ambos sentidos
     return true;
 }
 

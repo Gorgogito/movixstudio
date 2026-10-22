@@ -20,7 +20,7 @@ namespace movix::core {
 // Versión 5 (F4): transcripción de los medios, reducción de ruido por clip, marcadores.
 // Versión 6 (F5): mates de IA por clip.
 // Versión 7 (F6): clips multicámara (ángulo y audio).
-// Versión 8 (F6): efectos OpenFX por clip.
+// Versión 8 (F6): efectos OpenFX por clip, velocidad variable y clips al revés.
 inline constexpr int kProjectFormatVersion = 8;
 inline constexpr const char* kProjectExtension = "mxproj";
 

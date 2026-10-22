@@ -149,6 +149,9 @@ struct Clip {
     FramePos duration = 0;
     TimeUs sourceIn = 0;   // instante del medio que se ve/oye en `start`
     double speed = 1.0;    // velocidad de reproducción del medio (2 = el doble de rápido)
+    // Velocidad variable: con keyframes manda sobre `speed` (su valor sin keyframes es `speed`).
+    Animated speedRamp{1.0};
+    bool reverse = false;  // el tramo del medio se recorre de atrás hacia delante
     bool enabled = true;
 
     Transform transform;
@@ -171,6 +174,8 @@ struct Clip {
     FramePos end() const { return start + duration; }
     bool isCompound() const { return sequenceId != kNoId; }
     bool isMulticam() const { return isCompound() && angle >= 0; }
+    bool hasRamp() const { return speedRamp.isAnimated(); }
+    double speedAt(FramePos rel) const { return hasRamp() ? speedRamp.at(rel) : speed; }
     bool isGenerated() const { return title.has_value() || isCompound(); }
     bool operator==(const Clip&) const = default;
 };
@@ -280,8 +285,16 @@ std::string trackKindName(TrackKind kind);
 // Duración que se considera disponible en imágenes fijas y títulos (se pueden alargar "sin límite").
 inline constexpr TimeUs kUnlimitedDuration = 24LL * 3600 * kUsPerSecond;
 
+// Avance en el medio tras `offset` µs desde el inicio del clip, integrando su velocidad (lineal entre
+// fotogramas si es variable). Antes del clip, a la velocidad de su primer fotograma.
+TimeUs sourceAdvance(const ProjectSettings& s, const Clip& c, TimeUs offset);
+// Tramo del medio que recorre el clip entero.
+TimeUs clipSourceSpan(const ProjectSettings& s, const Clip& c);
+// Fotogramas que caben en `available` µs de medio (desde el inicio del clip, con su velocidad).
+FramePos framesForSource(const ProjectSettings& s, const Clip& c, TimeUs available);
+
 // Instante del medio que muestra el clip en el fotograma `frame` de la línea de tiempo
-// (puede quedar fuera del clip: lo usan las transiciones).
+// (puede quedar fuera del clip: lo usan las transiciones). Al revés, el del final de su tramo.
 TimeUs sourceTimeAt(const ProjectSettings& s, const Clip& c, FramePos frame);
 // Lo mismo para un instante de la línea de tiempo (audio, exacto al microsegundo).
 TimeUs sourceTimeAtTime(const ProjectSettings& s, const Clip& c, TimeUs t);

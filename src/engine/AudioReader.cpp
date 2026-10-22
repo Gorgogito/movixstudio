@@ -194,6 +194,59 @@ void AudioReader::readTempo(TimeUs t, int frames, double speed, float* dst)
     }
 }
 
+void AudioReader::ensureWindow(TimeUs lo, TimeUs hi, bool forward)
+{
+    const auto toFrames = [&](TimeUs d) { return int64_t(std::ceil(double(d) * m_rate / double(kUsPerSecond))); };
+    const auto toTime = [&](int64_t f) { return TimeUs(std::llround(double(f) * double(kUsPerSecond) / m_rate)); };
+    const TimeUs winEnd = m_winStart == kNoTime ? kNoTime : m_winStart + toTime(m_winFrames);
+    if (m_winStart != kNoTime && lo >= m_winStart && hi <= winEnd)
+        return;
+    if (m_winStart != kNoTime && forward && lo >= m_winStart && lo <= winEnd) {
+        // Continuación hacia delante: se descarta lo ya pasado y se añade a partir del final.
+        const int64_t drop = std::clamp<int64_t>(toFrames(lo - m_winStart) - 2, 0, m_winFrames);
+        m_win.erase(m_win.begin(), m_win.begin() + std::ptrdiff_t(drop * m_channels));
+        m_winStart += toTime(drop);
+        m_winFrames -= drop;
+        const int64_t add = std::max<int64_t>(toFrames(hi - winEnd) + 4, m_rate / 2);
+        const size_t at = m_win.size();
+        m_win.resize(at + size_t(add * m_channels));
+        readSource(winEnd, int(add), m_win.data() + at);
+        m_winFrames += add;
+        return;
+    }
+    // Ventana nueva: hacia delante empieza en `lo`; hacia atrás acaba en `hi` (y abarca 2 s).
+    const int64_t need = toFrames(hi - lo) + 4;
+    const int64_t n = std::max<int64_t>(forward ? m_rate : int64_t(m_rate) * 2, need);
+    const TimeUs start = forward ? lo : std::max<TimeUs>(0, hi + toTime(4) - toTime(n));
+    const int64_t frames = forward ? n : std::max<int64_t>(need, toFrames(hi - start) + 4);
+    m_win.assign(size_t(frames * m_channels), 0.0f);
+    readSource(start, int(frames), m_win.data());
+    m_winStart = start;
+    m_winFrames = frames;
+}
+
+void AudioReader::mixVarispeed(TimeUs from, TimeUs to, int frames, float gainStart, float gainEnd, float* out, double denoise)
+{
+    if (!m_decoder.isOpen() || frames <= 0)
+        return;
+    configureDenoise(denoise);
+    ensureWindow(std::min(from, to), std::max(from, to), from <= to);
+    const float step = frames > 1 ? (gainEnd - gainStart) / float(frames) : 0.0f;
+    for (int i = 0; i < frames; ++i) {
+        // Interpolación lineal entre las dos muestras de la ventana que rodean el instante.
+        const double t = double(from) + double(to - from) * (double(i) + 0.5) / double(frames);
+        const double pos = (t - double(m_winStart)) * m_rate / double(kUsPerSecond);
+        const int64_t i0 = std::clamp<int64_t>(int64_t(std::floor(pos)), 0, std::max<int64_t>(0, m_winFrames - 2));
+        const float frac = float(std::clamp(pos - double(i0), 0.0, 1.0));
+        const float g = gainStart + step * float(i);
+        for (int c = 0; c < m_channels; ++c) {
+            const float a = m_win[size_t(i0 * m_channels + c)];
+            const float b = i0 + 1 < m_winFrames ? m_win[size_t((i0 + 1) * m_channels + c)] : a;
+            out[size_t(i) * size_t(m_channels) + size_t(c)] += (a + (b - a) * frac) * g;
+        }
+    }
+}
+
 void AudioReader::mixInto(TimeUs t, int frames, double speed, float gainStart, float gainEnd, float* out, double denoise)
 {
     if (!m_decoder.isOpen() || frames <= 0)

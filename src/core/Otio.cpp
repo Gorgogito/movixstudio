@@ -276,9 +276,13 @@ private:
             meta["linked"] = true;
 
         QJsonArray effects;
-        if (c.speed != 1.0) {
+        // OTIO no tiene velocidad variable: se exporta la media; al revés, negativa.
+        const double speed = c.hasRamp() && c.duration > 0
+                                 ? double(clipSourceSpan(m_p.settings, c)) / double(m_p.settings.frameToTime(c.duration))
+                                 : c.speed;
+        if (speed != 1.0 || c.reverse) {
             effects.append(QJsonObject{{"OTIO_SCHEMA", "LinearTimeWarp.1"}, {"name", QString()}, {"metadata", QJsonObject{}},
-                                       {"effect_name", "LinearTimeWarp"}, {"time_scalar", c.speed}});
+                                       {"effect_name", "LinearTimeWarp"}, {"time_scalar", c.reverse ? -speed : speed}});
         }
         const QJsonObject sourceRange = timeRange(toValue(c.sourceIn), double(c.duration), m_rate);
 
@@ -652,6 +656,7 @@ private:
             seq.name = name.isEmpty() ? "Compuesto" : name.toStdString();
             importStack(o, seq.videoTracks, seq.audioTracks, seq.markers);
             c.sequenceId = seq.id;
+            c.reverse = false; // (sin compuestos al revés)
             c.sourceIn = source ? std::max<TimeUs>(0, toUs(source->start)) : 0;
             c.fadeIn = c.fadeOut = 0;
             m_p.sequences.push_back(std::move(seq));
@@ -671,6 +676,8 @@ private:
             }
             c.title = titleFromJson(ref["parameters"].toObject());
             c.speed = 1.0;
+            c.speedRamp = Animated(1.0);
+            c.reverse = false;
             c.audioFadeIn = c.audioFadeOut = 0;
             return c;
         }
@@ -702,19 +709,22 @@ private:
             const QString schema = schemaName(e);
             if (schema == QLatin1String("LinearTimeWarp")) {
                 const double scalar = e["time_scalar"].toDouble(1.0);
-                if (scalar <= 0) {
-                    warn(QCoreApplication::translate("Otio", "Los clips en reversa o congelados se importan a velocidad normal."));
+                if (scalar == 0) {
+                    warn(QCoreApplication::translate("Otio", "Los clips congelados se importan a velocidad normal."));
                     continue;
                 }
-                c.speed *= scalar;
+                c.speed *= std::abs(scalar);
+                if (scalar < 0)
+                    c.reverse = !c.reverse;
             } else if (schema == QLatin1String("FreezeFrame")) {
-                warn(QCoreApplication::translate("Otio", "Los clips en reversa o congelados se importan a velocidad normal."));
+                warn(QCoreApplication::translate("Otio", "Los clips congelados se importan a velocidad normal."));
             } else {
                 const QString effect = e["effect_name"].toString(e["name"].toString(schema));
                 warn(QCoreApplication::translate("Otio", "No se importó el efecto «%1».").arg(effect));
             }
         }
         c.speed = std::clamp(c.speed, 0.01, 100.0);
+        c.speedRamp = Animated(c.speed);
         return true;
     }
 

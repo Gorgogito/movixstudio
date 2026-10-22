@@ -74,7 +74,7 @@ bool setClipEnabled(Project& p, Id clipId, bool enabled);
 
 // --- Propiedades animables ---
 enum class Property {
-    PositionX, PositionY, Scale, Rotation, Opacity, Volume,
+    PositionX, PositionY, Scale, Rotation, Opacity, Volume, Speed,
     CropLeft, CropTop, CropRight, CropBottom,
     MaskX, MaskY, MaskWidth, MaskHeight, MaskRotation, MaskFeather,
 };
@@ -93,6 +93,8 @@ bool resetProperty(Project& p, Id clipId, Property prop, int maskIndex = 0);
 // --- Velocidad, fundidos, transiciones, títulos ---
 // Cambia la velocidad conservando el inicio; la duración se ajusta (limitada por el medio y el clip siguiente).
 bool setClipSpeed(Project& p, Id clipId, double speed);
+// Reproducir el tramo del medio al revés (clips de medio con video o audio, no compuestos).
+bool setReverse(Project& p, Id clipId, bool reverse);
 bool setFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 bool setAudioFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 bool setDenoise(Project& p, Id clipId, double amount); // 0..1; solo clips con audio

@@ -79,10 +79,17 @@ struct AudioSegment {
     TimeUs timelineStart = 0; // intersección del clip con el intervalo pedido
     TimeUs timelineEnd = 0;
     TimeUs sourceStart = 0;   // instante del medio en `timelineStart` (negativo = antes del medio)
+    // Velocidad variable o al revés: instante del medio en `timelineEnd`; el tramo se recorre
+    // linealmente de sourceStart a sourceEnd (puede ir hacia atrás) sin conservar el tono.
+    TimeUs sourceEnd = kNoTime;
     double speed = 1.0;
     float gainStart = 1.0f;   // ganancia total al principio y al final del tramo (rampa lineal)
     float gainEnd = 1.0f;
     double denoise = 0.0;     // reducción de ruido del clip (0..1)
+
+    bool varispeed() const { return sourceEnd != kNoTime; }
+    // Instante de la línea de tiempo en que suena el instante `source` del medio.
+    TimeUs timelineFor(TimeUs source) const;
 };
 
 // Tramos de audio que suenan en [t0, t1): clips de pistas de audio y el audio de los clips de

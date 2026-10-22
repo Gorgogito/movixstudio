@@ -272,6 +272,22 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       oficial y con cuatro ejemplos del repositorio de OpenFX (API en C y biblioteca de apoyo)
 - [ ] Linux y macOS
 
+### Mejoras pendientes de fases anteriores (orden pedido)
+
+- [x] Velocidad variable (keyframes de velocidad, integrada fotograma a fotograma) y clips al revés
+      (también combinados). Video hacia atrás por bloques de 1 s guardados (sin buscar en cada
+      fotograma); audio a velocidad variable o al revés leído por ventanas y remuestreado (cambia
+      el tono, como una cinta). OTIO: al revés como velocidad negativa; la variable, como su media
+- [ ] Interpolación de los keyframes desde la interfaz
+- [ ] Animaciones de texto
+- [ ] Atajos configurables
+- [ ] Selección por recuadro y edición de varios clips a la vez
+- [ ] Proxies automáticos y decodificación de copia cero (exportar 1080p60 a más de ~94 fps)
+- [ ] Visor HDR, corrección en luz lineal, puntos de máscara animables
+- [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas
+      con fundidos
+- [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO
+
 ### Limitaciones de OpenFX
 
 - Sin animación de los parámetros, sin interfaces propias de los plugins (overlays) y sin contextos

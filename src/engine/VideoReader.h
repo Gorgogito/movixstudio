@@ -2,6 +2,7 @@
 
 #include "media/VideoDecoder.h"
 
+#include <deque>
 #include <memory>
 #include <string>
 
@@ -9,7 +10,8 @@ namespace movix::engine {
 
 // Lector de video de un clip: entrega el fotograma que se ve en cada instante del medio.
 // Avanza decodificando en orden mientras las peticiones van hacia delante (reproducción) y
-// solo busca cuando se salta hacia atrás o muy adelante (navegación).
+// solo busca cuando se salta hacia atrás o muy adelante (navegación). Hacia atrás en pasos cortos
+// (clips al revés) decodifica por bloques y los guarda, para no buscar en cada fotograma.
 class VideoReader {
 public:
     bool open(const std::string& path, bool hardware, std::string* error = nullptr);
@@ -24,6 +26,11 @@ public:
 private:
     std::shared_ptr<media::VideoFrame> decodeNext();
     void seekTo(TimeUs t);
+    // Al revés: se decodifica por bloques hacia atrás y se guardan los fotogramas (hasta 256 MB).
+    std::shared_ptr<const media::VideoFrame> fromCache(TimeUs t) const;
+    void fillBackward(TimeUs t);
+    std::deque<std::shared_ptr<media::VideoFrame>> m_cache; // continuos, ordenados por pts
+    size_t m_cacheBytes = 0;
 
     media::VideoDecoder m_decoder;
     std::shared_ptr<media::VideoFrame> m_current;

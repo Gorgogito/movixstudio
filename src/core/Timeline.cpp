@@ -342,18 +342,33 @@ void collectAudio(const Project& p, std::span<const Track> vtracks, std::span<co
                 continue;
             }
 
-            AudioSegment seg;
-            seg.clipId = c.id;
-            seg.instance = instanceKey(outer, c.id);
-            seg.media = m;
-            seg.timelineStart = from;
-            seg.timelineEnd = to;
-            seg.sourceStart = sourceTimeAtTime(s, c, seg.timelineStart);
-            seg.speed = c.speed;
-            seg.denoise = c.denoise;
-            seg.gainStart = gainAt(seg.timelineStart);
-            seg.gainEnd = gainAt(seg.timelineEnd);
-            segments.push_back(seg);
+            auto emit = [&](TimeUs a, TimeUs b) {
+                AudioSegment seg;
+                seg.clipId = c.id;
+                seg.instance = instanceKey(outer, c.id);
+                seg.media = m;
+                seg.timelineStart = a;
+                seg.timelineEnd = b;
+                seg.sourceStart = sourceTimeAtTime(s, c, a);
+                seg.speed = c.speed;
+                if (c.hasRamp() || c.reverse) {
+                    seg.sourceEnd = sourceTimeAtTime(s, c, b);
+                    seg.speed = b > a ? double(std::llabs(seg.sourceEnd - seg.sourceStart)) / double(b - a) : c.speed;
+                }
+                seg.denoise = c.denoise;
+                seg.gainStart = gainAt(a);
+                seg.gainEnd = gainAt(b);
+                segments.push_back(seg);
+            };
+            if (c.hasRamp()) { // un tramo por fotograma: la velocidad cambia de uno a otro
+                for (TimeUs a = from; a < to;) {
+                    const TimeUs b = std::min(to, s.frameToTime(s.timeToFrame(a) + 1));
+                    emit(a, std::max(b, a + 1));
+                    a = std::max(b, a + 1);
+                }
+            } else {
+                emit(from, to);
+            }
         }
     };
     for (const Track& t : vtracks)
@@ -363,6 +378,17 @@ void collectAudio(const Project& p, std::span<const Track> vtracks, std::span<co
 }
 
 } // namespace
+
+TimeUs AudioSegment::timelineFor(TimeUs source) const
+{
+    if (varispeed()) {
+        const TimeUs span = sourceEnd - sourceStart;
+        if (span == 0)
+            return timelineStart;
+        return timelineStart + TimeUs(std::llround(double(source - sourceStart) * double(timelineEnd - timelineStart) / double(span)));
+    }
+    return timelineStart + TimeUs(std::llround(double(source - sourceStart) / (speed > 0 ? speed : 1.0)));
+}
 
 std::vector<AudioSegment> audioSegmentsIn(const Project& p, TimeUs t0, TimeUs t1)
 {

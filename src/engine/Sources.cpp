@@ -336,6 +336,17 @@ void AudioMixer::mix(const core::Project& project, int64_t samplePos, int frames
         }
         if (e.failed)
             continue;
+        if (seg.varispeed()) {
+            // Instantes del medio en la primera y la última muestra cubiertas (recorrido lineal).
+            const double span = double(seg.timelineEnd - seg.timelineStart);
+            auto sourceAt = [&](int64_t sample) {
+                const double f = span > 0 ? double(sampleToTime(samplePos + sample) - seg.timelineStart) / span : 0.0;
+                return seg.sourceStart + TimeUs(std::llround(f * double(seg.sourceEnd - seg.sourceStart)));
+            };
+            e.reader->mixVarispeed(sourceAt(first), sourceAt(last), int(last - first), seg.gainStart, seg.gainEnd,
+                                   out + size_t(first) * size_t(m_channels), seg.denoise);
+            continue;
+        }
         // Instante del medio que corresponde a la primera muestra cubierta.
         const TimeUs offset = sampleToTime(samplePos + first) - seg.timelineStart;
         const TimeUs sourceTime = seg.sourceStart + (seg.speed == 1.0 ? offset : TimeUs(double(offset) * seg.speed));

@@ -134,7 +134,8 @@ public:
     Q_INVOKABLE QVariantMap clipGeometry(qint64 clipId) const;
 
     // --- Velocidad, fundidos, transiciones, títulos, audio ---
-    Q_INVOKABLE void setClipSpeed(qint64 clipId, double speed);
+    Q_INVOKABLE void setClipSpeed(qint64 clipId, double speed); // fija (quita la variable)
+    Q_INVOKABLE void setReverse(qint64 clipId, bool reverse);
     Q_INVOKABLE void setFades(qint64 clipId, double inSeconds, double outSeconds, bool audio);
     Q_INVOKABLE void setDenoise(qint64 clipId, double amount);
 
