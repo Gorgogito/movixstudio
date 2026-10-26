@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Animated.h"
+
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -9,7 +11,8 @@
 // Anfitrión de efectos OpenFX (plugins .ofx de terceros, API C de la Academy Software Foundation).
 // Se buscan en las carpetas estándar, se describen una vez y cada clip con un efecto tiene su propia
 // instancia. Se renderiza en la CPU, el fotograma completo, en 8 bits o en coma flotante según lo
-// que admita el plugin; sin interfaces propias (overlays) ni animación de parámetros.
+// que admita el plugin; los parámetros pueden tener keyframes (el plugin los lee en cualquier
+// instante). Sin interfaces propias (overlays).
 namespace movix::ofx {
 
 enum class ParamType { Double, Int, Bool, Choice, Rgb, Rgba, Double2D, Int2D, Double3D, Int3D, String, Group, Page, PushButton, Other };
@@ -27,6 +30,7 @@ struct ParamDef {
     std::string defaultText;          // string
     bool secret = false;
     bool normalised = false; // fracciones del tamaño del proyecto (se convierten al leerlas)
+    bool animates = false;   // admite keyframes
 };
 
 struct PluginInfo {
@@ -55,7 +59,8 @@ private:
     Registry() = default;
 };
 
-using ParamValues = std::map<std::string, std::vector<double>>;
+// Valor de cada parámetro: un valor animable por componente, en fotogramas del clip.
+using ParamValues = std::map<std::string, std::vector<core::Animated>>;
 
 // Valores de los parámetros con los que faltan rellenos por defecto.
 ParamValues withDefaults(const PluginInfo& plugin, const ParamValues& values);
@@ -72,12 +77,16 @@ public:
     // Aplica el efecto a una imagen RGBA de 8 bits sin premultiplicar (filas de arriba abajo) del
     // tamaño con que se creó. `time`: fotograma (dentro del clip).
     bool render(const ParamValues& values, double time, const uint8_t* in, uint8_t* out, std::string* error = nullptr);
+    // Igual con RGBA en coma flotante (0..1 en la señal de la imagen; 10 bits o HDR). Si el plugin
+    // solo admite 8 bits, la imagen pasa por 8 bits.
+    bool render(const ParamValues& values, double time, const float* in, float* out, std::string* error = nullptr);
     int width() const;
     int height() const;
 
     struct Impl;
 
 private:
+    bool renderImpl(const ParamValues& values, double time, const void* in, void* out, bool floatIO, std::string* error);
     explicit Effect(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> d;
 };

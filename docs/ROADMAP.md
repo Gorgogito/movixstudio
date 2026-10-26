@@ -344,12 +344,25 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       activos el que se ve y el audio que suena, así que otros editores lo reproducen igual. Los
       metadatos guardan el ángulo y el audio, y al importar vuelve a ser una multicámara cuyos
       tramos comparten la secuencia. Comprobado con la biblioteca oficial (0.18.1)
+- [x] Keyframes en los parámetros OpenFX: cada parámetro animable tiene su keyframe en el cabezal
+      (con anterior/siguiente e interpolación, como el resto); en los de varios componentes
+      (colores, vectores) los keyframes van en los mismos fotogramas, y las casillas y listas
+      saltan de un valor a otro. El plugin lee el valor en cualquier instante, también entre
+      fotogramas, y la suite de keyframes (número, instantes, índice, derivada e integral) responde
+      con los del proyecto. Recortar el clip los mantiene en su instante. `.mxproj` v9 (los
+      parámetros fijos siguen siendo números)
+- [x] OpenFX en 10 bits y HDR: el video de más de 8 bits o con señal HDR pasa al plugin en coma
+      flotante, convertido con la misma matriz que usa la GPU, y vuelve como RGBA de 16 bits en coma
+      flotante que conserva su señal (PQ/HLG, Rec.2020). Con un efecto neutro, un clip HDR10 se ve
+      igual que sin él (diferencia ≤ 0,0005); en 10 bits, el 60 % de los valores no caen en la
+      rejilla de 8 bits. Si el plugin solo admite 8 bits, la imagen pasa por 8 bits pero no pierde
+      la señal
 
 ### Limitaciones de OpenFX
 
-- Sin animación de los parámetros, sin interfaces propias de los plugins (overlays) y sin contextos
-  que no sean filtros (generadores, transiciones). No se aplican a clips compuestos.
-- Se renderiza en la CPU en 8 bits por canal (un clip HDR pierde su rango al pasar por un efecto).
+- Sin interfaces propias de los plugins (overlays) y sin contextos que no sean filtros
+  (generadores, transiciones). No se aplican a clips compuestos.
+- Se renderiza en la CPU: los clips con efectos no usan la copia cero.
 
 ### Pendiente de comprobar
 

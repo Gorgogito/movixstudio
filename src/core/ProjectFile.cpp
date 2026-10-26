@@ -367,10 +367,10 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
             QJsonArray effects;
             for (const OfxEffect& e : c.ofx) {
                 QJsonObject params;
-                for (const auto& [name, value] : e.params) {
-                    QJsonArray v;
-                    for (double x : value)
-                        v.append(x);
+                for (const auto& [name, components] : e.params) {
+                    QJsonArray v; // cada componente, un número o (animado) sus keyframes
+                    for (const Animated& a : components)
+                        v.append(animatedToJson(a));
                     params[QString::fromStdString(name)] = v;
                 }
                 effects.append(QJsonObject{{"plugin", QString::fromStdString(e.pluginId)}, {"enabled", e.enabled}, {"params", params}});
@@ -476,11 +476,11 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
             e.enabled = eo["enabled"].toBool(true);
             const QJsonObject params = eo["params"].toObject();
             for (auto it = params.begin(); it != params.end(); ++it) {
-                std::vector<double> v;
+                std::vector<Animated> components;
                 for (const QJsonValue& x : it.value().toArray())
-                    v.push_back(x.toDouble());
-                if (!v.empty())
-                    e.params[it.key().toStdString()] = std::move(v);
+                    components.push_back(animatedFromJson(x, 0.0));
+                if (!components.empty())
+                    e.params[it.key().toStdString()] = std::move(components);
             }
             if (!e.pluginId.empty() && clip.ofx.size() < kMaxOfxEffects)
                 clip.ofx.push_back(std::move(e));

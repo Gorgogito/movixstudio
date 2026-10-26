@@ -4,7 +4,10 @@
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
 #include "engine/Sources.h"
+#include "media/FrameConvert.h"
 #include "ofx/OfxHost.h"
+#include "playback/TimelinePlayer.h"
+#include "render/OffscreenRenderer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -82,9 +85,12 @@ TEST_CASE("OpenFX: el anfitrión encuentra y describe un plugin", "[ofx]")
     CHECK(tint.defaults == std::vector<double>{1.0, 1.0, 1.0});
     CHECK(param("Controles").type == ofx::ParamType::Page);
 
+    CHECK(gain.animates);
+    CHECK(param("channel").animates); // OFX: también las listas y casillas (saltan de un valor a otro)
+
     const auto values = ofx::withDefaults(*info, {{"gain", {2.0}}});
-    CHECK(values.at("gain") == std::vector<double>{2.0});
-    CHECK(values.at("tint") == std::vector<double>{1.0, 1.0, 1.0});
+    CHECK(values.at("gain") == std::vector<Animated>{2.0});
+    CHECK(values.at("tint") == std::vector<Animated>{1.0, 1.0, 1.0});
     CHECK_FALSE(values.contains("Controles"));
 }
 
@@ -122,6 +128,49 @@ TEST_CASE("OpenFX: una instancia renderiza con sus parámetros", "[ofx]")
     CHECK(int(px(W - 1, 0)[0]) == 255);
     CHECK(int(px(W - 1, 0)[1]) == 0);
     CHECK(int(px(W - 1, 0)[2]) == 100);
+}
+
+TEST_CASE("OpenFX: parámetros con keyframes", "[ofx]")
+{
+    useTestPlugins();
+    constexpr int W = 64, H = 32;
+    std::string error;
+    auto effect = ofx::Effect::create(kGain, W, H, 25.0, &error);
+    INFO(error);
+    REQUIRE(effect);
+    const auto info = ofx::Registry::instance().find(kGain);
+    const auto in = testImage(W, H);
+    std::vector<uint8_t> out(in.size());
+    const size_t corner = (size_t(H - 1) * W + size_t(W - 1)) * 4; // rojo 255
+
+    // Ganancia de 0,5 en el fotograma 0 a 1 en el 10; el plugin la lee en el instante del render.
+    Animated gain(1.0);
+    gain.setKey(0, 0.5);
+    gain.setKey(10, 1.0);
+    const auto values = ofx::withDefaults(*info, {{"gain", {gain}}});
+    auto redAt = [&](double time) {
+        REQUIRE(effect->render(values, time, in.data(), out.data(), &error));
+        return int(out[corner]);
+    };
+    CHECK(redAt(0) == 128);
+    CHECK(redAt(5) == 191);
+    CHECK(redAt(2.5) == 159); // entre dos fotogramas (desenfoque de movimiento): interpolado
+    CHECK(redAt(10) == 255);
+    CHECK(redAt(40) == 255); // después del último keyframe se mantiene
+
+    // Mantener: salta al llegar al keyframe siguiente.
+    gain.setKey(0, 0.5, Interpolation::Hold);
+    const auto held = ofx::withDefaults(*info, {{"gain", {gain}}});
+    REQUIRE(effect->render(held, 9, in.data(), out.data(), &error));
+    CHECK(int(out[corner]) == 128);
+
+    // En coma flotante (imágenes de más de 8 bits): sin cuantizar a 1/255.
+    std::vector<float> inF(in.size()), outF(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+        inF[i] = in[i] / 255.0f;
+    inF[corner] = 0.6004f;
+    REQUIRE(effect->render(values, 5, inF.data(), outF.data(), &error));
+    CHECK(std::abs(outF[corner] - 0.6004f * 0.75f) < 1e-5f);
 }
 
 TEST_CASE("OpenFX: un efecto que no está instalado", "[ofx]")
@@ -185,7 +234,7 @@ TEST_CASE("OpenFX: efectos en un clip, en el archivo y en el motor", "[ofx][engi
     CHECK_FALSE(edit::setOfxParam(p, clip, 0, "gain", {0.5})); // sin cambio
     REQUIRE(edit::setOfxParam(p, clip, 1, "invert", {1}));
     REQUIRE(edit::moveOfxEffect(p, clip, 1, 0));
-    CHECK(p.findClip(clip)->ofx[1].params.at("gain") == std::vector<double>{0.5});
+    CHECK(p.findClip(clip)->ofx[1].params.at("gain") == std::vector<Animated>{0.5});
     REQUIRE(edit::setOfxEffectEnabled(p, clip, 0, false)); // el de invertir, desactivado
     CHECK(p.validate());
 
@@ -217,6 +266,145 @@ TEST_CASE("OpenFX: efectos en un clip, en el archivo y en el motor", "[ofx][engi
 
     // Solo en clips con imagen que no son compuestos.
     CHECK(edit::addOfxEffect(p, p.audioTracks[0].id, kGain) == -1);
+}
+
+TEST_CASE("OpenFX: keyframes en el clip, en el archivo y en el motor", "[ofx][engine]")
+{
+    useTestPlugins();
+    Project p = Project::createDefault();
+    auto item = engine::probeMediaItem(test::mediaPath("sync_720p30.mp4"));
+    REQUIRE(item);
+    const Id media = edit::addMedia(p, *item);
+    p.settings.width = 1280;
+    p.settings.height = 720;
+    const Id clip = edit::placeClip(p, p.videoTracks[0].id, media, 0, 0, 60);
+    REQUIRE(edit::addOfxEffect(p, clip, kGain) == 0);
+    auto gainOf = [&]() -> const std::vector<Animated>& { return p.findClip(clip)->ofx[0].params.at("gain"); };
+
+    // Keyframes: 0 → ganancia 0 y 30 → 1 (cambiar el valor en un keyframe lo actualiza; fuera de los
+    // keyframes, crea otro).
+    REQUIRE(edit::toggleOfxKey(p, clip, 0, "gain", 0, {1.0}));
+    REQUIRE(edit::setOfxParam(p, clip, 0, "gain", {0.0}, 0));
+    REQUIRE(edit::toggleOfxKey(p, clip, 0, "gain", 30, {0.0}));
+    REQUIRE(edit::setOfxParam(p, clip, 0, "gain", {1.0}, 30));
+    REQUIRE(gainOf()[0].keys.size() == 2);
+    CHECK(gainOf()[0].at(15) == 0.5);
+    REQUIRE(edit::setOfxKeyInterpolation(p, clip, 0, "gain", 0, Interpolation::Smooth));
+    CHECK_FALSE(edit::setOfxKeyInterpolation(p, clip, 0, "gain", 7, Interpolation::Hold)); // sin keyframe ahí
+    REQUIRE(edit::setOfxKeyInterpolation(p, clip, 0, "gain", 0, Interpolation::Linear));
+    // Los de varios componentes llevan los keyframes en los mismos fotogramas.
+    REQUIRE(edit::toggleOfxKey(p, clip, 0, "tint", 10, {1.0, 0.5, 0.25}));
+    const auto& tint = p.findClip(clip)->ofx[0].params.at("tint");
+    REQUIRE(tint.size() == 3);
+    CHECK(tint[1].keyAt(10));
+    CHECK(tint[2].at(10) == 0.25);
+    REQUIRE(edit::toggleOfxKey(p, clip, 0, "tint", 10, {1.0, 0.5, 0.25})); // quitar el único: fijo en su valor
+    CHECK_FALSE(p.findClip(clip)->ofx[0].params.at("tint")[1].isAnimated());
+    CHECK(p.findClip(clip)->ofx[0].params.at("tint")[1].value == 0.5);
+
+    // En el archivo (los parámetros fijos siguen siendo números, como en la versión 8).
+    const QByteArray json = serializeProject(p, "C:/x/p.mxproj");
+    const auto loaded = deserializeProject(json, "C:/x/p.mxproj");
+    REQUIRE(loaded.project);
+    CHECK(loaded.project->findClip(clip)->ofx == p.findClip(clip)->ofx);
+    CHECK(json.contains(R"("tint": [)"));
+
+    // En el motor: el primer fotograma (blanco) va de negro a blanco.
+    engine::VideoSources sources(false);
+    auto centerRed = [&](FramePos frame) {
+        const auto bundle = sources.build(p, frame);
+        REQUIRE(bundle.layers.size() == 1);
+        const auto& f = bundle.layers[0].frame;
+        REQUIRE(f->format == media::PixelFormat::RGBA);
+        return int(f->rgba[(size_t(f->height / 2) * size_t(f->width) + size_t(f->width / 2)) * 4]);
+    };
+    const int start = centerRed(0), end = centerRed(30); // los dos fotogramas son blancos
+    // A mitad de camino entre dos keyframes (el fotograma 0, entre −30 y 30), la mitad.
+    Animated half;
+    half.setKey(-30, 0.0);
+    half.setKey(30, 1.0);
+    const auto animated = p.findClip(clip)->ofx[0].params;
+    p.findClip(clip)->ofx[0].params["gain"] = {half};
+    const int middle = centerRed(0);
+    p.findClip(clip)->ofx[0].params = animated;
+    std::printf("[ofx] rojo con la ganancia animada: %d, %d, %d\n", start, middle, end);
+    CHECK(start <= 3);
+    CHECK(end >= 230);
+    CHECK(std::abs(middle - end / 2) <= 3);
+
+    // Recortar el principio del clip mantiene los keyframes en el mismo instante de la línea de tiempo.
+    REQUIRE(edit::trimClip(p, clip, edit::Edge::Start, 10) == FramePos(10));
+    CHECK(gainOf()[0].keys.front().frame == -10);
+    CHECK(gainOf()[0].keys.back().frame == 20);
+}
+
+TEST_CASE("OpenFX en video de 10 bits y HDR: sin pasar por 8 bits ni perder la señal", "[ofx][engine][hdr]")
+{
+    useTestPlugins();
+    SECTION("10 bits: la imagen llega con su precisión")
+    {
+        Project p = Project::createDefault();
+        auto item = engine::probeMediaItem(test::mediaPath("hevc10_360p.mkv"));
+        REQUIRE(item);
+        p.settings.width = 640;
+        p.settings.height = 360;
+        const Id clip = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *item), 0, 0, 25);
+        REQUIRE(edit::addOfxEffect(p, clip, kGain) == 0); // ganancia 1: la imagen tal cual
+        engine::VideoSources sources(false);
+        const auto bundle = sources.build(p, 0);
+        REQUIRE(bundle.layers.size() == 1);
+        const auto& f = *bundle.layers[0].frame;
+        REQUIRE(f.format == media::PixelFormat::RGBA16F);
+        CHECK(sources.takeOfxError().empty());
+        // Valores que no caen en la rejilla de 8 bits: la entrada del plugin no se redujo a 1/255.
+        // (Entre los que no están saturados: con 8 bits serían el 0 %; con 10, más de la mitad.)
+        size_t offGrid = 0, middle = 0, total = size_t(f.width) * size_t(f.height) * 4;
+        for (size_t i = 0; i < total; i += 4) {
+            const float v = media::halfAt(f.rgba, i) * 255.0f;
+            if (v < 2.0f || v > 253.0f)
+                continue;
+            ++middle;
+            offGrid += std::abs(v - std::round(v)) > 0.2f ? 1 : 0;
+        }
+        std::printf("[ofx] 10 bits: %.1f %% de los valores fuera de la rejilla de 8 bits\n", 100.0 * double(offGrid) / double(middle));
+        REQUIRE(middle > total / 4 / 10);
+        CHECK(offGrid > middle / 2);
+    }
+    SECTION("HDR10: el clip con el efecto se ve igual que sin él")
+    {
+        Project p = Project::createDefault();
+        auto item = engine::probeMediaItem(test::mediaPath("hdr_pq.mkv"));
+        REQUIRE(item);
+        p.settings.width = 320;
+        p.settings.height = 180;
+        p.settings.colorMode = ColorMode::PQ;
+        const Id clip = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *item), 0, 0, 30);
+        engine::VideoSources sources(false);
+        render::OffscreenRenderer r;
+        REQUIRE(r.init(320, 180, nullptr, true));
+        auto centerPq = [&]() {
+            std::vector<uint8_t> px;
+            REQUIRE(r.render(sources.build(p, 0), px));
+            const size_t o = (size_t(90) * 320 + 160) * 4 * 2;
+            return std::array<double, 3>{(px[o] | (px[o + 1] << 8)) / 65535.0, (px[o + 2] | (px[o + 3] << 8)) / 65535.0,
+                                         (px[o + 4] | (px[o + 5] << 8)) / 65535.0};
+        };
+        const auto plain = centerPq();
+        REQUIRE(edit::addOfxEffect(p, clip, kGain) == 0);
+        const auto bundle = sources.build(p, 0);
+        REQUIRE(bundle.layers.size() == 1);
+        CHECK(bundle.layers[0].frame->format == media::PixelFormat::RGBA16F);
+        CHECK(bundle.layers[0].frame->transfer == media::Transfer::PQ);
+        CHECK(bundle.layers[0].frame->colorSpace == media::ColorSpace::BT2020);
+        const auto effect = centerPq();
+        std::printf("[ofx] HDR10 sin y con el efecto: %.4f %.4f %.4f / %.4f %.4f %.4f\n", plain[0], plain[1], plain[2], effect[0], effect[1],
+                    effect[2]);
+        for (int c = 0; c < 3; ++c)
+            CHECK(std::abs(plain[size_t(c)] - effect[size_t(c)]) < 0.001);
+        // Con ganancia 0,5 la señal PQ baja (el efecto se aplica de verdad).
+        REQUIRE(edit::setOfxParam(p, clip, 0, "gain", {0.5}));
+        CHECK(centerPq()[0] < plain[0] * 0.6);
+    }
 }
 
 TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
@@ -252,6 +440,36 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         CHECK(project.ofxEffects(clip)[0].toMap()["params"].toList()[0].toMap()["value"].toList() == QVariantList{0.6});
         project.undo();
         CHECK(project.ofxEffects(clip)[0].toMap()["params"].toList()[0].toMap()["value"].toList() == QVariantList{1.0});
+
+        // Keyframes desde la interfaz: en el cabezal, con el estado de cada parámetro.
+        auto gainState = [&] { return project.ofxEffects(clip)[0].toMap()["params"].toList()[0].toMap(); };
+        CHECK(gainState()["animates"].toBool());
+        CHECK_FALSE(gainState()["animated"].toBool());
+        project.player()->seekFrame(0);
+        project.toggleOfxKeyframe(clip, 0, "gain");
+        CHECK(gainState()["keyHere"].toBool());
+        CHECK(gainState()["interp"].toString() == "linear");
+        project.player()->seekFrame(20);
+        project.setOfxParam(clip, 0, "gain", {2.0}); // animado: crea el keyframe de este instante
+        project.endInteraction();
+        CHECK(gainState()["keyHere"].toBool());
+        CHECK(gainState()["hasPrev"].toBool());
+        project.player()->seekFrame(10);
+        CHECK(gainState()["value"].toList() == QVariantList{1.5});
+        CHECK_FALSE(gainState()["keyHere"].toBool());
+        CHECK(project.keyframeFrames(clip).size() == 2);
+        project.jumpToKeyframe(clip, true);
+        CHECK(project.player()->positionFrame() == 20);
+        project.setOfxKeyInterpolation(clip, 0, "gain", "hold");
+        CHECK(gainState()["interp"].toString() == "hold");
+        // Las listas saltan de una opción a otra.
+        project.toggleOfxKeyframe(clip, 0, "channel");
+        CHECK(project.ofxEffects(clip)[0].toMap()["params"].toList()[2].toMap()["interp"].toString() == "hold");
+        project.toggleOfxKeyframe(clip, 0, "gain"); // quitar el de 20
+        CHECK_FALSE(gainState()["keyHere"].toBool());
+        project.undo();
+        CHECK(gainState()["keyHere"].toBool());
+
         project.setOfxEnabled(clip, 0, false);
         CHECK_FALSE(project.ofxEffects(clip)[0].toMap()["enabled"].toBool());
         project.removeOfxEffect(clip, 0);

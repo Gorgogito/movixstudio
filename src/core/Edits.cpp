@@ -34,6 +34,10 @@ void forEachAnimated(Clip& c, const auto& fn)
     for (Mask& m : c.masks)
         for (Animated* a : {&m.x, &m.y, &m.width, &m.height, &m.rotation, &m.feather})
             fn(*a);
+    for (OfxEffect& e : c.ofx)
+        for (auto& [name, components] : e.params)
+            for (Animated& a : components)
+                fn(a);
 }
 
 // Fotograma (relativo al clip) de cada keyframe del clip: propiedades y corrección de color.
@@ -1673,17 +1677,52 @@ bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled)
     return true;
 }
 
-bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value)
+bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value, FramePos rel)
 {
     Clip* c = ofxClip(p, clipId);
     if (!c || index < 0 || index >= int(c->ofx.size()) || name.empty() || value.empty())
         return false;
-    auto& params = c->ofx[size_t(index)].params;
-    auto it = params.find(name);
-    if (it != params.end() && it->second == value)
+    std::vector<Animated>& components = c->ofx[size_t(index)].params[name];
+    const std::vector<Animated> before = components;
+    components.resize(value.size());
+    for (size_t i = 0; i < value.size(); ++i)
+        components[i].set(rel, value[i]);
+    return components != before;
+}
+
+bool toggleOfxKey(Project& p, Id clipId, int index, const std::string& name, FramePos rel, const std::vector<double>& current,
+                  Interpolation interp)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || index < 0 || index >= int(c->ofx.size()) || name.empty() || current.empty())
         return false;
-    params[name] = std::move(value);
+    std::vector<Animated>& components = c->ofx[size_t(index)].params[name];
+    if (!components.empty() && components[0].keyAt(rel)) {
+        for (Animated& a : components)
+            a.removeKey(rel);
+        return true;
+    }
+    components.resize(current.size());
+    for (size_t i = 0; i < current.size(); ++i)
+        components[i].setKey(rel, current[i], interp);
     return true;
+}
+
+bool setOfxKeyInterpolation(Project& p, Id clipId, int index, const std::string& name, FramePos rel, Interpolation interp)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c || index < 0 || index >= int(c->ofx.size()))
+        return false;
+    auto it = c->ofx[size_t(index)].params.find(name);
+    if (it == c->ofx[size_t(index)].params.end() || it->second.empty() || !it->second[0].keyAt(rel))
+        return false;
+    bool changed = false;
+    for (Animated& a : it->second)
+        if (const Keyframe* k = a.keyAt(rel); k && k->interp != interp) {
+            a.setKey(rel, k->value, interp);
+            changed = true;
+        }
+    return changed;
 }
 
 bool moveOfxEffect(Project& p, Id clipId, int from, int to)

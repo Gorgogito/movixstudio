@@ -17,12 +17,15 @@ enum class PixelFormat {
     NV12, // video: luma + croma intercalado (8 bits)
     RGBA, // imágenes y títulos: RGBA de 8 bits sin premultiplicar, con transparencia
     P016, // video de 10 bits o más: como NV12 con muestras de 16 bits (little endian, bits altos)
+    RGBA16F, // video procesado en la CPU (efectos OpenFX de 10 bits o HDR): RGBA en coma flotante de
+             // 16 bits sin premultiplicar, en la señal del video (colorSpace y transfer)
 };
 
 // Fotograma decodificado con planos compactos (stride == ancho en bytes):
 //   NV12: y = width × height; uv = chromaWidth()*2 × chromaHeight() (Cb/Cr intercalados)
 //   P016: igual que NV12 con 2 bytes por muestra
 //   RGBA: rgba = width × height × 4
+//   RGBA16F: rgba = width × height × 8 (cuatro qfloat16 por píxel)
 // Es independiente de FFmpeg, así que puede viajar entre hilos y subirse a la GPU directamente.
 struct VideoFrame {
     PixelFormat format = PixelFormat::NV12;
@@ -46,6 +49,7 @@ struct VideoFrame {
     int chromaWidth() const { return (width + 1) / 2; }
     int chromaHeight() const { return (height + 1) / 2; }
     double displayAspect() const { return height ? width * sampleAspect / height : 1.0; }
+    bool isRgb() const { return format == PixelFormat::RGBA || format == PixelFormat::RGBA16F; }
 };
 
 } // namespace movix::media

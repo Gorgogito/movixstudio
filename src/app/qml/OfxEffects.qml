@@ -4,7 +4,8 @@ import QtQuick.Layouts
 import MovixStudio
 
 // Efectos OpenFX del clip: añadir un plugin instalado, activarlo, reordenarlo, quitarlo y ajustar
-// sus parámetros (los controles se generan a partir de lo que declara el plugin).
+// sus parámetros (los controles se generan a partir de lo que declara el plugin). Los valores son
+// los del cabezal; los parámetros animables admiten keyframes.
 ColumnLayout {
     id: section
 
@@ -12,8 +13,23 @@ ColumnLayout {
     required property var info
     readonly property var clipId: info.clipId
     readonly property var plugins: project.ofxPlugins
-    // Se vuelve a leer cuando cambia el clip (info se renueva con cada edición).
-    readonly property var effects: { info; return clipId !== undefined ? project.ofxEffects(clipId) : [] }
+    property var effects: []
+
+    // Los repetidores dependen solo del número de efectos y de parámetros: al cambiar un valor no se
+    // rehacen los controles (eso cortaría el arrastre de un deslizador).
+    function refresh() {
+        effects = clipId !== undefined ? project.ofxEffects(clipId) : []
+    }
+    onInfoChanged: refresh()
+    Component.onCompleted: refresh()
+    Connections {
+        target: section.project
+        function onHistoryChanged() { section.refresh() }
+    }
+    Connections {
+        target: section.project.player
+        function onPositionChanged() { if (section.effects.length > 0) section.refresh() }
+    }
 
     spacing: 6
     Layout.fillWidth: true
@@ -68,16 +84,17 @@ ColumnLayout {
     }
 
     Repeater {
-        model: section.effects
+        model: section.effects.length
         delegate: Rectangle {
             id: card
-            required property var modelData
-            readonly property int fxIndex: modelData.index
+            required property int index
+            readonly property var fx: section.effects[index] ?? ({ params: [] })
+            readonly property int fxIndex: fx.index ?? index
             Layout.fillWidth: true
             implicitHeight: body.implicitHeight + 16
             radius: Theme.radius
             color: Theme.surfaceRaised
-            opacity: modelData.enabled ? 1.0 : 0.6
+            opacity: fx.enabled === false ? 0.6 : 1.0
 
             ColumnLayout {
                 id: body
@@ -90,13 +107,13 @@ ColumnLayout {
                     spacing: 2
                     Switch {
                         focusPolicy: Qt.NoFocus
-                        checked: card.modelData.enabled
+                        checked: card.fx.enabled === true
                         onToggled: section.project.setOfxEnabled(section.clipId, card.fxIndex, checked)
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: card.modelData.label + (card.modelData.installed ? "" : qsTr(" (no instalado)"))
-                        color: card.modelData.installed ? Theme.text : Theme.danger
+                        text: (card.fx.label ?? "") + (card.fx.installed === false ? qsTr(" (no instalado)") : "")
+                        color: card.fx.installed === false ? Theme.danger : Theme.text
                         font.pixelSize: Theme.fontSmall + 1
                         font.bold: true
                         elide: Text.ElideRight
@@ -123,70 +140,93 @@ ColumnLayout {
                 }
 
                 Repeater {
-                    model: card.modelData.params
+                    model: card.fx.params.length
                     delegate: ColumnLayout {
                         id: param
-                        required property var modelData
-                        readonly property bool numeric: ["double", "int", "rgb", "rgba", "double2d", "int2d", "double3d", "int3d"].indexOf(modelData.type) >= 0
+                        required property int index
+                        readonly property var p: card.fx.params[index] ?? ({ value: [], defaults: [], options: [] })
+                        readonly property bool numeric: ["double", "int", "rgb", "rgba", "double2d", "int2d", "double3d", "int3d"].indexOf(p.type) >= 0
                         Layout.fillWidth: true
                         spacing: 2
-                        ToolTip.visible: hint.hovered && modelData.hint !== ""
+                        ToolTip.visible: hint.hovered && (p.hint ?? "") !== ""
                         ToolTip.delay: 600
-                        ToolTip.text: modelData.hint
+                        ToolTip.text: p.hint ?? ""
                         HoverHandler { id: hint }
 
                         function setComponent(i, v) {
-                            const value = param.modelData.value.slice()
+                            const value = param.p.value.slice()
                             value[i] = v
-                            section.project.setOfxParam(section.clipId, card.fxIndex, param.modelData.name, value)
+                            section.project.setOfxParam(section.clipId, card.fxIndex, param.p.name, value)
+                        }
+
+                        // Nombre y keyframes en el cabezal (anterior, alternar, siguiente).
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                Layout.fillWidth: true
+                                text: param.p.label ?? ""
+                                color: param.p.animated ? Theme.text : Theme.textMuted
+                                font.pixelSize: Theme.fontSmall + 1
+                                elide: Text.ElideRight
+                            }
+                            IconButton {
+                                visible: param.p.animates === true
+                                size: 22
+                                text: "‹"
+                                display: AbstractButton.TextOnly
+                                enabled: param.p.hasPrev === true
+                                tip: qsTr("Keyframe anterior")
+                                onClicked: section.project.jumpToKeyframe(section.clipId, false)
+                            }
+                            KeyframeButton {
+                                visible: param.p.animates === true
+                                keyHere: param.p.keyHere === true
+                                animated: param.p.animated === true
+                                interp: param.p.interp || "linear"
+                                onToggled: section.project.toggleOfxKeyframe(section.clipId, card.fxIndex, param.p.name)
+                                onInterpolationChosen: (mode) => section.project.setOfxKeyInterpolation(section.clipId, card.fxIndex, param.p.name, mode)
+                            }
+                            IconButton {
+                                visible: param.p.animates === true
+                                size: 22
+                                text: "›"
+                                display: AbstractButton.TextOnly
+                                enabled: param.p.hasNext === true
+                                tip: qsTr("Keyframe siguiente")
+                                onClicked: section.project.jumpToKeyframe(section.clipId, true)
+                            }
                         }
 
                         // Números (y cada componente de los colores y vectores).
                         Repeater {
-                            model: param.numeric ? param.modelData.value.length : 0
+                            model: param.numeric ? param.p.value.length : 0
                             delegate: SliderRow {
                                 required property int index
-                                label: param.modelData.label + (param.modelData.value.length > 1 ? " " + section.componentLabel(param.modelData.type, index) : "")
-                                from: param.modelData.type.startsWith("rgb") ? 0 : param.modelData.min
-                                to: param.modelData.type.startsWith("rgb") ? 1 : param.modelData.max
-                                value: param.modelData.value[index]
-                                defaultValue: param.modelData.defaults[index] ?? 0
+                                label: param.p.value.length > 1 ? section.componentLabel(param.p.type, index) : ""
+                                from: param.p.type.startsWith("rgb") ? 0 : param.p.min
+                                to: param.p.type.startsWith("rgb") ? 1 : param.p.max
+                                value: param.p.value[index] ?? 0
+                                defaultValue: param.p.defaults[index] ?? 0
                                 displayScale: 1
-                                decimals: param.modelData.type.startsWith("int") ? 0 : 2
-                                onMoved: (v) => param.setComponent(index, param.modelData.type.startsWith("int") ? Math.round(v) : v)
+                                decimals: param.p.type.startsWith("int") ? 0 : 2
+                                onMoved: (v) => param.setComponent(index, param.p.type.startsWith("int") ? Math.round(v) : v)
                                 onReleased: section.project.endInteraction()
                             }
                         }
-                        RowLayout {
-                            visible: param.modelData.type === "bool"
-                            Layout.fillWidth: true
-                            Text {
-                                Layout.fillWidth: true
-                                text: param.modelData.label
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSmall + 1
-                            }
-                            Switch {
-                                focusPolicy: Qt.NoFocus
-                                checked: param.modelData.value[0] !== 0
-                                onToggled: param.setComponent(0, checked ? 1 : 0)
-                            }
+                        Switch {
+                            visible: param.p.type === "bool"
+                            focusPolicy: Qt.NoFocus
+                            checked: param.p.value[0] !== 0
+                            onToggled: param.setComponent(0, checked ? 1 : 0)
                         }
-                        RowLayout {
-                            visible: param.modelData.type === "choice"
+                        ComboBox {
+                            visible: param.p.type === "choice"
                             Layout.fillWidth: true
-                            Text {
-                                text: param.modelData.label
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSmall + 1
-                            }
-                            ComboBox {
-                                Layout.fillWidth: true
-                                focusPolicy: Qt.NoFocus
-                                model: param.modelData.options
-                                currentIndex: param.modelData.value[0]
-                                onActivated: (i) => param.setComponent(0, i)
-                            }
+                            focusPolicy: Qt.NoFocus
+                            model: param.p.options
+                            currentIndex: param.p.value[0] ?? 0
+                            onActivated: (i) => param.setComponent(0, i)
                         }
                     }
                 }

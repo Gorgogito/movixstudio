@@ -316,8 +316,8 @@ void Compositor::ensureSlotTextures(Slot& slot, const media::VideoFrame& f)
     if (slot.tex0 && slot.format == f.format && slot.tex0->pixelSize() == size)
         return;
     slot.format = f.format;
-    if (f.format == media::PixelFormat::RGBA) {
-        slot.tex0.reset(m_rhi->newTexture(QRhiTexture::RGBA8, size));
+    if (f.isRgb()) {
+        slot.tex0.reset(m_rhi->newTexture(f.format == media::PixelFormat::RGBA16F ? QRhiTexture::RGBA16F : QRhiTexture::RGBA8, size));
         slot.tex0->create();
         slot.tex1.reset();
     } else if (f.format == media::PixelFormat::P016) { // 10 bits o más: planos de 16 bits
@@ -496,7 +496,7 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
                 return QRhiTextureSubresourceUploadDescription(
                     QByteArray::fromRawData(reinterpret_cast<const char*>(v.data()), qsizetype(v.size())));
             };
-            if (f.format == media::PixelFormat::RGBA) {
+            if (f.isRgb()) {
                 updates->uploadTexture(slot.tex0.get(), QRhiTextureUploadEntry(0, 0, raw(f.rgba)));
             } else {
                 updates->uploadTexture(slot.tex0.get(), QRhiTextureUploadEntry(0, 0, raw(f.y)));
@@ -517,7 +517,7 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         std::memcpy(u.yuvToRgb, colorMatrix.constData(), sizeof(u.yuvToRgb));
         setVec(u.crop, float(layer.crop.left), float(layer.crop.top), float(layer.crop.right), float(layer.crop.bottom));
         setVec(u.params, float(std::clamp(layer.opacity, 0.0, 1.0)), float(int(layer.blend)), slot.useLut ? 1.0f : 0.0f,
-               f.format == media::PixelFormat::RGBA ? 1.0f : 0.0f);
+               f.isRgb() ? 1.0f : 0.0f);
         const core::ChromaKey& key = layer.chromaKey;
         const auto keyChroma = color::chroma(color::argbToRgb(key.color));
         setVec(u.key, key.enabled ? 1.0f : 0.0f, float(key.tolerance), float(key.softness), float(key.spill));
@@ -538,7 +538,8 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         setVec(u.lutCoord, (n - 1.0f) / n, 0.5f / n);
         setVec(u.canvas, 1.0f / float(canvasSize.width()), 1.0f / float(canvasSize.height()), m_linear ? 1.0f : 0.0f);
         // Señal de la fuente → la del proyecto. Las imágenes y títulos son SDR Rec.709; las secuencias
-        // anidadas ya están en la del proyecto; con OCIO, la LUT ya hace la conversión.
+        // anidadas ya están en la del proyecto; con OCIO, la LUT ya hace la conversión. El video que
+        // pasó por efectos OpenFX en coma flotante (RGBA16F) conserva su señal.
         const bool video = !slot.nested && f.format != media::PixelFormat::RGBA;
         const auto source = video && f.transfer == media::Transfer::PQ  ? color::Signal::PQ
                             : video && f.transfer == media::Transfer::HLG ? color::Signal::HLG

@@ -5,6 +5,7 @@
 #include "color/ColorMath.h"
 #include "color/Ocio.h"
 #include "media/ColorMatrix.h"
+#include "media/FrameConvert.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -120,6 +121,10 @@ std::optional<std::uint32_t> sampleFrame(const media::VideoFrame& f, double u, d
                 const size_t i = (size_t(y) * size_t(f.width) + size_t(x)) * 4;
                 for (int c = 0; c < 3; ++c)
                     rgb[c] = f.rgba[i + size_t(c)] / 255.0;
+            } else if (f.format == media::PixelFormat::RGBA16F) {
+                const size_t i = (size_t(y) * size_t(f.width) + size_t(x)) * 4;
+                for (int c = 0; c < 3; ++c)
+                    rgb[c] = std::clamp(double(media::halfAt(f.rgba, i + size_t(c))), 0.0, 1.0);
             } else if (f.format == media::PixelFormat::P016) {
                 auto at = [](const std::vector<uint8_t>& v, size_t i) { return (v[i * 2] | (v[i * 2 + 1] << 8)) / 65535.0; };
                 const auto m16 = media::yuvToRgbMatrix(f.colorSpace, f.fullRange, true);

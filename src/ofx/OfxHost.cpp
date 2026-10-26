@@ -366,7 +366,7 @@ struct EffectObj;
 struct ParamObj : PropertySet {
     std::string name;
     std::string type;
-    std::vector<double> value;
+    std::vector<core::Animated> curve; // un valor animable por componente (en fotogramas del clip)
     std::string text;
     EffectObj* owner = nullptr;
 };
@@ -403,6 +403,7 @@ struct EffectObj : PropertySet {
     void* inData = nullptr;
     void* outData = nullptr;
     int rowBytes = 0;
+    double time = 0; // instante del render (el de paramGetValue)
     std::string lastMessage;
 
     ClipObj* clip(const char* name)
@@ -726,7 +727,37 @@ double normalScale(const ParamObj& p, int component)
     return 1.0;
 }
 
-OfxStatus getValueV(ParamObj* p, va_list ap)
+// Valor de un componente en un instante cualquiera: los keyframes están en fotogramas enteros; entre
+// dos fotogramas (desenfoque de movimiento, campos) se interpola linealmente.
+double sampleAt(const core::Animated& a, double time)
+{
+    if (!a.isAnimated())
+        return a.value;
+    const double f = std::floor(time);
+    const double v0 = a.at(std::int64_t(f));
+    if (time == f)
+        return v0;
+    return v0 + (a.at(std::int64_t(f) + 1) - v0) * (time - f);
+}
+
+double componentAt(const ParamObj& p, int i, double time)
+{
+    return size_t(i) < p.curve.size() ? sampleAt(p.curve[size_t(i)], time) : 0.0;
+}
+
+// Fotogramas con keyframe del parámetro (los mismos en todos sus componentes), en orden.
+std::vector<double> keyTimes(const ParamObj& p)
+{
+    std::vector<double> times;
+    for (const core::Animated& a : p.curve)
+        for (const core::Keyframe& k : a.keys)
+            times.push_back(double(k.frame));
+    std::sort(times.begin(), times.end());
+    times.erase(std::unique(times.begin(), times.end()), times.end());
+    return times;
+}
+
+OfxStatus getValueV(ParamObj* p, double time, va_list ap)
 {
     if (!p)
         return kOfxStatErrBadHandle;
@@ -736,21 +767,20 @@ OfxStatus getValueV(ParamObj* p, va_list ap)
         return kOfxStatOK;
     }
     const int dim = dimensionOf(p->type);
-    if (p->value.size() < size_t(dim))
-        p->value.resize(size_t(dim), 0.0);
     for (int i = 0; i < dim; ++i) {
         if (isIntegerType(p->type)) {
             int* out = va_arg(ap, int*);
-            *out = int(std::lround(p->value[size_t(i)]));
+            *out = int(std::lround(componentAt(*p, i, time)));
         } else {
             double* out = va_arg(ap, double*);
-            *out = p->value[size_t(i)] * normalScale(*p, i);
+            *out = componentAt(*p, i, time) * normalScale(*p, i);
         }
     }
     return kOfxStatOK;
 }
 
-OfxStatus setValueV(ParamObj* p, va_list ap)
+// Lo que escribe el plugin: un keyframe si el parámetro está animado; si no, el valor fijo.
+OfxStatus setValueV(ParamObj* p, double time, va_list ap)
 {
     if (!p)
         return kOfxStatErrBadHandle;
@@ -760,59 +790,114 @@ OfxStatus setValueV(ParamObj* p, va_list ap)
         return kOfxStatOK;
     }
     const int dim = dimensionOf(p->type);
-    p->value.resize(size_t(dim), 0.0);
-    for (int i = 0; i < dim; ++i)
-        p->value[size_t(i)] = isIntegerType(p->type) ? double(va_arg(ap, int)) : va_arg(ap, double) / normalScale(*p, i);
+    p->curve.resize(size_t(dim));
+    for (int i = 0; i < dim; ++i) {
+        const double v = isIntegerType(p->type) ? double(va_arg(ap, int)) : va_arg(ap, double) / normalScale(*p, i);
+        p->curve[size_t(i)].set(std::llround(time), v);
+    }
     return kOfxStatOK;
+}
+
+double currentTime(const ParamObj* p)
+{
+    return p && p->owner ? p->owner->time : 0.0;
 }
 
 OfxStatus paramGetValue(OfxParamHandle param, ...)
 {
+    auto* p = reinterpret_cast<ParamObj*>(param);
     va_list ap;
     va_start(ap, param);
-    const OfxStatus st = getValueV(reinterpret_cast<ParamObj*>(param), ap);
+    const OfxStatus st = getValueV(p, currentTime(p), ap);
     va_end(ap);
     return st;
 }
 OfxStatus paramSetValue(OfxParamHandle param, ...)
 {
+    auto* p = reinterpret_cast<ParamObj*>(param);
     va_list ap;
     va_start(ap, param);
-    const OfxStatus st = setValueV(reinterpret_cast<ParamObj*>(param), ap);
+    const OfxStatus st = setValueV(p, currentTime(p), ap);
     va_end(ap);
     return st;
 }
 OfxStatus paramGetNumKeys(OfxParamHandle param, unsigned int* n)
 {
-    if (!param)
+    auto* p = reinterpret_cast<ParamObj*>(param);
+    if (!p || !n)
         return kOfxStatErrBadHandle;
-    *n = 0;
+    *n = unsigned(keyTimes(*p).size());
     return kOfxStatOK;
 }
-OfxStatus paramGetKeyTime(OfxParamHandle, unsigned int, OfxTime*)
+OfxStatus paramGetKeyTime(OfxParamHandle param, unsigned int nthKey, OfxTime* time)
 {
-    return kOfxStatErrBadIndex;
+    auto* p = reinterpret_cast<ParamObj*>(param);
+    if (!p || !time)
+        return kOfxStatErrBadHandle;
+    const auto times = keyTimes(*p);
+    if (nthKey >= times.size())
+        return kOfxStatErrBadIndex;
+    *time = times[nthKey];
+    return kOfxStatOK;
 }
-OfxStatus paramGetKeyIndex(OfxParamHandle, OfxTime, int, int*)
+// direction 0: keyframe en `time`; −1: el anterior; 1: el siguiente.
+OfxStatus paramGetKeyIndex(OfxParamHandle param, OfxTime time, int direction, int* index)
 {
-    return kOfxStatFailed;
+    auto* p = reinterpret_cast<ParamObj*>(param);
+    if (!p || !index)
+        return kOfxStatErrBadHandle;
+    const auto times = keyTimes(*p);
+    int found = -1;
+    for (int i = 0; i < int(times.size()); ++i) {
+        const double t = times[size_t(i)];
+        if (direction == 0 ? std::abs(t - time) < 1e-6 : direction < 0 ? t < time - 1e-6 : t > time + 1e-6) {
+            found = i;
+            if (direction >= 0)
+                break; // el primero que cumple; hacia atrás, el último
+        }
+    }
+    if (found < 0)
+        return kOfxStatFailed;
+    *index = found;
+    return kOfxStatOK;
 }
-OfxStatus paramDeleteKey(OfxParamHandle, OfxTime)
+OfxStatus paramDeleteKey(OfxParamHandle param, OfxTime time)
 {
-    return kOfxStatErrBadIndex;
+    auto* p = reinterpret_cast<ParamObj*>(param);
+    if (!p)
+        return kOfxStatErrBadHandle;
+    bool removed = false;
+    for (core::Animated& a : p->curve)
+        removed = a.removeKey(std::llround(time)) || removed;
+    return removed ? kOfxStatOK : kOfxStatErrBadIndex;
 }
 OfxStatus paramDeleteAllKeys(OfxParamHandle param)
 {
-    return param ? kOfxStatOK : kOfxStatErrBadHandle;
+    auto* p = reinterpret_cast<ParamObj*>(param);
+    if (!p)
+        return kOfxStatErrBadHandle;
+    for (core::Animated& a : p->curve) // queda fijo en el valor del instante actual
+        a = core::Animated(sampleAt(a, currentTime(p)));
+    return kOfxStatOK;
 }
-OfxStatus paramCopy(OfxParamHandle to, OfxParamHandle from, OfxTime, const OfxRangeD*)
+OfxStatus paramCopy(OfxParamHandle to, OfxParamHandle from, OfxTime offset, const OfxRangeD* range)
 {
     auto* t = reinterpret_cast<ParamObj*>(to);
     auto* f = reinterpret_cast<ParamObj*>(from);
     if (!t || !f || t->type != f->type)
         return kOfxStatErrBadHandle;
-    t->value = f->value;
     t->text = f->text;
+    t->curve = f->curve;
+    const auto shift = std::llround(offset);
+    for (core::Animated& a : t->curve) {
+        std::vector<core::Keyframe> keys;
+        for (core::Keyframe k : a.keys)
+            if (!range || (k.frame >= range->min && k.frame <= range->max)) {
+                k.frame += shift;
+                keys.push_back(k);
+            }
+        a.keys = std::move(keys);
+    }
     return kOfxStatOK;
 }
 OfxStatus paramEditBegin(OfxParamSetHandle, const char*)
@@ -824,15 +909,15 @@ OfxStatus paramEditEnd(OfxParamSetHandle)
     return kOfxStatOK;
 }
 
-// Sin animación, los valores no dependen del instante.
 OfxStatus paramGetValueAtTimeImpl(OfxParamHandle param, OfxTime time, ...)
 {
     va_list ap;
     va_start(ap, time);
-    const OfxStatus st = getValueV(reinterpret_cast<ParamObj*>(param), ap);
+    const OfxStatus st = getValueV(reinterpret_cast<ParamObj*>(param), time, ap);
     va_end(ap);
     return st;
 }
+// Derivada por fotograma (diferencia centrada de medio fotograma a cada lado).
 OfxStatus paramGetDerivativeImpl(OfxParamHandle param, OfxTime time, ...)
 {
     auto* p = reinterpret_cast<ParamObj*>(param);
@@ -841,19 +926,27 @@ OfxStatus paramGetDerivativeImpl(OfxParamHandle param, OfxTime time, ...)
     va_list ap;
     va_start(ap, time);
     for (int i = 0; i < dimensionOf(p->type); ++i)
-        *va_arg(ap, double*) = 0.0; // sin animación: derivada nula
+        *va_arg(ap, double*) = (componentAt(*p, i, time + 0.5) - componentAt(*p, i, time - 0.5)) * normalScale(*p, i);
     va_end(ap);
     return kOfxStatOK;
 }
+// Integral entre t1 y t2 por trapecios (el valor es lineal a trozos entre fotogramas, salvo los
+// tramos suaves: con pasos de un fotograma como mucho el error es despreciable).
 OfxStatus paramGetIntegralImpl(OfxParamHandle param, OfxTime t1, OfxTime t2, ...)
 {
     auto* p = reinterpret_cast<ParamObj*>(param);
     if (!p)
         return kOfxStatErrBadHandle;
+    const int steps = std::clamp(int(std::ceil(std::abs(t2 - t1))), 1, 100000);
+    const double h = (t2 - t1) / steps;
     va_list ap;
     va_start(ap, t2);
-    for (int i = 0; i < dimensionOf(p->type); ++i)
-        *va_arg(ap, double*) = (i < int(p->value.size()) ? p->value[size_t(i)] * normalScale(*p, i) : 0.0) * (t2 - t1);
+    for (int i = 0; i < dimensionOf(p->type); ++i) {
+        double sum = 0.0;
+        for (int s = 0; s < steps; ++s)
+            sum += (componentAt(*p, i, t1 + s * h) + componentAt(*p, i, t1 + (s + 1) * h)) * 0.5 * h;
+        *va_arg(ap, double*) = sum * normalScale(*p, i);
+    }
     va_end(ap);
     return kOfxStatOK;
 }
@@ -861,7 +954,7 @@ OfxStatus paramSetValueAtTimeImpl(OfxParamHandle param, OfxTime time, ...)
 {
     va_list ap;
     va_start(ap, time);
-    const OfxStatus st = setValueV(reinterpret_cast<ParamObj*>(param), ap); // sin claves: valor fijo
+    const OfxStatus st = setValueV(reinterpret_cast<ParamObj*>(param), time, ap);
     va_end(ap);
     return st;
 }
@@ -1125,6 +1218,7 @@ ParamDef describeParam(const ParamObj& p)
     d.type = paramTypeOf(p.type);
     d.dimension = dimensionOf(p.type);
     d.secret = p.num(kOfxParamPropSecret) != 0;
+    d.animates = !isStringType(p.type) && p.num(kOfxParamPropAnimates, 0, 1) != 0;
     if (isStringType(p.type)) {
         d.defaultText = p.str(kOfxParamPropDefault);
     } else {
@@ -1381,8 +1475,12 @@ ParamValues withDefaults(const PluginInfo& plugin, const ParamValues& values)
             || d.type == ParamType::Other)
             continue;
         auto it = values.find(d.name);
-        std::vector<double> v = it != values.end() ? it->second : d.defaults;
-        v.resize(size_t(d.dimension), 0.0);
+        std::vector<core::Animated> v;
+        if (it != values.end())
+            v = it->second;
+        for (size_t i = v.size(); i < size_t(d.dimension); ++i) // los componentes que faltan, por defecto
+            v.emplace_back(i < d.defaults.size() ? d.defaults[i] : 0.0);
+        v.resize(size_t(d.dimension));
         out[d.name] = std::move(v);
     }
     return out;
@@ -1466,7 +1564,8 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
         if (isStringType(p->type))
             p->text = p->str(kOfxParamPropDefault);
         else
-            p->value = p->nums(kOfxParamPropDefault);
+            for (double v : p->nums(kOfxParamPropDefault))
+                p->curve.emplace_back(v);
         e.params.list.push_back(std::move(p));
     }
     const char* depth = e.floatImages ? kOfxBitDepthFloat : kOfxBitDepthByte;
@@ -1503,36 +1602,63 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
 
 bool Effect::render(const ParamValues& values, double time, const uint8_t* in, uint8_t* out, std::string* error)
 {
+    return renderImpl(values, time, in, out, false, error);
+}
+
+bool Effect::render(const ParamValues& values, double time, const float* in, float* out, std::string* error)
+{
+    return renderImpl(values, time, in, out, true, error);
+}
+
+bool Effect::renderImpl(const ParamValues& values, double time, const void* in, void* out, bool floatIO, std::string* error)
+{
     EffectObj& e = *d->obj;
     LoadedPlugin& plugin = *d->plugin;
     const int w = e.width, h = e.height;
+    e.time = time;
     for (auto& p : e.params.list) {
         auto it = values.find(p->name);
         if (it != values.end() && !isStringType(p->type)) {
-            p->value = it->second;
-            p->value.resize(size_t(dimensionOf(p->type)), 0.0);
+            p->curve = it->second;
+            p->curve.resize(size_t(dimensionOf(p->type)));
         }
+        if (!isStringType(p->type))
+            p->setI(kOfxParamPropIsAnimating, {!keyTimes(*p).empty() ? 1 : 0});
     }
 
     // Imágenes de abajo arriba (como espera OFX): el puntero a la fila de abajo y un paso negativo.
+    // Si la profundidad del plugin no es la de las imágenes, se convierte a la suya.
     const size_t pixels = size_t(w) * size_t(h);
+    const size_t values4 = pixels * 4;
+    const auto* in8 = static_cast<const uint8_t*>(in);
+    const auto* inF = static_cast<const float*>(in);
     std::vector<uint8_t> inCopy;
     if (e.floatImages) {
-        d->inF.resize(pixels * 4);
-        d->outF.assign(pixels * 4, 0.0f);
-        for (size_t i = 0; i < pixels * 4; ++i)
-            d->inF[i] = float(in[i]) / 255.0f;
+        d->inF.resize(values4);
+        d->outF.assign(values4, 0.0f);
+        if (floatIO)
+            std::copy(inF, inF + values4, d->inF.begin());
+        else
+            for (size_t i = 0; i < values4; ++i)
+                d->inF[i] = float(in8[i]) / 255.0f;
         const int stride = w * 4 * int(sizeof(float));
         e.rowBytes = -stride;
         e.inData = reinterpret_cast<uint8_t*>(d->inF.data()) + ptrdiff_t(h - 1) * stride;
         e.outData = reinterpret_cast<uint8_t*>(d->outF.data()) + ptrdiff_t(h - 1) * stride;
     } else {
-        inCopy.assign(in, in + pixels * 4); // el plugin no debería escribir la entrada, pero por si acaso
-        std::fill(out, out + pixels * 4, uint8_t(0));
+        // El plugin no debería escribir la entrada, pero por si acaso trabaja sobre una copia.
+        if (floatIO) {
+            inCopy.resize(values4);
+            for (size_t i = 0; i < values4; ++i)
+                inCopy[i] = uint8_t(std::clamp(std::lround(inF[i] * 255.0f), 0L, 255L));
+        } else {
+            inCopy.assign(in8, in8 + values4);
+        }
+        d->outB.assign(values4, 0);
         const int stride = w * 4;
         e.rowBytes = -stride;
         e.inData = inCopy.data() + ptrdiff_t(h - 1) * stride;
-        e.outData = out + ptrdiff_t(h - 1) * stride;
+        e.outData = d->outB.data() + ptrdiff_t(h - 1) * stride;
     }
 
     std::unique_lock renderLock(plugin.renderMutex, std::defer_lock);
@@ -1563,9 +1689,16 @@ bool Effect::render(const ParamValues& values, double time, const uint8_t* in, u
                                              : "El efecto " + plugin.info->label + " no pudo renderizar." + (e.lastMessage.empty() ? "" : " " + e.lastMessage);
         return false;
     }
-    if (e.floatImages)
-        for (size_t i = 0; i < pixels * 4; ++i)
-            out[i] = uint8_t(std::clamp(std::lround(d->outF[i] * 255.0f), 0L, 255L));
+    if (e.floatImages && floatIO)
+        std::copy(d->outF.begin(), d->outF.end(), static_cast<float*>(out));
+    else if (e.floatImages)
+        for (size_t i = 0; i < values4; ++i)
+            static_cast<uint8_t*>(out)[i] = uint8_t(std::clamp(std::lround(d->outF[i] * 255.0f), 0L, 255L));
+    else if (floatIO)
+        for (size_t i = 0; i < values4; ++i)
+            static_cast<float*>(out)[i] = float(d->outB[i]) / 255.0f;
+    else
+        std::copy(d->outB.begin(), d->outB.end(), static_cast<uint8_t*>(out));
     return true;
 }
 

@@ -263,12 +263,16 @@ std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::Vide
     if (!any || f->width <= 0 || f->height <= 0)
         return f;
     const int w = f->width, h = f->height;
+    // El video de más de 8 bits (y todo el HDR) pasa en coma flotante, sin perder precisión, y sale
+    // como RGBA16F con su señal; el resto, en 8 bits como RGBA.
+    const bool deep = f->format == media::PixelFormat::P016 || f->transfer != media::Transfer::SDR;
     std::vector<uint8_t> rgba;
-    if (f->format == media::PixelFormat::RGBA)
-        rgba = f->rgba;
-    else if (!media::frameToRgba(*f, w, h, rgba))
+    std::vector<float> rgbaF;
+    if (deep ? !media::frameToRgbaF(*f, rgbaF) : f->format == media::PixelFormat::RGBA ? (rgba = f->rgba, false)
+                                                                                         : !media::frameToRgba(*f, w, h, rgba))
         return f;
     std::vector<uint8_t> out(rgba.size());
+    std::vector<float> outF(rgbaF.size());
     bool applied = false;
     for (size_t i = 0; i < layer.ofx->size(); ++i) {
         const core::OfxEffect& e = (*layer.ofx)[i];
@@ -291,17 +295,23 @@ std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::Vide
         if (!slot.effect)
             continue;
         std::string error;
-        if (!slot.effect->render(ofx::withDefaults(slot.effect->plugin(), e.params), double(layer.clipFrame), rgba.data(), out.data(), &error)) {
+        const auto values = ofx::withDefaults(slot.effect->plugin(), e.params);
+        const double time = double(layer.clipFrame);
+        if (deep ? !slot.effect->render(values, time, rgbaF.data(), outF.data(), &error)
+                 : !slot.effect->render(values, time, rgba.data(), out.data(), &error)) {
             m_ofxError = error;
             continue;
         }
         std::swap(rgba, out);
+        std::swap(rgbaF, outF);
         applied = true;
     }
     if (!applied)
         return f;
+    if (deep)
+        media::floatToHalf(rgbaF, rgba);
     auto result = std::make_shared<media::VideoFrame>();
-    result->format = media::PixelFormat::RGBA;
+    result->format = deep ? media::PixelFormat::RGBA16F : media::PixelFormat::RGBA;
     result->width = w;
     result->height = h;
     result->sampleAspect = f->sampleAspect;

@@ -134,7 +134,13 @@ bool setMatte(Project& p, Id clipId, const AiMatte& matte);
 int addOfxEffect(Project& p, Id clipId, const std::string& pluginId); // índice o −1
 bool removeOfxEffect(Project& p, Id clipId, int index);
 bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled);
-bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value);
+// Fija el valor del parámetro en `rel`: si está animado, en su keyframe (que se crea si no existe).
+bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value, FramePos rel = 0);
+// Crea un keyframe del parámetro en `rel` con `current` (su valor actual, con los que faltan por
+// defecto) o, si ya existe, lo quita. Al quitar el último, el parámetro queda fijo en ese valor.
+bool toggleOfxKey(Project& p, Id clipId, int index, const std::string& name, FramePos rel, const std::vector<double>& current,
+                  Interpolation interp = Interpolation::Linear);
+bool setOfxKeyInterpolation(Project& p, Id clipId, int index, const std::string& name, FramePos rel, Interpolation interp);
 bool moveOfxEffect(Project& p, Id clipId, int from, int to);
 // Separa el audio de un clip de video a una pista de audio libre (o nueva). Devuelve el clip de audio.
 Id detachAudio(Project& p, Id clipId);

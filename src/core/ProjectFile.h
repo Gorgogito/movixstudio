@@ -22,7 +22,8 @@ namespace movix::core {
 // Versión 7 (F6): clips multicámara (ángulo y audio).
 // Versión 8 (F6): efectos OpenFX por clip, velocidad variable, clips al revés, forma animada de las
 // máscaras de forma libre y composición en luz lineal.
-inline constexpr int kProjectFormatVersion = 8;
+// Versión 9 (F6): parámetros de los efectos OpenFX con keyframes.
+inline constexpr int kProjectFormatVersion = 9;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {

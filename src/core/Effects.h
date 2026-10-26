@@ -129,12 +129,13 @@ struct AiMatte {
 };
 
 // Efecto OpenFX de un clip (plugin de terceros, ver ofx/OfxHost.h): el plugin y los valores de sus
-// parámetros; los que faltan toman su valor por defecto. Se aplican en orden sobre la imagen del
-// clip, antes de la corrección de color.
+// parámetros, cada componente animable (los keyframes de un parámetro están en los mismos
+// fotogramas en todos sus componentes); los que faltan toman su valor por defecto. Se aplican en
+// orden sobre la imagen del clip, antes de la corrección de color.
 struct OfxEffect {
     std::string pluginId;
     bool enabled = true;
-    std::map<std::string, std::vector<double>> params;
+    std::map<std::string, std::vector<Animated>> params;
     bool operator==(const OfxEffect&) const = default;
 };
 inline constexpr size_t kMaxOfxEffects = 16;

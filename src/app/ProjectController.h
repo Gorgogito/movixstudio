@@ -294,14 +294,18 @@ public:
     Q_INVOKABLE void rescanOfx();
     Q_INVOKABLE void openOfxFolder();
     QString ofxFolder() const;
-    // Efectos del clip con la definición de sus parámetros y su valor: {index, pluginId, label,
-    // enabled, installed, params: [{name, label, hint, type, value, defaults, min, max, options}]}.
+    // Efectos del clip con la definición de sus parámetros y su valor en el cabezal: {index, pluginId,
+    // label, enabled, installed, params: [{name, label, hint, type, value, defaults, min, max, options,
+    // animates, animated, keyHere, interp, hasPrev, hasNext}]}.
     Q_INVOKABLE QVariantList ofxEffects(qint64 clipId) const;
     Q_INVOKABLE void addOfxEffect(qint64 clipId, const QString& pluginId);
     Q_INVOKABLE void removeOfxEffect(qint64 clipId, int index);
     Q_INVOKABLE void setOfxEnabled(qint64 clipId, int index, bool enabled);
     Q_INVOKABLE void moveOfxEffect(qint64 clipId, int from, int to);
     Q_INVOKABLE void setOfxParam(qint64 clipId, int index, const QString& name, const QVariantList& value);
+    // Keyframe del parámetro en el cabezal (añadir o quitar) y cómo se llega al siguiente.
+    Q_INVOKABLE void toggleOfxKeyframe(qint64 clipId, int index, const QString& name);
+    Q_INVOKABLE void setOfxKeyInterpolation(qint64 clipId, int index, const QString& name, const QString& interp);
 
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);

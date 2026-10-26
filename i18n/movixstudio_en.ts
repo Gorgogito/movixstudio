@@ -2186,6 +2186,14 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>No hay plugins OpenFX instalados. Instálalos en la carpeta de plugins de MovixStudio o en la carpeta común de OpenFX del sistema y pulsa «Buscar de nuevo».</source>
         <translation>No OpenFX plugins are installed. Install them in MovixStudio&apos;s plugin folder or in the system-wide OpenFX folder and press “Scan again”.</translation>
     </message>
+    <message>
+        <source>Keyframe anterior</source>
+        <translation>Previous keyframe</translation>
+    </message>
+    <message>
+        <source>Keyframe siguiente</source>
+        <translation>Next keyframe</translation>
+    </message>
 </context>
 <context>
     <name>Otio</name>
