@@ -67,6 +67,8 @@ void VideoRenderer::synchronize(QQuickRhiItem* item)
     auto* view = static_cast<VideoView*>(item);
     m_bundle = view->m_player ? view->m_player->frameForPresentation() : nullptr;
     m_feed = view->m_feed;
+    if (view->m_mirror) // el hilo de la interfaz está parado durante la sincronización
+        view->m_mirror->present(m_bundle);
 }
 
 void VideoRenderer::render(QRhiCommandBuffer* cb)
@@ -157,6 +159,15 @@ void VideoView::setPlayer(movix::playback::TimelinePlayer* player)
     }
     update();
     emit playerChanged();
+}
+
+void VideoView::setMirror(HdrMonitor* mirror)
+{
+    if (m_mirror == mirror)
+        return;
+    m_mirror = mirror;
+    update(); // el monitor recibe enseguida la imagen actual
+    emit mirrorChanged();
 }
 
 void VideoView::setScopesActive(bool active)

@@ -8,7 +8,8 @@ layout(location = 0) out vec4 fragColor;
 // params.x = 1: invertir v (destinos con el origen abajo, como OpenGL). params.y = 1: conservar el
 // alfa (secuencias anidadas, que se componen sobre fondo transparente). signal.x > 0: la señal del
 // lienzo (1 PQ, 2 HLG) se convierte a SDR para mostrarla en una pantalla SDR. canvas.z = 1: el lienzo
-// está en luz lineal y se lleva primero a la señal del proyecto (canvas.w).
+// está en luz lineal y se lleva primero a la señal del proyecto (canvas.w). signal.y = 1: destino
+// HDR en scRGB, con el blanco SDR (signal.z) y el pico (signal.w) de la pantalla en nits.
 layout(std140, binding = 0) uniform buf {
     mat4 mvp;
     mat4 yuvToRgb;
@@ -116,6 +117,31 @@ vec3 linearToSignal(vec3 l, int sig)
     return pow(l, vec3(1.0 / 2.4));
 }
 
+// Pantalla HDR en scRGB (luz lineal Rec.709, 1,0 = 80 nits). SDR: curva sRGB y el blanco SDR de la
+// pantalla, como ve Windows el resto del escritorio. HDR: nits absolutos pasados a Rec.709 (los
+// colores fuera de gama quedan negativos, que scRGB admite) y, por encima de las 3/4 partes del
+// pico de la pantalla, compresión de las luces (sobre el máximo de los canales, sin cambiar el tono)
+// hasta el máximo de la señal.
+vec3 signalToScRgb(vec3 e, int sig, float sdrWhite, float peak)
+{
+    if (sig == 0) {
+        e = clamp(e, 0.0, 1.0);
+        vec3 lin = mix(e / 12.92, pow((e + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), e));
+        return lin * sdrWhite / 80.0;
+    }
+    vec3 n = k2020To709 * signalToNits(e, sig);
+    float sourcePeak = sig == 1 ? 10000.0 : kHdrPeak;
+    float knee = 0.75 * peak;
+    float m = max(max(n.r, n.g), n.b);
+    if (peak < sourcePeak && m > knee) {
+        float range = (sourcePeak - knee) / (peak - knee);
+        float x = (min(m, sourcePeak) - knee) / (peak - knee);
+        float mm = knee + (peak - knee) * x * (1.0 + x / (range * range)) / (1.0 + x);
+        n *= mm / m;
+    }
+    return n / 80.0;
+}
+
 void main()
 {
     vec2 uv = vTexcoord;
@@ -132,5 +158,7 @@ void main()
     int sig = int(ubuf.signal.x + 0.5);
     if (sig > 0)
         c.rgb = convertSignal(c.rgb, sig, true, 0);
+    if (ubuf.signal.y > 0.5)
+        c.rgb = signalToScRgb(c.rgb, int(ubuf.canvas.w + 0.5), ubuf.signal.z, ubuf.signal.w);
     fragColor = vec4(c.rgb, ubuf.params.y > 0.5 ? c.a : 1.0);
 }

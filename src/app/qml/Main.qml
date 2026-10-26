@@ -101,6 +101,7 @@ ApplicationWindow {
 
     onClosing: (close) => {
         if (closeConfirmed || !project.modified) {
+            hdrMonitor.close() // si no, su ventana mantendría viva la aplicación
             project.shutdown()
             return
         }
@@ -113,6 +114,7 @@ ApplicationWindow {
 
     // --- Atajos de teclado (configurables: Editar → Atajos de teclado) ---
     ShortcutController { id: keys }
+    HdrMonitor { id: hdrMonitor }
     Shortcut { sequences: keys.keys.new; onActivated: window.guard(() => project.newProject()) }
     Shortcut { sequences: keys.keys.open; onActivated: window.guard(() => openDialog.open()) }
     Shortcut { sequences: keys.keys.save; onActivated: window.saveProject(null) }
@@ -282,6 +284,33 @@ ApplicationWindow {
             MenuItem { text: qsTr("Usar &proxies en la vista previa"); checkable: true; checked: project.useProxies; onTriggered: project.useProxies = checked }
             MenuSeparator {}
             Menu {
+                id: hdrMonitorMenu
+                title: qsTr("&Monitor HDR")
+                enabled: hdrMonitor.available
+                width: 340
+                MenuItem { text: qsTr("En una &ventana"); onTriggered: hdrMonitor.showWindowed() }
+                Instantiator {
+                    model: hdrMonitor.screens
+                    delegate: MenuItem {
+                        required property int index
+                        required property string modelData
+                        text: qsTr("Pantalla completa en %1").arg(modelData)
+                        onTriggered: hdrMonitor.showFullScreen(index)
+                    }
+                    onObjectAdded: (index, object) => hdrMonitorMenu.insertItem(index + 1, object)
+                    onObjectRemoved: (index, object) => hdrMonitorMenu.removeItem(object)
+                }
+                MenuSeparator {}
+                MenuItem { text: qsTr("&Cerrar el monitor"); enabled: hdrMonitor.open; onTriggered: hdrMonitor.close() }
+                MenuItem {
+                    enabled: false
+                    text: !hdrMonitor.open ? qsTr("Doble clic o F11: pantalla completa; Esc: salir")
+                        : hdrMonitor.hdrActive ? qsTr("HDR activo: pico de %1 nits, blanco SDR de %2 nits").arg(Math.round(hdrMonitor.peakNits)).arg(Math.round(hdrMonitor.sdrWhiteNits))
+                        : qsTr("Pantalla sin HDR: se muestra convertido a SDR")
+                }
+            }
+            MenuSeparator {}
+            Menu {
                 title: qsTr("&Idioma")
                 // Los nombres de idioma se muestran siempre en su propio idioma.
                 MenuItem { text: "Español"; checkable: true; checked: Language.current === "es"; onTriggered: Language.current = "es" }
@@ -401,6 +430,7 @@ ApplicationWindow {
                 SplitView.fillWidth: true
                 SplitView.minimumWidth: 400
                 project: project
+                monitor: hdrMonitor
                 overlayMode: inspector.overlayMode
                 overlayMaskIndex: inspector.maskIndex
                 onKeyPicked: inspector.pickingKey = false

@@ -12,6 +12,7 @@ Rectangle {
     property bool scopesVisible: false
     property string overlayMode: "transform" // ver TransformOverlay
     property int overlayMaskIndex: 0
+    property HdrMonitor monitor: null // recibe la misma imagen que el visor
     signal keyPicked()
     signal objectPicked(real u, real v)
     readonly property TimelinePlayer activePlayer: sourceMode ? project.sourcePlayer : project.player
@@ -111,6 +112,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 player: panel.activePlayer
+                mirror: panel.monitor && panel.monitor.open ? panel.monitor : null
 
                 MouseArea {
                     anchors.fill: parent

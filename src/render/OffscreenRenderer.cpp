@@ -218,6 +218,12 @@ void* OffscreenRenderer::d3d11Device() const
     return nullptr;
 }
 
+void OffscreenRenderer::setHdrDisplay(bool hdr, float sdrWhiteNits, float peakNits)
+{
+    if (m_compositor)
+        m_compositor->setHdrDisplay(hdr, sdrWhiteNits, peakNits);
+}
+
 int OffscreenRenderer::lastPassCount() const
 {
     return m_compositor ? m_compositor->lastPassCount() : 0;

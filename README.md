@@ -46,7 +46,8 @@ de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, si
 - 14 modos de fusión (multiplicar, trama, superponer, luz suave…) y recorte animable por borde.
 - Clips compuestos (Ctrl+G): agrupan clips en una secuencia que se abre con doble clic.
 - HDR: proyectos HDR10 (PQ) o HLG en Rec.2020, material de 10 bits y exportación de 10 bits con
-  metadatos HDR10; el visor muestra la conversión a SDR.
+  metadatos HDR10; el visor muestra la conversión a SDR y el monitor HDR (una ventana aparte) da
+  los nits reales en pantallas con el HDR de Windows activo.
 - Scopes junto al visor: forma de onda, desfile RGB, vectorscopio e histograma en tiempo real.
 - Todo se calcula en la GPU con el mismo compositor en la vista previa y en la exportación.
 

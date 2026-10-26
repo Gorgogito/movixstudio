@@ -61,6 +61,16 @@ public:
     // Destino SDR (el visor): en proyectos HDR, la copia final convierte la señal a SDR para
     // mostrarla. La exportación no lo activa y conserva la señal HDR.
     void setSdrDisplay(bool sdr) { m_sdrDisplay = sdr; }
+    // Destino HDR en scRGB (coma flotante, luz lineal con primarias Rec.709 y 1,0 = 80 nits): la
+    // copia final da nits absolutos. Los proyectos SDR se ven con el blanco SDR de la pantalla
+    // (`sdrWhiteNits`) y los HDR se comprimen por encima de su pico (`peakNits`). Tiene prioridad
+    // sobre setSdrDisplay.
+    void setHdrDisplay(bool hdr, float sdrWhiteNits = 200.0f, float peakNits = 1000.0f)
+    {
+        m_hdrDisplay = hdr;
+        m_sdrWhiteNits = sdrWhiteNits;
+        m_peakNits = peakNits;
+    }
 
     // Textura con el último lienzo compuesto (para los scopes); nullptr si no hay lienzo o si el
     // último fotograma se dibujó directamente en el destino.
@@ -121,6 +131,9 @@ private:
     bool m_transparent = false; // compositor de una secuencia anidada: fondo transparente
     bool m_sdrDisplay = false;
     bool m_displayConvert = false;
+    bool m_hdrDisplay = false;
+    float m_sdrWhiteNits = 200.0f;
+    float m_peakNits = 1000.0f;
     bool m_linear = false;     // el lienzo guarda luz lineal (ajuste del proyecto)
     int m_projectSignal = 0;   // señal de trabajo del proyecto (core::ColorMode)
     bool m_canvasValid = false;

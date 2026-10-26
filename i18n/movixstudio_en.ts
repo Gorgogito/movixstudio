@@ -981,6 +981,13 @@
     </message>
 </context>
 <context>
+    <name>HdrMonitor</name>
+    <message>
+        <source>MovixStudio — Monitor HDR</source>
+        <translation>MovixStudio — HDR Monitor</translation>
+    </message>
+</context>
+<context>
     <name>Inspector</name>
     <message>
         <source>Propiedades</source>
@@ -1902,6 +1909,34 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Usar &amp;proxies en la vista previa</source>
         <translation>Use &amp;proxies in the preview</translation>
     </message>
+    <message>
+        <source>&amp;Monitor HDR</source>
+        <translation>&amp;HDR Monitor</translation>
+    </message>
+    <message>
+        <source>En una &amp;ventana</source>
+        <translation>In a &amp;window</translation>
+    </message>
+    <message>
+        <source>Pantalla completa en %1</source>
+        <translation>Full screen on %1</translation>
+    </message>
+    <message>
+        <source>&amp;Cerrar el monitor</source>
+        <translation>&amp;Close the monitor</translation>
+    </message>
+    <message>
+        <source>Doble clic o F11: pantalla completa; Esc: salir</source>
+        <translation>Double-click or F11: full screen; Esc: exit</translation>
+    </message>
+    <message>
+        <source>HDR activo: pico de %1 nits, blanco SDR de %2 nits</source>
+        <translation>HDR on: %1-nit peak, %2-nit SDR white</translation>
+    </message>
+    <message>
+        <source>Pantalla sin HDR: se muestra convertido a SDR</source>
+        <translation>Display without HDR: shown converted to SDR</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
@@ -2657,6 +2692,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>No se pudo crear el proxy de «%1»: %2</source>
         <translation>Could not create the proxy for “%1”: %2</translation>
     </message>
+    <message>
+        <source>Composición en luz lineal</source>
+        <translation>Linear-light compositing</translation>
+    </message>
 </context>
 <context>
     <name>ProjectFile</name>
@@ -2742,6 +2781,18 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>En HDR el material SDR se coloca a 203 nits, el visor muestra una conversión a SDR y la exportación es de 10 bits (HEVC, AV1, VP9 o ProRes).</source>
         <translation>In HDR, SDR footage is placed at 203 nits, the viewer shows a conversion to SDR and the export is 10-bit (HEVC, AV1, VP9 or ProRes).</translation>
+    </message>
+    <message>
+        <source>Composición</source>
+        <translation>Compositing</translation>
+    </message>
+    <message>
+        <source>En luz lineal</source>
+        <translation>In linear light</translation>
+    </message>
+    <message>
+        <source>Los modos de fusión, la opacidad y los fundidos mezclan la luz como en la realidad (bordes y desenfoques más naturales). La corrección de color trabaja igual.</source>
+        <translation>Blend modes, opacity and fades mix light as it behaves in reality (more natural edges and blurs). Color correction works the same way.</translation>
     </message>
 </context>
 <context>

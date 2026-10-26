@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HdrMonitor.h"
 #include "ScopeFeed.h"
 #include "playback/TimelinePlayer.h"
 
@@ -17,6 +18,8 @@ class VideoView : public QQuickRhiItem {
     QML_ELEMENT
     Q_PROPERTY(movix::playback::TimelinePlayer* player READ player WRITE setPlayer NOTIFY playerChanged)
     Q_PROPERTY(bool scopesActive READ scopesActive WRITE setScopesActive NOTIFY scopesActiveChanged)
+    // Monitor HDR que recibe cada fotograma presentado (opcional).
+    Q_PROPERTY(HdrMonitor* mirror READ mirror WRITE setMirror NOTIFY mirrorChanged)
 
 public:
     explicit VideoView(QQuickItem* parent = nullptr);
@@ -26,10 +29,13 @@ public:
     bool scopesActive() const { return m_feed->active(); }
     void setScopesActive(bool active);
     std::shared_ptr<const ScopeFeed> scopeFeed() const { return m_feed; }
+    HdrMonitor* mirror() const { return m_mirror; }
+    void setMirror(HdrMonitor* mirror);
 
 signals:
     void playerChanged();
     void scopesActiveChanged();
+    void mirrorChanged();
 
 protected:
     QQuickRhiItemRenderer* createRenderer() override;
@@ -40,6 +46,7 @@ private:
     void onAfterAnimating();
 
     QPointer<movix::playback::TimelinePlayer> m_player;
+    QPointer<HdrMonitor> m_mirror;
     QMetaObject::Connection m_animatingConnection;
     std::shared_ptr<ScopeFeed> m_feed = std::make_shared<ScopeFeed>();
 };

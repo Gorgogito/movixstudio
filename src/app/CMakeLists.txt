@@ -3,6 +3,7 @@ qt_add_executable(MovixStudio WIN32
     LanguageManager.h LanguageManager.cpp
     PlayerForeign.h
     VideoView.h VideoView.cpp
+    HdrMonitor.h HdrMonitor.cpp
     ScopeFeed.h
     ScopeView.h ScopeView.cpp
     EffectNames.h

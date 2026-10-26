@@ -299,7 +299,14 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Forma animada de las máscaras de forma libre: keyframes de todos los puntos a la vez
       (fila «Forma» del panel de efectos); mover los puntos en otro instante crea su keyframe y
       añadir o quitar un punto lo hace en todos los keyframes
-- [ ] Visor HDR, corrección en luz lineal
+- [x] Composición en luz lineal (ajuste del proyecto): fusión, opacidad y fundidos mezclan luz;
+      el lienzo RGBA16F guarda luz y la copia final vuelve a la señal del proyecto. La corrección
+      de color sigue trabajando sobre la señal
+- [x] Monitor HDR (Ver → Monitor HDR): ventana aparte, o a pantalla completa en la pantalla
+      elegida, con la misma imagen que el visor. Con el HDR de Windows activo usa una cadena de
+      intercambio scRGB en coma flotante: nits absolutos, compresión por encima del pico de la
+      pantalla y proyectos SDR con su blanco SDR. Sin HDR muestra la conversión a SDR. Dibuja en
+      su propio hilo y dispositivo D3D11; solo en Windows
 - [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas
       con fundidos
 - [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO

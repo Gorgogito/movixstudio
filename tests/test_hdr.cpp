@@ -293,3 +293,58 @@ TEST_CASE("OpenColorIO: espacios de cámara en la LUT del clip", "[color][ocio]"
     REQUIRE(b.layers[0].lut);
     CHECK(b.layers[0].lut->sample({0.41f, 0.41f, 0.41f}).g == Approx(gray.g).margin(0.01));
 }
+
+TEST_CASE("GPU: salida a una pantalla HDR en scRGB", "[render][hdr]")
+{
+    constexpr int W = 160, H = 90;
+    render::OffscreenRenderer r;
+    REQUIRE(r.init(W, H, nullptr, true));
+    auto gray = [](uint8_t v) {
+        auto f = std::make_shared<media::VideoFrame>();
+        f->width = 16;
+        f->height = 9;
+        f->format = media::PixelFormat::RGBA;
+        f->rgba.assign(16 * 9 * 4, v);
+        for (size_t i = 3; i < f->rgba.size(); i += 4)
+            f->rgba[i] = 255;
+        return f;
+    };
+    auto center = [&](ColorMode mode, uint8_t v) {
+        engine::FrameBundle b;
+        b.canvasWidth = W;
+        b.canvasHeight = H;
+        b.colorMode = mode;
+        engine::LayerFrame l;
+        l.frame = gray(v);
+        b.layers.push_back(l);
+        std::vector<uint8_t> px;
+        REQUIRE(r.render(b, px));
+        return sample16(px, (size_t(H / 2) * W + W / 2) * 4) / 65535.0;
+    };
+    auto srgbToLinear = [](double e) { return e <= 0.04045 ? e / 12.92 : std::pow((e + 0.055) / 1.055, 2.4); };
+
+    SECTION("un proyecto SDR se ve con la curva sRGB y el blanco SDR de la pantalla")
+    {
+        r.setHdrDisplay(true, 80.0f, 1000.0f); // 80 nits = 1,0 en scRGB
+        CHECK(center(ColorMode::SDR, 128) == Approx(srgbToLinear(128 / 255.0)).margin(0.002));
+        r.setHdrDisplay(true, 40.0f, 1000.0f);
+        CHECK(center(ColorMode::SDR, 255) == Approx(0.5).margin(0.002));
+    }
+    SECTION("un proyecto HDR10 da nits absolutos y comprime por encima del pico de la pantalla")
+    {
+        // Un gris SDR en un proyecto PQ: 203 nits × v^2,4 (≈ 40 nits).
+        const uint8_t v = 129;
+        const double nits = 203.0 * std::pow(v / 255.0, 2.4);
+        r.setHdrDisplay(true, 200.0f, 1000.0f);
+        CHECK(center(ColorMode::PQ, v) == Approx(nits / 80.0).margin(0.004));
+
+        r.setHdrDisplay(true, 200.0f, 50.0f); // pantalla de 50 nits: rodilla en 37,5
+        const double grayOut = center(ColorMode::PQ, v);
+        const double whiteOut = center(ColorMode::PQ, 255);
+        std::printf("[hdr] scRGB con pico de 50 nits: gris %.4f, blanco %.4f\n", grayOut, whiteOut);
+        CHECK(grayOut > 37.5 / 80.0);
+        CHECK(grayOut < nits / 80.0);
+        CHECK(whiteOut > grayOut);
+        CHECK(whiteOut <= 50.0 / 80.0 + 0.002);
+    }
+}

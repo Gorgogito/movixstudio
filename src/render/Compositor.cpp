@@ -456,8 +456,9 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         const QMatrix4x4 mvp = placement(m_rhi, QRectF(m_canvasRect).center(), QSizeF(canvasSize) / 2, 0.0, targetSize);
         std::memcpy(b.mvp, mvp.constData(), sizeof(b.mvp));
         setVec(b.params, m_rhi->isYUpInFramebuffer() ? 1.0f : 0.0f, m_transparent ? 1.0f : 0.0f);
-        m_displayConvert = m_sdrDisplay && bundle.colorMode != core::ColorMode::SDR;
-        setVec(b.signal, m_displayConvert ? float(int(bundle.colorMode)) : 0.0f);
+        m_displayConvert = m_sdrDisplay && !m_hdrDisplay && bundle.colorMode != core::ColorMode::SDR;
+        setVec(b.signal, m_displayConvert ? float(int(bundle.colorMode)) : 0.0f, m_hdrDisplay ? 1.0f : 0.0f, m_sdrWhiteNits,
+               m_peakNits);
         m_linear = bundle.linearLight;
         m_projectSignal = int(bundle.colorMode);
         setVec(b.canvas, 0.0f, 0.0f, m_linear ? 1.0f : 0.0f, float(m_projectSignal));
@@ -588,7 +589,7 @@ void Compositor::render(QRhiCommandBuffer* cb, QRhiRenderTarget* target, const Q
     const QSize canvasSize = m_canvasRect.size();
     const bool anyBlend = std::any_of(m_slots.begin(), m_slots.begin() + std::ptrdiff_t(m_activeLayers),
                                       [](const auto& slot) { return slot->blends; });
-    if (!anyBlend && !m_retainCanvas && !m_displayConvert && !m_linear) {
+    if (!anyBlend && !m_retainCanvas && !m_displayConvert && !m_linear && !m_hdrDisplay) {
         // Una sola pasada sobre el destino; el lienzo es una región de él (QRhi cuenta y desde abajo).
         const QRhiViewport vp(float(m_canvasRect.x()), float(m_targetSize.height() - m_canvasRect.y() - m_canvasRect.height()),
                               float(canvasSize.width()), float(canvasSize.height()));

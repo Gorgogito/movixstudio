@@ -45,6 +45,8 @@ public:
     void* d3d11Device() const;
     bool isDeep() const { return m_deep; }
     QString backendName() const;
+    // Salida como la de una pantalla HDR (scRGB, ver Compositor::setHdrDisplay); requiere `deep`.
+    void setHdrDisplay(bool hdr, float sdrWhiteNits, float peakNits);
     int lastPassCount() const; // pasadas de GPU del último fotograma (para pruebas)
 
 private:
