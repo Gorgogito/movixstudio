@@ -149,6 +149,86 @@ TEST_CASE("Sincronización por audio de archivos reales", "[multicam][sync]")
     CHECK(std::abs(r.offsets[2] - 600'000) <= 10'000);
 }
 
+TEST_CASE("Sincronización de grabaciones largas con deriva", "[multicam][sync]")
+{
+    const int rate = ai::kSyncSampleRate;
+    // Referencia de 20 min. «late» empieza 11,5 min después, dura 8 min y su reloj adelanta 100 ppm
+    // (su instante τ es el T = 690 + 1,0001·τ de la referencia); «early» empieza 30 s antes que la
+    // referencia (antes suena otra cosa) y dura 5 min.
+    const auto ref = speechLike(1200, rate, 21);
+    constexpr double kLate = 690.0, kDrift = 1.0001;
+    std::vector<float> late(size_t(480) * size_t(rate));
+    std::mt19937 rng(8);
+    std::normal_distribution<float> noise(0.0f, 0.01f);
+    float lp = 0;
+    for (size_t i = 0; i < late.size(); ++i) {
+        const double t = (kLate + kDrift * double(i) / rate) * rate;
+        const size_t k = size_t(t);
+        const float v = k + 1 < ref.size() ? float(ref[k] + (t - double(k)) * (ref[k + 1] - ref[k])) : 0.0f;
+        lp += 0.4f * (v - lp);
+        late[i] = 0.5f * lp + noise(rng);
+    }
+    std::vector<float> early = speechLike(30, rate, 77);
+    early.insert(early.end(), ref.begin(), ref.begin() + 270 * rate);
+
+    auto source = [&](const std::vector<float>& pcm) {
+        ai::SyncSource s;
+        ai::OnsetEnvelope envelope;
+        for (size_t i = 0; i < pcm.size(); i += 4096) // por bloques, como al decodificar
+            envelope.push(pcm.data() + i, std::min<size_t>(4096, pcm.size() - i));
+        s.envelope = envelope.values();
+        s.duration = TimeUs(double(pcm.size()) * kUsPerSecond / rate);
+        s.read = [&pcm, rate](TimeUs start, TimeUs length) {
+            std::vector<float> out(size_t(length * rate / kUsPerSecond), 0.0f);
+            const long long first = (long long)(start * rate / kUsPerSecond);
+            for (size_t i = 0; i < out.size(); ++i)
+                if (first + (long long)i >= 0 && first + (long long)i < (long long)pcm.size())
+                    out[i] = pcm[size_t(first + (long long)i)];
+            return out;
+        };
+        return s;
+    };
+    const auto r = ai::syncSources({source(ref), source(late), source(early)});
+    REQUIRE(r.synced.size() == 3);
+    INFO("late " << r.offsets[1] << " µs ×" << r.speed[1] << ", early " << r.offsets[2] << " µs ×" << r.speed[2]);
+    REQUIRE(r.synced[1]);
+    REQUIRE(r.synced[2]);
+    CHECK(std::abs(r.offsets[1] - TimeUs(kLate * kUsPerSecond)) <= 2000); // ±2 ms
+    CHECK(r.speed[1] == Approx(1.0 / kDrift).margin(5e-6));
+    CHECK(std::abs(r.offsets[2] + 30 * kUsPerSecond) <= 2000);
+    CHECK(r.speed[2] == 1.0);
+}
+
+TEST_CASE("Sincronización de archivos largos", "[multicam][sync]")
+{
+    // mc_long_late empieza 11 min después que mc_long_ref y su reloj adelanta 125 ppm (8001/8000).
+    const auto r = ai::syncFilesByAudio({test::mediaPath("mc_long_ref.flac"), test::mediaPath("mc_long_late.flac")});
+    REQUIRE(r.synced.size() == 2);
+    INFO("desfase " << r.offsets[1] << " µs, velocidad " << r.speed[1] << ", confianza " << r.confidence[1]);
+    REQUIRE(r.synced[1]);
+    CHECK(std::abs(r.offsets[1] - 660 * kUsPerSecond) <= 5000);
+    CHECK(r.speed[1] == Approx(8000.0 / 8001.0).margin(2e-5));
+
+    // La multicámara reproduce la grabación a esa velocidad: termina donde debe.
+    Project p = Project::createDefault();
+    std::vector<edit::MulticamSource> sources;
+    for (const char* name : {"mc_long_ref.flac", "mc_long_late.flac"}) {
+        auto item = engine::probeMediaItem(test::mediaPath(name));
+        REQUIRE(item);
+        sources.push_back({edit::addMedia(p, *item), 0});
+    }
+    sources.insert(sources.begin(), {edit::addMedia(p, fakeMedia("cam.mp4", 800, true, false)), 0});
+    sources[2].offset = r.offsets[1];
+    sources[2].speed = r.speed[1];
+    const Id mc = edit::createMulticam(p, sources, "Larga", p.videoTracks[0].id, 0);
+    REQUIRE(mc != kNoId);
+    const Clip& late = p.audioTracksOf(p.findClip(mc)->sequenceId)->at(1).clips[0];
+    CHECK(late.speed == Approx(r.speed[1]));
+    // 115 s de audio a 8000/8001: 115,0144 s de línea de tiempo.
+    CHECK(toSeconds(p.settings.frameToTime(late.duration)) == Approx(115.0144).margin(0.05));
+    CHECK(p.validate());
+}
+
 TEST_CASE("Cuadrícula multicámara", "[multicam]")
 {
     const MulticamGrid g4 = multicamGridFor(4);
@@ -266,18 +346,53 @@ TEST_CASE("Multicámara en el archivo de proyecto y en OTIO", "[core][multicam]"
     REQUIRE(loaded.project);
     CHECK(loaded.project->videoTracks == p.videoTracks);
 
-    // OTIO no tiene multicámara: cada tramo se exporta como el ángulo que se ve y el audio que suena.
-    const QJsonObject tl = QJsonDocument::fromJson(otio::exportTimeline(p, QStringLiteral("mc"))).object();
+    // OTIO no tiene multicámara: cada tramo es una pila con todos los ángulos en la que solo están
+    // activos el que se ve y el audio que suena (el micrófono).
+    const QByteArray json = otio::exportTimeline(p, QStringLiteral("mc"));
+    const QJsonObject tl = QJsonDocument::fromJson(json).object();
     const QJsonArray v1 = tl["tracks"].toObject()["children"].toArray()[0].toObject()["children"].toArray();
     REQUIRE(v1.size() == 3); // hueco y dos tramos
     for (int i : {1, 2}) {
         const QJsonArray inner = v1[i].toObject()["children"].toArray();
-        REQUIRE(inner.size() == 2); // el ángulo y el micrófono
-        CHECK(inner[0].toObject()["kind"].toString() == "Video");
-        CHECK(inner[1].toObject()["kind"].toString() == "Audio");
-        const QString angleName = inner[0].toObject()["name"].toString();
-        CHECK(angleName == (i == 1 ? "cam1.mp4" : "cam2.mp4"));
+        // cam1, cam2, el micrófono y el audio de las dos cámaras
+        REQUIRE(inner.size() == 5);
+        QStringList active;
+        for (const QJsonValue& t : inner)
+            if (t.toObject()["enabled"].toBool())
+                active << t.toObject()["kind"].toString() + ":" + t.toObject()["name"].toString();
+        CHECK(active == QStringList{(i == 1 ? "Video:cam1.mp4" : "Video:cam2.mp4"), "Audio:mic.wav"});
     }
+
+    // Al importar vuelve a ser una multicámara: los dos tramos comparten la secuencia, con sus
+    // ángulos, y cada uno conserva el suyo y el audio del micrófono.
+    const auto imported = otio::importTimeline(json, QStringLiteral("C:/x/mc.otio"),
+                                               [&](const std::string& path) -> std::optional<MediaItem> {
+                                                   for (const MediaItem& m : p.media)
+                                                       if (m.path == path || path.ends_with("/" + m.path))
+                                                           return m;
+                                                   return std::nullopt;
+                                               });
+    INFO(imported.error.toStdString() << " " << imported.warnings.join("; ").toStdString());
+    REQUIRE(imported.project);
+    const Project& q = *imported.project;
+    std::vector<const Clip*> segments;
+    for (const Clip& c : q.videoTracks[0].clips)
+        segments.push_back(&c);
+    REQUIRE(segments.size() == 2);
+    REQUIRE(segments[0]->isMulticam());
+    REQUIRE(segments[1]->isMulticam());
+    CHECK(segments[0]->sequenceId == segments[1]->sequenceId);
+    CHECK(segments[0]->angle == 0);
+    CHECK(segments[1]->angle == 1);
+    CHECK(segments[0]->audioAngle == 2);
+    CHECK(edit::multicamAngles(q, *segments[0]) == 2);
+    CHECK(edit::multicamAudioSources(q, *segments[0]) == 3);
+    for (const Track& t : *q.videoTracksOf(segments[0]->sequenceId))
+        CHECK_FALSE(t.hidden);
+    CHECK(segments[0]->start == 50);
+    CHECK(segments[1]->start == 100);
+    CHECK(segments[1]->end() == p.videoTracks[0].clips.back().end());
+    CHECK(q.validate());
 }
 
 TEST_CASE("Multicámara con medios reales sincronizados", "[multicam][sync]")

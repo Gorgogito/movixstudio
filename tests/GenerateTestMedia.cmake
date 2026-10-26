@@ -151,3 +151,14 @@ set(ext .wav)
 make_media(mc_mic.wav
     -ss 0.6 -i "${CMAKE_CURRENT_LIST_DIR}/data/speech_es.flac"
     -af "aresample=48000,lowpass=f=5000" -t 8 -c:a pcm_s16le)
+
+# 11b) Multicámara larga: 13 min de ruido con envolvente cambiante (mc_long_ref) y otra grabación de
+#      la misma escena que empieza 11 min después, dura 115 s y cuyo reloj adelanta 125 ppm (su
+#      audio va 8001/8000 veces más rápido), más baja y sin agudos.
+set(ext .flac)
+make_media(mc_long_ref.flac
+    -f lavfi -i "anoisesrc=d=780:c=white:r=8000:a=0.5:seed=7,volume='(0.15+0.85*abs(sin(2*PI*0.7*t)*sin(2*PI*0.23*t+1)))':eval=frame"
+    -c:a flac)
+make_media(mc_long_late.flac
+    -ss 660 -t 115.1 -i "${OUT_DIR}/mc_long_ref.flac"
+    -af "asetrate=8001,aresample=8000,lowpass=f=2500,volume=0.5" -t 115 -c:a flac)

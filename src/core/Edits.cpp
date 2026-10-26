@@ -482,7 +482,11 @@ Id createMulticam(Project& p, const std::vector<MulticamSource>& sources, const 
         c.mediaId = m.id;
         // Lo que empezó antes que la grabación más temprana se recorta (no cabe antes de 0).
         c.start = p.settings.timeToFrame(src.offset - origin);
-        c.duration = p.settings.framesIn(m.duration);
+        if (std::abs(src.speed - 1.0) > 1e-9 && src.speed > 0.5 && src.speed < 2.0) {
+            c.speed = src.speed;
+            c.speedRamp = Animated(src.speed);
+        }
+        c.duration = p.settings.framesIn(TimeUs(double(m.duration) / c.speed));
         if (c.duration <= 0)
             return kNoId;
         length = std::max(length, c.end());

@@ -14,7 +14,8 @@ namespace movix::core::otio {
 
 // Intercambio de la línea de tiempo con OpenTimelineIO (.otio, JSON). Se exporta la secuencia
 // principal con sus pistas, clips, huecos, transiciones, títulos, compuestos (como pilas anidadas),
-// velocidad (LinearTimeWarp) y marcadores. Los efectos propios de MovixStudio (color, máscaras,
+// multicámaras (pilas con todos los ángulos en las que solo están activos el que se ve y el audio
+// que suena), velocidad (LinearTimeWarp) y marcadores. Los efectos propios de MovixStudio (color, máscaras,
 // transformaciones...) no tienen equivalente en OTIO y no viajan.
 // El audio de los clips de video se exporta en pistas de audio aparte, como lo esperan los demás
 // editores; al importar, los clips de audio que coinciden con uno de video se vuelven a unir a él.

@@ -701,7 +701,7 @@ void ProjectController::createMulticam(const QVariantList& mediaIds, bool syncBy
                 if (!m)
                     continue;
                 const bool ok = syncByAudio && i < sync.synced.size() && sync.synced[i];
-                sources.push_back({ids[i], ok ? sync.offsets[i] : 0});
+                sources.push_back({ids[i], ok ? sync.offsets[i] : 0, ok && i < sync.speed.size() ? sync.speed[i] : 1.0});
                 if (syncByAudio && !ok)
                     unsynced.append(QString::fromStdString(m->name));
             }

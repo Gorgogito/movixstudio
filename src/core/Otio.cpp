@@ -126,29 +126,22 @@ private:
         return stackOf(sequence, video ? *video : none, audio ? *audio : none);
     }
 
-    // Un clip multicámara se exporta como lo que se ve y se oye: el ángulo elegido y su audio
-    // (OTIO no tiene multicámara; los demás editores apilarían todos los ángulos).
+    // OTIO no tiene multicámara: el clip se exporta como una pila con todos los ángulos en la que
+    // solo están activas la pista del ángulo que se ve y la del audio que suena (así lo reproducen
+    // los demás editores); los metadatos del clip (ángulo y audio) la recuperan al importar.
     QJsonObject multicamStack(const Clip& mc) const
     {
+        static const std::vector<Track> none;
         const auto* nv = m_p.videoTracksOf(mc.sequenceId);
         const auto* na = m_p.audioTracksOf(mc.sequenceId);
-        std::vector<Track> video, audio;
-        if (nv && mc.angle < int(nv->size()))
-            video.push_back((*nv)[size_t(mc.angle)]);
+        std::vector<Track> video = nv ? *nv : none, audio = na ? *na : none;
         const int source = mc.audioAngle >= 0 ? mc.audioAngle : mc.angle;
-        if (nv && na && source != mc.angle) {
-            for (Track& t : video)
-                for (Clip& c : t.clips)
-                    c.audioDetached = true;
-            const int videoCount = int(nv->size());
-            if (source < videoCount) {
-                Track t = (*nv)[size_t(source)];
-                std::erase_if(t.clips, [&](const Clip& c) { return !hasLinkedAudio(c); });
-                audio.push_back(std::move(t));
-            } else if (source - videoCount < int(na->size())) {
-                audio.push_back((*na)[size_t(source - videoCount)]);
-            }
+        for (size_t i = 0; i < video.size(); ++i) {
+            video[i].hidden = int(i) != mc.angle;
+            video[i].muted = int(i) != source; // desactiva la pista de su audio
         }
+        for (size_t i = 0; i < audio.size(); ++i)
+            audio[i].muted = int(video.size() + i) != source;
         return stackOf(mc.sequenceId, video, audio);
     }
 
@@ -288,6 +281,10 @@ private:
 
         if (c.isCompound()) {
             QJsonObject stack = c.isMulticam() ? multicamStack(c) : sequenceStack(c.sequenceId);
+            if (c.isMulticam()) {
+                meta["angle"] = c.angle;
+                meta["audioAngle"] = c.audioAngle;
+            }
             stack["source_range"] = sourceRange;
             stack["effects"] = effects;
             stack["enabled"] = c.enabled;
@@ -502,6 +499,24 @@ private:
         tracks.push_back(t);
     }
 
+    // Contenido de la pila de una multicámara sin lo que cambia entre sus tramos (qué pistas están
+    // activas): los tramos de la misma multicámara dan la misma clave.
+    static QByteArray multicamKey(const QJsonObject& stack)
+    {
+        QJsonArray tracks;
+        for (const QJsonValue& v : stack["children"].toArray()) {
+            QJsonObject t = v.toObject();
+            t.remove(QStringLiteral("enabled"));
+            QJsonObject metadata = t["metadata"].toObject();
+            QJsonObject meta = metadata[kMeta].toObject();
+            meta.remove(QStringLiteral("muted"));
+            metadata[kMeta] = meta;
+            t["metadata"] = metadata;
+            tracks.append(t);
+        }
+        return QJsonDocument(tracks).toJson(QJsonDocument::Compact);
+    }
+
     void importStack(const QJsonObject& stack, std::vector<Track>& video, std::vector<Track>& audio, std::vector<Marker>& markers)
     {
         for (const QJsonValue& v : stack["children"].toArray()) {
@@ -651,15 +666,40 @@ private:
         const auto source = rangeOf(o["source_range"]);
 
         if (schema == QLatin1String("Stack")) {
-            Sequence seq;
-            seq.id = m_p.newId();
-            seq.name = name.isEmpty() ? "Compuesto" : name.toStdString();
-            importStack(o, seq.videoTracks, seq.audioTracks, seq.markers);
-            c.sequenceId = seq.id;
             c.reverse = false; // (sin compuestos al revés)
             c.sourceIn = source ? std::max<TimeUs>(0, toUs(source->start)) : 0;
             c.fadeIn = c.fadeOut = 0;
-            m_p.sequences.push_back(std::move(seq));
+            const bool multicam = meta.contains("angle");
+            // Los tramos de una multicámara (uno por cambio de ángulo) comparten su secuencia.
+            const QByteArray content = multicam ? multicamKey(o) : QByteArray();
+            if (multicam && m_multicams.contains(content)) {
+                c.sequenceId = m_multicams[content];
+            } else {
+                Sequence seq;
+                seq.id = m_p.newId();
+                seq.name = name.isEmpty() ? "Compuesto" : name.toStdString();
+                importStack(o, seq.videoTracks, seq.audioTracks, seq.markers);
+                if (multicam) {
+                    // El ángulo y el audio los elige el clip, no las pistas desactivadas.
+                    for (Track& t : seq.videoTracks)
+                        t.hidden = t.muted = false;
+                    for (Track& t : seq.audioTracks)
+                        t.muted = false;
+                    m_multicams[content] = seq.id;
+                }
+                c.sequenceId = seq.id;
+                m_p.sequences.push_back(std::move(seq));
+            }
+            if (multicam) {
+                const Sequence& seq = *m_p.findSequence(c.sequenceId);
+                const int videoCount = int(seq.videoTracks.size());
+                const int audioCount = int(seq.audioTracks.size());
+                if (videoCount > 0) {
+                    c.angle = std::clamp(meta["angle"].toInt(), 0, videoCount - 1);
+                    const int audio = meta["audioAngle"].toInt(-1);
+                    c.audioAngle = audio >= 0 && audio < videoCount + audioCount ? audio : -1;
+                }
+            }
             return c;
         }
         if (schema != QLatin1String("Clip")) {
@@ -854,6 +894,7 @@ private:
     Project m_p;
     double m_fps = 30.0;
     std::map<QString, Id> m_mediaByPath;
+    std::map<QByteArray, Id> m_multicams; // contenido de la pila → secuencia multicámara
     std::set<Id> m_placeholders;
     std::set<Id> m_unlinkable;
     QStringList m_warnings;

@@ -257,7 +257,8 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       el propio reproductor), rotulados, con el activo resaltado; las teclas 1–9 o un clic cortan
       al ángulo en el cabezal, también reproduciendo. Se ajusta la sincronía abriendo el clip; al
       romperlo queda el ángulo y el audio elegidos; en OTIO se exporta lo que se ve y se oye.
-      `.mxproj` v7
+      `.mxproj` v7 *(Desde la ampliación de más abajo: cualquier duración y deriva corregida; en
+      OTIO, todos los ángulos.)*
 - [x] Plantillas propias: de título (estilo, posición, duración y fundidos; se guardan desde las
       propiedades de un título y aparecen en la pestaña Títulos) y de proyecto (ajustes, pistas,
       títulos, marcadores y medios; Archivo → Nuevo desde plantilla). En la carpeta de datos
@@ -332,7 +333,17 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       el movimiento de cámara no). La disolvencia corta a mitad de la mezcla; el fundido a negro y
       la aparición, en el fotograma más uniforme del negro. Los cortes que caen dentro de una
       transición se descartan, y un fundido al principio o al final no separa escenas
-- [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO
+- [x] Multicámara larga: las grabaciones de más de 10 minutos (o con desfases mayores) se
+      sincronizan en dos pasos. Primero, uno grueso con la envolvente de inicios de sonido (cuatro
+      bandas, 100 valores por segundo, cualquier desfase); después, uno fino a 8 kHz en tres
+      puntos del solape, que mide la deriva entre los relojes de las grabadoras y la corrige con la
+      velocidad del clip de ese ángulo. Cada archivo se decodifica una sola vez. Error: desfase
+      ≤ 2 ms y deriva de ±5 ppm (20 min sintéticos, 100 ppm); con archivos de 13 min, desfase de
+      11 min a 0,8 ms
+- [x] Multicámara en OTIO: cada tramo es una pila con todos los ángulos en la que solo están
+      activos el que se ve y el audio que suena, así que otros editores lo reproducen igual. Los
+      metadatos guardan el ángulo y el audio, y al importar vuelve a ser una multicámara cuyos
+      tramos comparten la secuencia. Comprobado con la biblioteca oficial (0.18.1)
 
 ### Limitaciones de OpenFX
 

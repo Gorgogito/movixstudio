@@ -173,6 +173,7 @@ bool sequenceContains(const Project& p, Id sequence, Id target);
 struct MulticamSource {
     Id mediaId = kNoId;
     TimeUs offset = 0; // instante en que empieza el medio respecto de los demás (sincronía)
+    double speed = 1.0; // corrige la deriva de su reloj respecto de la referencia
 };
 // Crea una secuencia multicámara (un ángulo por medio con imagen, en ese orden, con su audio; los
 // medios solo de audio, en pistas de audio) y coloca su clip en la pista de video `trackId` desde
