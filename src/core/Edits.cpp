@@ -611,6 +611,14 @@ bool setColorMode(Project& p, ColorMode mode)
     return true;
 }
 
+bool setLinearLight(Project& p, bool on)
+{
+    if (p.settings.linearLight == on)
+        return false;
+    p.settings.linearLight = on;
+    return true;
+}
+
 // --- Medios ---
 
 Id addMedia(Project& p, MediaItem item)

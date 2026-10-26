@@ -7,7 +7,8 @@ layout(location = 0) out vec4 fragColor;
 
 // params.x = 1: invertir v (destinos con el origen abajo, como OpenGL). params.y = 1: conservar el
 // alfa (secuencias anidadas, que se componen sobre fondo transparente). signal.x > 0: la señal del
-// lienzo (1 PQ, 2 HLG) se convierte a SDR para mostrarla en una pantalla SDR.
+// lienzo (1 PQ, 2 HLG) se convierte a SDR para mostrarla en una pantalla SDR. canvas.z = 1: el lienzo
+// está en luz lineal y se lleva primero a la señal del proyecto (canvas.w).
 layout(std140, binding = 0) uniform buf {
     mat4 mvp;
     mat4 yuvToRgb;
@@ -94,12 +95,40 @@ vec3 convertSignal(vec3 e, int from, bool from2020, int to)
     return nitsToSignal(max(n, 0.0), to);
 }
 
+// Luz lineal normalizada (0..1) de la señal del proyecto, para componer: SDR con su curva 2,4, PQ
+// hasta 10 000 nits y HLG en luz de escena.
+vec3 signalToLinear(vec3 e, int sig)
+{
+    e = clamp(e, 0.0, 1.0);
+    if (sig == 1)
+        return pqToNits(e) / 10000.0;
+    if (sig == 2)
+        return vec3(hlgToScene(e.r), hlgToScene(e.g), hlgToScene(e.b));
+    return pow(e, vec3(2.4));
+}
+vec3 linearToSignal(vec3 l, int sig)
+{
+    l = clamp(l, 0.0, 1.0);
+    if (sig == 1)
+        return nitsToPq(l * 10000.0);
+    if (sig == 2)
+        return vec3(sceneToHlg(l.r), sceneToHlg(l.g), sceneToHlg(l.b));
+    return pow(l, vec3(1.0 / 2.4));
+}
+
 void main()
 {
     vec2 uv = vTexcoord;
     if (ubuf.params.x > 0.5)
         uv.y = 1.0 - uv.y;
     vec4 c = texture(canvasTex, uv);
+    if (ubuf.canvas.z > 0.5) {
+        int project = int(ubuf.canvas.w + 0.5);
+        if (ubuf.params.y > 0.5) // con alfa (fondo transparente) el color está premultiplicado
+            c.rgb = c.a > 0.0 ? linearToSignal(c.rgb / c.a, project) * c.a : vec3(0.0);
+        else
+            c.rgb = linearToSignal(c.rgb, project);
+    }
     int sig = int(ubuf.signal.x + 0.5);
     if (sig > 0)
         c.rgb = convertSignal(c.rgb, sig, true, 0);

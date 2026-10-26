@@ -40,6 +40,7 @@ struct ProjectSettings {
     int sampleRate = 48000;
     int channels = 2;
     ColorMode colorMode = ColorMode::SDR;
+    bool linearLight = false; // componer (fusión, opacidad, fundidos) en luz lineal
 
     // Instante (µs) en que empieza el fotograma `f`.
     TimeUs frameToTime(FramePos f) const;

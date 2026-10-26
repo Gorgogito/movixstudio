@@ -198,6 +198,7 @@ FrameBundle VideoSources::build(const core::Project& project, core::FramePos fra
     bundle.canvasWidth = project.settings.width;
     bundle.canvasHeight = project.settings.height;
     bundle.colorMode = project.settings.colorMode;
+    bundle.linearLight = project.settings.linearLight;
     if (m_colorMode != bundle.colorMode) {
         m_colorMode = bundle.colorMode;
         m_lutCache.clear();
@@ -225,6 +226,7 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
             nested->canvasWidth = bundle.canvasWidth;
             nested->canvasHeight = bundle.canvasHeight;
             nested->colorMode = bundle.colorMode;
+            nested->linearLight = bundle.linearLight;
             buildLayers(layer.nested, *nested);
         } else {
             f = this->frame(layer, bundle.canvasWidth, bundle.canvasHeight);

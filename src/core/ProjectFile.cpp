@@ -632,6 +632,7 @@ QByteArray serializeProject(const Project& p, const QString& projectFilePath)
              {"sampleRate", p.settings.sampleRate},
              {"channels", p.settings.channels},
              {"colorMode", QLatin1String(kColorModeNames[int(p.settings.colorMode)])},
+             {"linearLight", p.settings.linearLight},
          }},
         {"nextId", qint64(p.nextId)},
         {"media", media},
@@ -675,6 +676,7 @@ LoadResult deserializeProject(const QByteArray& json, const QString& projectFile
     p.settings.sampleRate = s["sampleRate"].toInt(48000);
     p.settings.channels = s["channels"].toInt(2);
     p.settings.colorMode = enumFromName(s["colorMode"].toString(), kColorModeNames, ColorMode::SDR);
+    p.settings.linearLight = s["linearLight"].toBool(false);
     p.nextId = Id(root["nextId"].toInteger(1));
 
     const QDir projectDir = QFileInfo(projectFilePath).absoluteDir();

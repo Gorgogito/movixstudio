@@ -17,7 +17,7 @@ layout(std140, binding = 0) uniform buf {
     vec4 mask0;     // x forma (0 ninguna, 1 rectángulo, 2 elipse, 3 lineal, 5 textura), y invertir, z suavizado, w rotación (rad)
     vec4 mask1;     // x, y centro; z, w ancho y alto (fracciones de la capa)
     vec4 lutCoord;  // x escala, y desplazamiento de las coordenadas de la LUT
-    vec4 canvas;    // x 1/ancho, y 1/alto del lienzo (para leer el fondo)
+    vec4 canvas;    // x 1/ancho, y 1/alto del lienzo (para leer el fondo); z ¿componer en luz lineal?
     vec4 signal;    // x señal de la fuente (0 SDR, 1 PQ, 2 HLG), y ¿Rec.2020?, z señal del proyecto, w ¿convertir?
 } ubuf;
 
@@ -99,6 +99,27 @@ vec3 convertSignal(vec3 e, int from, bool from2020, int to)
     return nitsToSignal(max(n, 0.0), to);
 }
 
+
+// Luz lineal normalizada (0..1) de la señal del proyecto, para componer: SDR con su curva 2,4, PQ
+// hasta 10 000 nits y HLG en luz de escena.
+vec3 signalToLinear(vec3 e, int sig)
+{
+    e = clamp(e, 0.0, 1.0);
+    if (sig == 1)
+        return pqToNits(e) / 10000.0;
+    if (sig == 2)
+        return vec3(hlgToScene(e.r), hlgToScene(e.g), hlgToScene(e.b));
+    return pow(e, vec3(2.4));
+}
+vec3 linearToSignal(vec3 l, int sig)
+{
+    l = clamp(l, 0.0, 1.0);
+    if (sig == 1)
+        return nitsToPq(l * 10000.0);
+    if (sig == 2)
+        return vec3(sceneToHlg(l.r), sceneToHlg(l.g), sceneToHlg(l.b));
+    return pow(l, vec3(1.0 / 2.4));
+}
 
 vec2 chromaOf(vec3 c)
 {
@@ -201,6 +222,11 @@ void main()
         rgb = texture(lut, clamp(rgb, 0.0, 1.0) * ubuf.lutCoord.x + ubuf.lutCoord.y).rgb;
 
     alpha *= maskAlpha(uv) * ubuf.params.x;
+
+    // En luz lineal el lienzo guarda luz, no señal: la fusión, la opacidad y los fundidos mezclan
+    // como la luz real. La copia final (canvas.frag) vuelve a la señal del proyecto.
+    if (ubuf.canvas.z > 0.5)
+        rgb = signalToLinear(rgb, int(ubuf.signal.z + 0.5));
 
     int mode = int(ubuf.params.y + 0.5);
     if (mode != 0) {

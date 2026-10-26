@@ -311,3 +311,46 @@ TEST_CASE("Forma de máscara animada: keyframes de todos los puntos", "[core][f3
     CHECK(mm.points == last);
     CHECK(p.validate());
 }
+
+TEST_CASE("Composición en luz lineal: opacidad, fusión y secuencias anidadas", "[render][f3][linear]")
+{
+    render::OffscreenRenderer r;
+    REQUIRE(r.init(W, H));
+    std::vector<uint8_t> px;
+    auto center = [&] { return lum(px, W / 2, H / 2); };
+    auto layer = [](color::Rgb c, double opacity, BlendMode blend = BlendMode::Normal) {
+        engine::LayerFrame l;
+        l.frame = rgbaFrame(64, 36, c);
+        l.opacity = opacity;
+        l.blend = blend;
+        return l;
+    };
+    auto render = [&](engine::FrameBundle b, bool linear) {
+        b.linearLight = linear;
+        REQUIRE(r.render(b, px));
+        return center();
+    };
+
+    // Blanco al 50 % sobre negro: mitad de señal o mitad de luz (0,5^(1/2,4) = 0,749).
+    CHECK(std::abs(render(bundleWith(layer({1, 1, 1}, 0.5)), false) - 128) <= 1);
+    CHECK(std::abs(render(bundleWith(layer({1, 1, 1}, 0.5)), true) - 191) <= 1);
+
+    // Sin mezclas, ida y vuelta exacta (también en las sombras).
+    for (float v : {0.05f, 0.2f, 0.5f, 0.9f}) {
+        INFO("gris " << v);
+        CHECK(std::abs(render(bundleWith(layer({v, v, v}, 1.0)), true) - int(std::lround(v * 255))) <= 1);
+    }
+
+    // Sumar dos grises medios: satura en la señal; en luz, 2·0,5^2,4 → 0,668.
+    engine::FrameBundle add = bundleWith(layer({0.5, 0.5, 0.5}, 1.0));
+    add.layers.push_back(layer({0.5, 0.5, 0.5}, 1.0, BlendMode::Add));
+    CHECK(render(add, false) == 255);
+    CHECK(std::abs(render(add, true) - 170) <= 1);
+
+    // Una secuencia anidada (fondo transparente, color premultiplicado) da lo mismo que sin anidar.
+    auto nested = std::make_shared<engine::FrameBundle>(bundleWith(layer({1, 1, 1}, 0.5)));
+    nested->linearLight = true;
+    engine::LayerFrame compound;
+    compound.nested = nested;
+    CHECK(std::abs(render(bundleWith(compound), true) - 191) <= 1);
+}

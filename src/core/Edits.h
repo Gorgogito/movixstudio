@@ -21,6 +21,7 @@ bool removeMedia(Project& p, Id mediaId);        // elimina también sus clips
 bool setFrameRate(Project& p, Rational rate);
 bool setResolution(Project& p, int width, int height);
 bool setColorMode(Project& p, ColorMode mode);
+bool setLinearLight(Project& p, bool on);
 // Velocidad de fotogramas exacta para un valor decimal (29,97 → 30000/1001...).
 Rational guessFrameRate(double fps);
 // Si la línea de tiempo está vacía, ajusta resolución y velocidad del proyecto a las del medio.

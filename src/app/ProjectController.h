@@ -98,6 +98,10 @@ public:
     Q_PROPERTY(QString colorMode READ colorMode NOTIFY settingsChanged)
     QString colorMode() const;
     Q_INVOKABLE void setColorMode(const QString& mode);
+    // Componer en luz lineal: fusión, opacidad y fundidos mezclan como la luz real.
+    Q_PROPERTY(bool linearLight READ linearLight NOTIFY settingsChanged)
+    bool linearLight() const { return project().settings.linearLight; }
+    Q_INVOKABLE void setLinearLight(bool on);
     Q_INVOKABLE void checkRecovery();
     Q_INVOKABLE void recoverAutosave();
     Q_INVOKABLE void discardAutosave();

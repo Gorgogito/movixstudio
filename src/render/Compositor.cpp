@@ -458,6 +458,9 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         setVec(b.params, m_rhi->isYUpInFramebuffer() ? 1.0f : 0.0f, m_transparent ? 1.0f : 0.0f);
         m_displayConvert = m_sdrDisplay && bundle.colorMode != core::ColorMode::SDR;
         setVec(b.signal, m_displayConvert ? float(int(bundle.colorMode)) : 0.0f);
+        m_linear = bundle.linearLight;
+        m_projectSignal = int(bundle.colorMode);
+        setVec(b.canvas, 0.0f, 0.0f, m_linear ? 1.0f : 0.0f, float(m_projectSignal));
         updates->updateDynamicBuffer(m_blitUbuf.get(), 0, kUniformSize, &b);
     }
 
@@ -532,7 +535,7 @@ void Compositor::prepare(const engine::FrameBundle& bundle, QRhiResourceUpdateBa
         }
         const float n = slot.useLut ? float(layer.lut->size) : 2.0f;
         setVec(u.lutCoord, (n - 1.0f) / n, 0.5f / n);
-        setVec(u.canvas, 1.0f / float(canvasSize.width()), 1.0f / float(canvasSize.height()));
+        setVec(u.canvas, 1.0f / float(canvasSize.width()), 1.0f / float(canvasSize.height()), m_linear ? 1.0f : 0.0f);
         // Señal de la fuente → la del proyecto. Las imágenes y títulos son SDR Rec.709; las secuencias
         // anidadas ya están en la del proyecto; con OCIO, la LUT ya hace la conversión.
         const bool video = !slot.nested && f.format != media::PixelFormat::RGBA;
@@ -585,7 +588,7 @@ void Compositor::render(QRhiCommandBuffer* cb, QRhiRenderTarget* target, const Q
     const QSize canvasSize = m_canvasRect.size();
     const bool anyBlend = std::any_of(m_slots.begin(), m_slots.begin() + std::ptrdiff_t(m_activeLayers),
                                       [](const auto& slot) { return slot->blends; });
-    if (!anyBlend && !m_retainCanvas && !m_displayConvert) {
+    if (!anyBlend && !m_retainCanvas && !m_displayConvert && !m_linear) {
         // Una sola pasada sobre el destino; el lienzo es una región de él (QRhi cuenta y desde abajo).
         const QRhiViewport vp(float(m_canvasRect.x()), float(m_targetSize.height() - m_canvasRect.y() - m_canvasRect.height()),
                               float(canvasSize.width()), float(canvasSize.height()));
@@ -662,6 +665,7 @@ void Compositor::copyCanvas(QRhiCommandBuffer* cb, QRhiTextureRenderTarget* targ
     const QMatrix4x4 mvp = placement(m_rhi, QPointF(size.width() / 2.0, size.height() / 2.0), QSizeF(size) / 2, 0.0, size);
     std::memcpy(u.mvp, mvp.constData(), sizeof(u.mvp));
     setVec(u.params, m_rhi->isYUpInFramebuffer() ? 1.0f : 0.0f);
+    setVec(u.canvas, 0.0f, 0.0f, m_linear ? 1.0f : 0.0f, float(m_projectSignal)); // la copia es en señal
     QRhiResourceUpdateBatch* updates = m_rhi->nextResourceUpdateBatch();
     updates->updateDynamicBuffer(m_copyUbuf.get(), 0, kUniformSize, &u);
     cb->beginPass(target, Qt::black, {1.0f, 0}, updates);

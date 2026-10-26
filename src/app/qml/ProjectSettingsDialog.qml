@@ -33,6 +33,7 @@ Dialog {
 
     onAboutToShow: {
         colorCombo.currentIndex = Math.max(0, colorModes.indexOf(project.colorMode))
+        linearBox.checked = project.linearLight
         widthBox.value = project.canvasWidth
         heightBox.value = project.canvasHeight
         let idx = rates.findIndex(r => r.num === project.frameRateNum && r.den === project.frameRateDen)
@@ -42,6 +43,7 @@ Dialog {
         const r = rates[rateCombo.currentIndex]
         project.setProjectSettings(widthBox.value, heightBox.value, r.num, r.den)
         project.setColorMode(colorModes[colorCombo.currentIndex])
+        project.setLinearLight(linearBox.checked)
     }
 
     GridLayout {
@@ -85,6 +87,16 @@ Dialog {
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
             text: qsTr("En HDR el material SDR se coloca a 203 nits, el visor muestra una conversión a SDR y la exportación es de 10 bits (HEVC, AV1, VP9 o ProRes).")
+        }
+
+        Label { text: qsTr("Composición") }
+        CheckBox {
+            id: linearBox
+            Layout.fillWidth: true
+            text: qsTr("En luz lineal")
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: qsTr("Los modos de fusión, la opacidad y los fundidos mezclan la luz como en la realidad (bordes y desenfoques más naturales). La corrección de color trabaja igual.")
         }
 
         Label {

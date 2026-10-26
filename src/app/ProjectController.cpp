@@ -243,6 +243,11 @@ void ProjectController::setColorMode(const QString& mode)
     apply(tr("Espacio de color del proyecto"), [&](Project& p) { return edit::setColorMode(p, m); });
 }
 
+void ProjectController::setLinearLight(bool on)
+{
+    apply(tr("Composición en luz lineal"), [&](Project& p) { return edit::setLinearLight(p, on); });
+}
+
 void ProjectController::setProjectSettings(int width, int height, int fpsNum, int fpsDen)
 {
     apply(tr("Ajustes del proyecto"), [&](Project& p) {

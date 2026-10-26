@@ -121,6 +121,8 @@ private:
     bool m_transparent = false; // compositor de una secuencia anidada: fondo transparente
     bool m_sdrDisplay = false;
     bool m_displayConvert = false;
+    bool m_linear = false;     // el lienzo guarda luz lineal (ajuste del proyecto)
+    int m_projectSignal = 0;   // señal de trabajo del proyecto (core::ColorMode)
     bool m_canvasValid = false;
     std::unique_ptr<QRhiBuffer> m_blitUbuf;
     std::unique_ptr<QRhiShaderResourceBindings> m_blitSrb;

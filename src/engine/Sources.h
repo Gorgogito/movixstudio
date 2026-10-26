@@ -47,6 +47,7 @@ struct FrameBundle {
     int canvasWidth = 1920;
     int canvasHeight = 1080;
     core::ColorMode colorMode = core::ColorMode::SDR; // señal de trabajo (SDR, PQ o HLG)
+    bool linearLight = false;       // componer en luz lineal
     std::vector<LayerFrame> layers; // de abajo arriba
 };
 
