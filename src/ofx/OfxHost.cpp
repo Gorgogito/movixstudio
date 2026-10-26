@@ -1030,8 +1030,8 @@ PropertySet& hostProps()
         h.setS(kOfxPropName, {"io.github.gorgogito.movixstudio"});
         h.setS(kOfxPropLabel, {"MovixStudio"});
         h.setI(kOfxPropAPIVersion, {1, 4});
-        h.setI(kOfxPropVersion, {0, 1, 0});
-        h.setS(kOfxPropVersionLabel, {"0.1.0"});
+        h.setI(kOfxPropVersion, {MOVIX_VERSION_MAJOR, MOVIX_VERSION_MINOR, MOVIX_VERSION_PATCH});
+        h.setS(kOfxPropVersionLabel, {MOVIX_VERSION});
         h.setI(kOfxImageEffectHostPropIsBackground, {0});
         h.setI(kOfxImageEffectPropSupportsOverlays, {0});
         h.setI(kOfxImageEffectPropSupportsMultiResolution, {0});

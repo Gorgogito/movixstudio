@@ -3,11 +3,29 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Estado: fase F6 en curso** — instalador MSI, ZIP portable y actualizaciones dentro de la
-> aplicación, sobre la IA visual de F5 y la de audio y texto de F4, con aceleración por GPU 100 %
-> libre (Vulkan/WebGPU). Consulta la [hoja de ruta](docs/ROADMAP.md).
+> **Versión 0.2.0** — fase F6 (pulido y ecosistema) sobre la IA visual de F5 y la de audio y texto
+> de F4, con aceleración por GPU 100 % libre (Vulkan/WebGPU). Descargas en
+> [Releases](https://github.com/Gorgogito/movixstudio/releases); consulta la
+> [hoja de ruta](docs/ROADMAP.md).
 
-**Novedades de F6 (en curso)**
+**Novedades de la 0.2.0**
+- **Edición**: velocidad variable con rampas y clips al revés; curvas de interpolación de los
+  keyframes en el inspector; animaciones de entrada y salida de los títulos; selección por
+  recuadro y edición de varios clips a la vez; atajos de teclado configurables.
+- **Color y composición**: composición en luz lineal (ajuste del proyecto), máscaras de forma libre
+  con la forma animada y **monitor HDR** en una ventana o pantalla aparte (scRGB con el HDR de
+  Windows).
+- **Rendimiento**: proxies automáticos para el material pesado y exportación con decodificación y
+  codificación en la GPU sin copias (~190 fps en 1080p60 con NVENC).
+- **IA**: quitar el fondo con BiRefNet y separar voz y música con HTDemucs ahora en la GPU (×8 y
+  ×6 más rápido); seguimiento de movimiento con escala y giro; recortar un objeto con SAM 2 en todo
+  el clip (también antes del clic); la detección de escenas reconoce disolvencias y fundidos.
+- **Multicámara**: sincronía de grabaciones de cualquier duración, con la deriva de los relojes
+  corregida; en OpenTimelineIO viajan todos los ángulos.
+- **Plantillas propias** de título y de proyecto, **scripts** en JavaScript
+  ([docs/SCRIPTS.md](docs/SCRIPTS.md)) y **efectos OpenFX** de terceros.
+
+**Novedades de F6 (0.1.0 y 0.2.0)**
 - Instalador MSI en español (menú Inicio, escritorio, proyectos `.mxproj` asociados, actualización
   sobre la versión anterior) y ZIP portable; ningún componente propietario en la distribución.
 - Búsqueda de versiones nuevas al iniciar (desactivable) o desde Ayuda: con el instalador, descarga
