@@ -354,8 +354,12 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 ### Pendiente de comprobar
 
 - MSI: la instalación real (accesos directos, asociación de `.mxproj`, entrada en «Aplicaciones
-  instaladas») y la reinstalación sobre la misma versión se comprobaron en un equipo el 22-10-2026;
-  faltan la desinstalación y la actualización entre dos versiones distintas.
+  instaladas») y la reinstalación sobre la misma versión se comprobaron en un equipo el 22-10-2026,
+  y la actualización de la 0.1.0 a la 0.2.0 desde la propia aplicación el 26-10-2026 (aviso al
+  iniciar, descarga verificada, cierre, instalador; una sola entrada instalada y los mismos 541
+  archivos que el MSI, sin restos), y la desinstalación y reinstalación ese mismo día (quita la
+  entrada, la carpeta, los accesos directos y la asociación; conserva los ajustes y los datos del
+  usuario).
 - Abrir en DaVinci Resolve / Kdenlive un `.otio` exportado (y al revés) con proyectos reales.
 - Actualizar FFmpeg cuando la rama 9.0 incorpore las correcciones de `arnndn` de la rama principal
   (5474b1e05a: lee entradas de las GRU sin inicializar; 279f225d98: modelos con capas que no

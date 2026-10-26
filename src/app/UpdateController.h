@@ -70,8 +70,9 @@ public:
     void setAutoCheck(bool on);
     bool enabled() const { return m_feedUrl.isValid() && !m_feedUrl.isEmpty(); }
 
-    // Al iniciar: solo si está activado, si ha pasado un día desde la última consulta y sin avisar
-    // de errores ni de que no hay novedades.
+    // Al iniciar: borra el instalador descargado en una sesión anterior y busca versión solo si está
+    // activado, si ha pasado un día desde la última consulta y sin avisar de errores ni de que no hay
+    // novedades.
     Q_INVOKABLE void checkAtStartup();
     Q_INVOKABLE void check(); // a petición: informa también de errores y de "ya está al día"
     Q_INVOKABLE void skipVersion();   // no volver a avisar de esta versión al iniciar

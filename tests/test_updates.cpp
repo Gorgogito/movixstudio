@@ -4,6 +4,7 @@
 
 #include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -106,6 +107,14 @@ TEST_CASE("Actualizaciones: buscar, descargar con verificación y abrir el insta
         REQUIRE(downloaded.open(QIODevice::ReadOnly));
         CHECK(downloaded.readAll() == msi);
         CHECK(launched.endsWith("MovixStudio-v0.2.0-win64.msi"));
+        downloaded.close();
+
+        // La sesión siguiente (ya actualizada) borra el instalador al iniciar, aunque no consulte.
+        UpdateController next;
+        next.setAutoCheck(false);
+        next.checkAtStartup();
+        CHECK_FALSE(QFileInfo::exists(launched));
+        next.setAutoCheck(true);
     }
     SECTION("un instalador que no coincide con su SHA-256 se descarta")
     {

@@ -110,6 +110,14 @@ const QString kAutoCheck = QStringLiteral("updates/autoCheck");
 const QString kLastCheck = QStringLiteral("updates/lastCheck");
 const QString kSkipped = QStringLiteral("updates/skipped");
 
+// Donde se descarga el instalador. Se vacía al iniciar: una descarga solo sirve para la sesión que
+// la hizo (install() la repite siempre) y, tras actualizar, el MSI ya no hace falta.
+QString downloadFolder()
+{
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+        .filePath(QStringLiteral("MovixStudio-actualizacion"));
+}
+
 bool runningFromProgramFiles()
 {
     const QString dir = QDir::cleanPath(QCoreApplication::applicationDirPath());
@@ -141,8 +149,7 @@ UpdateController::UpdateController(QObject* parent)
     });
     connect(m_downloader, &movix::ai::ModelDownloader::finished, this, [this](const QString&, bool ok, const QString& error) {
         if (ok && m_release)
-            m_installerPath = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                                  .filePath(QStringLiteral("MovixStudio-actualizacion/") + m_release->installerName);
+            m_installerPath = QDir(downloadFolder()).filePath(m_release->installerName);
         else if (!ok && !m_canceling)
             emit errorOccurred(tr("No se pudo descargar la actualización: %1").arg(error));
         emit stateChanged();
@@ -178,6 +185,7 @@ void UpdateController::setAutoCheck(bool on)
 
 void UpdateController::checkAtStartup()
 {
+    QDir(downloadFolder()).removeRecursively(); // si otra copia está instalando, el MSI abierto se queda
     if (!enabled() || !autoCheck())
         return;
     const QDateTime last = QSettings().value(kLastCheck).toDateTime();
@@ -256,8 +264,7 @@ void UpdateController::install()
 {
     if (!canInstall() || downloading() || installerReady())
         return;
-    const QString folder = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-                               .filePath(QStringLiteral("MovixStudio-actualizacion"));
+    const QString folder = downloadFolder();
     // Sin reutilizar lo que hubiera: el instalador se verifica siempre al descargarlo.
     QFile::remove(QDir(folder).filePath(m_release->installerName));
     movix::ai::ModelInfo info;
