@@ -219,7 +219,8 @@ void runJob(Queue& queue, const QJsonObject& job)
     } else if (type == QLatin1String(ai::protocol::kRemoveBackground) || type == QLatin1String(ai::protocol::kSegmentObject)) {
         ai::MatteResult matte;
         const bool ok = type == QLatin1String(ai::protocol::kSegmentObject)
-            ? ai::segmentObject(modelPath, mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["x"].toDouble(0.5),
+            ? ai::segmentObject(modelPath, mediaPath, job["from"].toInteger(), job["to"].toInteger(),
+                                job["at"].toInteger(job["from"].toInteger()), job["x"].toDouble(0.5),
                                 job["y"].toDouble(0.5), job["output"].toString().toStdString(), matte, &error,
                                 progressIn(0.0, 1.0, "matte"), canceled)
             : ai::removeBackground(modelPath,
@@ -255,9 +256,10 @@ void runJob(Queue& queue, const QJsonObject& job)
         bool ok = false;
         if (type == QLatin1String(ai::protocol::kTrack)) {
             const QJsonArray r = job["region"].toArray();
-            const ai::Region region{r.at(0).toDouble(0.5), r.at(1).toDouble(0.5), r.at(2).toDouble(0.2), r.at(3).toDouble(0.2)};
-            ok = ai::trackRegion(mediaPath, job["from"].toInteger(), job["to"].toInteger(), region, points, &error,
-                                 progressIn(0.0, 1.0, "track"), canceled);
+            const ai::Region region{r.at(0).toDouble(0.5), r.at(1).toDouble(0.5), r.at(2).toDouble(0.2), r.at(3).toDouble(0.2),
+                                    r.at(4).toDouble(0.0)};
+            ok = ai::trackRegion(mediaPath, job["from"].toInteger(), job["to"].toInteger(), region, job["scaleRotation"].toBool(),
+                                 points, &error, progressIn(0.0, 1.0, "track"), canceled);
         } else {
             ok = ai::subjectCenters(mediaPath, job["from"].toInteger(), job["to"].toInteger(), job["step"].toInteger(250'000),
                                     modelPath, points, &error, progressIn(0.0, 1.0, "detect"), canceled);
@@ -266,7 +268,7 @@ void runJob(Queue& queue, const QJsonObject& job)
             return fail(error);
         QJsonArray list;
         for (const ai::TrackPoint& t : points)
-            list.append(QJsonArray{qint64(t.time), t.cx, t.cy, double(t.confidence)});
+            list.append(QJsonArray{qint64(t.time), t.cx, t.cy, double(t.confidence), t.scale, t.angle});
         QJsonObject e = event(id, "result");
         e["points"] = list;
         send(e);

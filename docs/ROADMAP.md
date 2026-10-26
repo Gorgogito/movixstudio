@@ -180,6 +180,7 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
   menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*).
 - La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
+  *(Fundidos y disolvencias: resuelto en F6.)*
 
 ## F5 — IA visual (local) ✅
 
@@ -216,9 +217,10 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
   *(Resuelto en F6: los dos van en la GPU.)*
 - La primera ejecución en la GPU tarda unos segundos más (el controlador compila los sombreadores).
 - SAM 2 se propaga desde el cabezal hasta el final del clip (no hacia atrás) guiándose por la
-  máscara anterior; con oclusiones largas puede perder el objeto.
+  máscara anterior; con oclusiones largas puede perder el objeto. *(Hacia atrás: resuelto en F6.)*
 - El seguimiento usa una región rectangular sin escala ni giro; el reencuadre solo desplaza en
   horizontal (pensado para pasar de un video horizontal a vertical, cuadrado o 4:5).
+  *(Escala y giro: resuelto en F6.)*
 
 ## F6 — Pulido y ecosistema (en curso)
 
@@ -317,7 +319,19 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       igual a ≤ 0,03/255 de media en fotos reales) para caber en 8 GB: ~1,1 s por fotograma
       1024² (CPU ~9,5 s). HTDemucs: ~0,5 s por ventana de 7,8 s (CPU ~3 s). Si un nodo aún falla
       en la GPU, solo ese nodo pasa a la CPU (se recuerda en `<modelo>.cpu-nodes`)
-- [ ] Seguimiento con escala y giro, SAM 2 hacia atrás, escenas con fundidos
+- [x] Seguimiento con escala y giro (IA → «Seguir el movimiento con escala y giro»): la plantilla
+      se muestrea con una transformación de semejanza y se ajusta por descenso de coordenadas,
+      anclada a la del primer fotograma para que el error no se acumule. La máscara crece y gira
+      con el objeto, y los clips adjuntos conservan su separación, escalada y girada con él. En una
+      tarjeta que avanza, crece ×1,8 y gira 69°: error ≤ 1,2 px, 0,6 % y 0,3°
+- [x] SAM 2 hacia atrás: el clic recorta el objeto en todo el clip. Desde el fotograma del clic se
+      segmenta hacia el principio por tramos de 1 s decodificados y recorridos al revés (las
+      máscaras se guardan comprimidas a la resolución de SAM) y luego hacia el final
+- [x] Escenas con disolvencias y fundidos: además de los cortes, se buscan tramos de 1/3 a 2,7 s
+      en los que la imagen reducida pasa en línea recta de un plano al otro (una mezcla lo hace;
+      el movimiento de cámara no). La disolvencia corta a mitad de la mezcla; el fundido a negro y
+      la aparición, en el fotograma más uniforme del negro. Los cortes que caen dentro de una
+      transición se descartan, y un fundido al principio o al final no separa escenas
 - [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO
 
 ### Limitaciones de OpenFX

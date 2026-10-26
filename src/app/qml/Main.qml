@@ -347,7 +347,8 @@ ApplicationWindow {
             MenuItem { text: qsTr("Aumentar la resolución ×&4"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.upscale(4) }
             MenuItem { text: qsTr("Cámara lenta suave ×2"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.slowMotion(2) }
             MenuItem { text: qsTr("Cámara lenta suave ×4"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.slowMotion(4) }
-            MenuItem { text: qsTr("Seguir el &movimiento de la máscara"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.trackMotion() }
+            MenuItem { text: qsTr("Seguir el &movimiento de la máscara"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.trackMotion(false) }
+            MenuItem { text: qsTr("Seguir el movimiento con escala y &giro"); enabled: !ai.busy && project.selection.length > 0; onTriggered: ai.trackMotion(true) }
             Menu {
                 title: qsTr("&Reencuadre automático")
                 enabled: !ai.busy && project.selection.length > 0

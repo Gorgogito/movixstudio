@@ -132,6 +132,39 @@ TEST_CASE("Escenas: cortes de un video real", "[ai][scenes]")
     CHECK_FALSE(ai::detectScenes(test::mediaPath("tone_44k_mono.wav"), 0, 0, {}, cuts, &error));
 }
 
+TEST_CASE("Escenas: disolvencias y fundidos", "[ai][scenes]")
+{
+    // Ver scenes_fades.mp4 en GenerateTestMedia.cmake: disolvencia centrada en 2,5 s, fundido a
+    // negro y desde negro con el negro hacia 4,05 s, corte en 7,8 s y fundido a negro, negro y
+    // aparición entre 8,5 y 10,6 s (negro de ~9,3 a ~9,8 s). El zoom con paneo de 5 a 7,8 s no es
+    // un cambio de escena.
+    std::vector<TimeUs> cuts;
+    std::string error;
+    REQUIRE(ai::detectScenes(test::mediaPath("scenes_fades.mp4"), 0, 0, {}, cuts, &error));
+    std::string list;
+    for (const TimeUs c : cuts)
+        list += std::to_string(toSeconds(c)) + " ";
+    INFO("cambios: " << list);
+    REQUIRE(cuts.size() == 4);
+    CHECK(toSeconds(cuts[0]) == Catch::Approx(2.5).margin(0.15));
+    CHECK(toSeconds(cuts[1]) == Catch::Approx(4.05).margin(0.1));
+    CHECK(toSeconds(cuts[2]) == Catch::Approx(7.8).margin(0.001));
+    CHECK(toSeconds(cuts[3]) == Catch::Approx(9.55).margin(0.25));
+
+    // Solo cortes: está el de 7,8 s, y también saltos dentro de las transiciones (en los colores
+    // lisos el histograma cambia a golpes), que el análisis gradual descarta.
+    ai::SceneOptions cutsOnly;
+    cutsOnly.gradual = false;
+    REQUIRE(ai::detectScenes(test::mediaPath("scenes_fades.mp4"), 0, 0, cutsOnly, cuts, &error));
+    CHECK(std::count(cuts.begin(), cuts.end(), fromSeconds(7.8)) == 1);
+    CHECK(cuts.size() > 4);
+
+    // Un tramo que acaba en pleno negro: el fundido del final no separa escenas.
+    REQUIRE(ai::detectScenes(test::mediaPath("scenes_fades.mp4"), 6 * kUsPerSecond, fromSeconds(9.5), {}, cuts, &error));
+    REQUIRE(cuts.size() == 1);
+    CHECK(toSeconds(cuts[0]) == Catch::Approx(7.8).margin(0.001));
+}
+
 TEST_CASE("Marcadores: orden, cortes, compuestos, cambio de fps y archivo", "[ai][markers]")
 {
     using namespace movix::core;

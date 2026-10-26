@@ -86,6 +86,21 @@ make_media(scenes_720p30.mp4
     -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p"
     -c:v libx264 -preset veryfast -g 30)
 
+# 8b) Escenas con transiciones graduales (grafo en data/escenas_fundidos.txt): testsrc2 → disolvencia
+#     de 1 s (2–3 s, centro 2,5) → barras → fundido a negro y desde negro de 1,2 s (3,8–5 s; xfade
+#     oscurece deprisa: negro hacia 4,05) → mandelbrot con zoom y paneo de 150 px/s (no es un cambio
+#     de escena) → corte a 7,8 s →
+#     barras rgb con fundido a negro (8,5–9,3) → 0,5 s de negro → testsrc2 apareciendo (9,8–10,6).
+make_media(scenes_fades.mp4
+    -f lavfi -i "testsrc2=s=640x360:r=30:d=3,format=yuv420p"
+    -f lavfi -i "smptehdbars=s=640x360:r=30:d=3,format=yuv420p"
+    -f lavfi -i "mandelbrot=s=1280x360:r=30,trim=duration=4,setpts=PTS-STARTPTS,crop=640:360:t*150:0,format=yuv420p"
+    -f lavfi -i "rgbtestsrc=s=640x360:r=30:d=1.5,format=yuv420p"
+    -f lavfi -i "color=c=black:s=640x360:r=30:d=0.5,format=yuv420p"
+    -f lavfi -i "testsrc2=s=640x360:r=30:d=2,format=yuv420p"
+    -/filter_complex "${CMAKE_CURRENT_LIST_DIR}/data/escenas_fundidos.txt"
+    -c:v libx264 -preset veryfast -g 30)
+
 # 9) Escenas con música: los tres planos de (8) con un bombo a 120 BPM (pulsos en 0,25 + 0,5·k s).
 set(ext .mp4)
 make_media(scenes_beats.mp4
@@ -101,6 +116,21 @@ make_media(scenes_beats.mp4
 set(ext .mp4)
 make_media(subject_ball.mp4
     -f lavfi -i "color=c=gray:s=640x360:r=10:d=1,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"
+    -c:v libx264 -preset veryfast -crf 12)
+
+# 10c) La misma bola durante 2,5 s (SAM 2 hacia atrás por varios tramos de un segundo).
+make_media(subject_ball_long.mp4
+    -f lavfi -i "color=c=gray:s=640x360:r=10:d=2.5,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"
+    -c:v libx264 -preset veryfast -crf 12)
+
+# 10b) Seguimiento con escala y giro: tarjeta de 120 × 80 a cuadrantes y con franjas que avanza
+#      (centro x = 200 + 120·t, y = 180), crece (escala 1 + 0,4·t) y gira 0,6·t rad en sentido horario
+#      sobre el mismo fondo que la bola. 2 s a 15 fps, 640×360.
+set(card_u "((X-200-120*T)*cos(0.6*T)+(Y-180)*sin(0.6*T))/(1+0.4*T)")
+set(card_v "((Y-180)*cos(0.6*T)-(X-200-120*T)*sin(0.6*T))/(1+0.4*T)")
+set(card_in "lt(abs(${card_u}),60)*lt(abs(${card_v}),40)")
+make_media(subject_card.mp4
+    -f lavfi -i "color=c=gray:s=640x360:r=15:d=2,format=rgb24,geq=r='if(${card_in},if(gt(${card_u},0),220,40),90+20*sin(X/9))':g='if(${card_in},if(gt(${card_v},0),200,60),100+20*sin(Y/7))':b='if(${card_in},80+120*gt(sin(${card_u}/5),0),110)',format=yuv420p"
     -c:v libx264 -preset veryfast -crf 12)
 
 # 11) Multicámara: la misma voz grabada por dos cámaras y un micrófono aparte, con desfases conocidos

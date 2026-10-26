@@ -16,6 +16,8 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
+#include <map>
+#include <numbers>
 #include <set>
 
 using namespace movix;
@@ -429,22 +431,36 @@ void AiController::onJobFinished(int job, const QJsonObject& result)
             if (!tracked || tracked->masks.empty() || points.isEmpty())
                 return false;
             const ProjectSettings& s = p.settings;
-            const double x0 = points.at(0).toArray().at(1).toDouble(), y0 = points.at(0).toArray().at(2).toDouble();
-            // Ajuste de la capa seguida al lienzo, para llevar el desplazamiento a los clips adjuntos.
+            const double W = s.width, H = s.height;
+            // Ajuste de la capa seguida al lienzo, para llevar el movimiento a los clips adjuntos.
             const MediaItem* m = p.findMedia(tracked->mediaId);
             const double layerAspect = m && m->height ? double(m->width) / m->height : 16.0 / 9.0;
-            const double canvasAspect = double(s.width) / s.height;
+            const double canvasAspect = W / H;
             const double fitW = std::min(1.0, layerAspect / canvasAspect), fitH = std::min(1.0, canvasAspect / layerAspect);
-            const double scale = tracked->transform.scale.at(m_trackStartRel);
-            std::vector<Id> attached;
+            // Punto (cx, cy) del medio en píxeles del lienzo (desde su centro) en el fotograma `rel` de
+            // la capa seguida, con su posición, escala y giro.
+            auto onCanvas = [&](const Clip& c, FramePos rel, double cx, double cy) {
+                const double sc = c.transform.scale.at(rel), r = c.transform.rotation.at(rel) * std::numbers::pi / 180.0;
+                const double lx = (cx - 0.5) * fitW * W * sc, ly = (cy - 0.5) * fitH * H * sc;
+                return std::pair{c.transform.x.at(rel) * W + lx * std::cos(r) - ly * std::sin(r),
+                                 c.transform.y.at(rel) * H + lx * std::sin(r) + ly * std::cos(r)};
+            };
+            const QJsonArray first = points.at(0).toArray();
+            const auto [ox, oy] = onCanvas(*tracked, m_trackStartRel, first.at(1).toDouble(), first.at(2).toDouble());
+            const Mask& mask = tracked->masks.front();
+            const double maskW = mask.width.at(m_trackStartRel), maskH = mask.height.at(m_trackStartRel);
+            const double maskRotation = mask.rotation.at(m_trackStartRel);
+            // Los clips adjuntos guardan su separación del objeto, que crece y gira con él.
+            struct Attached {
+                double dx, dy, scale, rotation;
+            };
+            std::map<Id, Attached> attached;
             for (Id id : m_clip.targets)
-                if (id != m_clip.clipId)
-                    attached.push_back(id);
-            std::map<Id, std::pair<double, double>> base;
-            for (Id id : attached)
-                if (const Clip* c = p.findClip(id))
-                    base[id] = {c->transform.x.at(m_trackStartRel + m_clip.start - c->start),
-                                c->transform.y.at(m_trackStartRel + m_clip.start - c->start)};
+                if (const Clip* c = p.findClip(id); c && id != m_clip.clipId) {
+                    const FramePos rel = m_trackStartRel + m_clip.start - c->start;
+                    attached[id] = {c->transform.x.at(rel) * W - ox, c->transform.y.at(rel) * H - oy, c->transform.scale.at(rel),
+                                    c->transform.rotation.at(rel)};
+                }
             FramePos lastRel = -1;
             for (const QJsonValue& v : points) {
                 const QJsonArray a = v.toArray();
@@ -453,19 +469,31 @@ void AiController::onJobFinished(int job, const QJsonObject& result)
                     continue;
                 lastRel = rel;
                 const double cx = a.at(1).toDouble(), cy = a.at(2).toDouble();
-                for (auto [prop, value] : {std::pair{edit::Property::MaskX, cx}, std::pair{edit::Property::MaskY, cy}}) {
-                    Animated* anim = edit::property(*p.findClip(m_clip.clipId), prop, 0);
-                    anim->setKey(rel, value, Interpolation::Linear);
-                }
-                for (Id id : attached) {
-                    Clip* c = p.findClip(id);
-                    if (!c)
+                const double scale = m_trackScaleRotation ? a.at(4).toDouble(1.0) : 1.0;
+                const double angle = m_trackScaleRotation ? a.at(5).toDouble(0.0) : 0.0;
+                Clip* c = p.findClip(m_clip.clipId);
+                std::vector<std::pair<edit::Property, double>> values{{edit::Property::MaskX, cx}, {edit::Property::MaskY, cy}};
+                if (m_trackScaleRotation)
+                    values.insert(values.end(), {{edit::Property::MaskWidth, maskW * scale},
+                                                 {edit::Property::MaskHeight, maskH * scale},
+                                                 {edit::Property::MaskRotation, maskRotation + angle}});
+                for (auto [prop, value] : values)
+                    edit::property(*c, prop, 0)->setKey(rel, value, Interpolation::Linear);
+                const auto [px, py] = onCanvas(*c, rel, cx, cy);
+                const double rad = angle * std::numbers::pi / 180.0;
+                for (const auto& [id, base] : attached) {
+                    Clip* clip = p.findClip(id);
+                    const FramePos crel = rel + m_clip.start - clip->start;
+                    if (crel < 0 || crel >= clip->duration)
                         continue;
-                    const FramePos crel = rel + m_clip.start - c->start;
-                    if (crel < 0 || crel >= c->duration)
-                        continue;
-                    c->transform.x.setKey(crel, base[id].first + (cx - x0) * fitW * scale, Interpolation::Linear);
-                    c->transform.y.setKey(crel, base[id].second + (cy - y0) * fitH * scale, Interpolation::Linear);
+                    const double dx = scale * (base.dx * std::cos(rad) - base.dy * std::sin(rad));
+                    const double dy = scale * (base.dx * std::sin(rad) + base.dy * std::cos(rad));
+                    clip->transform.x.setKey(crel, (px + dx) / W, Interpolation::Linear);
+                    clip->transform.y.setKey(crel, (py + dy) / H, Interpolation::Linear);
+                    if (m_trackScaleRotation) {
+                        clip->transform.scale.setKey(crel, base.scale * scale, Interpolation::Linear);
+                        clip->transform.rotation.setKey(crel, base.rotation + angle, Interpolation::Linear);
+                    }
                 }
                 ++keys;
             }
@@ -942,8 +970,11 @@ void AiController::segmentObject(double u, double v)
         {"type", QLatin1String(ai::protocol::kSegmentObject)},
         {"model", ai::modelFolder(*model)},
         {"media", QString::fromStdString(media->path)},
-        {"from", qint64(sourceTimeAt(p.settings, *c, playhead))},
-        {"to", qint64(sourceTimeAt(p.settings, *c, c->end()))},
+        // Todo el clip: desde el clic hacia delante y hacia atrás (al revés, el principio del
+        // clip es el final del tramo del medio).
+        {"from", qint64(std::min(sourceTimeAt(p.settings, *c, c->start), sourceTimeAt(p.settings, *c, c->end())))},
+        {"to", qint64(std::max(sourceTimeAt(p.settings, *c, c->start), sourceTimeAt(p.settings, *c, c->end())))},
+        {"at", qint64(sourceTimeAt(p.settings, *c, playhead))},
         {"x", std::clamp(u, 0.0, 1.0)},
         {"y", std::clamp(v, 0.0, 1.0)},
         {"output", QDir::toNativeSeparators(generatedFolder() + QLatin1Char('/')
@@ -1000,7 +1031,7 @@ void AiController::slowMotion(int factor)
 
 // --- Seguimiento y reencuadre ---
 
-void AiController::trackMotion()
+void AiController::trackMotion(bool scaleRotation)
 {
     if (busy() || !m_project)
         return;
@@ -1024,8 +1055,10 @@ void AiController::trackMotion()
         {"media", QString::fromStdString(media->path)},
         {"from", qint64(sourceTimeAt(p.settings, *c, playhead))},
         {"to", qint64(sourceTimeAt(p.settings, *c, c->end()))},
-        {"region", QJsonArray{mask.x.at(m_trackStartRel), mask.y.at(m_trackStartRel), w, h}},
+        {"region", QJsonArray{mask.x.at(m_trackStartRel), mask.y.at(m_trackStartRel), w, h, mask.rotation.at(m_trackStartRel)}},
+        {"scaleRotation", scaleRotation},
     };
+    m_trackScaleRotation = scaleRotation;
     m_current = {media->id, QString::fromStdString(media->path), QString::fromStdString(media->name)};
     startTask(Task::Track, {}, {});
 }

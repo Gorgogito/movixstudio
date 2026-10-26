@@ -92,13 +92,14 @@ public:
     Q_INVOKABLE void slowMotion(int factor);
     // Sigue el movimiento de la región de la primera máscara del clip seleccionado desde el cabezal
     // hasta el final del clip: la máscara queda animada y los demás clips seleccionados (títulos,
-    // imágenes) se mueven con ella.
-    Q_INVOKABLE void trackMotion();
+    // imágenes) se mueven con ella. Con `scaleRotation`, la máscara y los clips adjuntos también
+    // crecen y giran con el objeto.
+    Q_INVOKABLE void trackMotion(bool scaleRotation = false);
     // Cambia el formato del proyecto (aspect: "9:16", "1:1" o "4:5") y anima la posición del clip
     // seleccionado para que su sujeto quede centrado.
     Q_INVOKABLE void autoReframe(const QString& aspect);
-    // Recorta el objeto señalado (u, v en fracciones de la capa) del clip seleccionado con SAM 2,
-    // desde el cabezal hasta el final del clip.
+    // Recorta el objeto señalado (u, v en fracciones de la capa, en el fotograma del cabezal) del clip
+    // seleccionado con SAM 2, por todo el clip: desde el cabezal hacia delante y hacia atrás.
     Q_INVOKABLE void segmentObject(double u, double v);
     Q_INVOKABLE void cancel();
 
@@ -186,6 +187,7 @@ private:
     QString m_trackSuffix;
     int m_factor = 2;
     movix::core::FramePos m_trackStartRel = 0; // fotograma (relativo al clip) donde empieza el seguimiento
+    bool m_trackScaleRotation = false;
     QString m_aspect;
     void startVideoJob(Task task, const QString& modelId, const char* type, const QString& suffix, int factor);
     // Carpeta para los audios generados: junto al proyecto guardado o en los datos de la aplicación.

@@ -154,10 +154,13 @@ TEST_CASE("Aplicación: pulsos, escenas, subtítulos y silencios con el proceso 
         project.removeMatte(qint64(clip));
         CHECK_FALSE(p().findClip(clip)->matte.active());
 
-        // Objeto con un clic (cabezal al principio, clic en el centro de la bola).
-        project.player()->seekFrame(0);
-        run([&] { ai.segmentObject(320.0 / 640.0, 0.5); });
+        // Objeto con un clic (cabezal a mitad del clip, clic en el centro de la bola): el mate cubre
+        // todo el clip, también lo anterior al cabezal.
+        project.player()->seekFrame(p().settings.timeToFrame(fromSeconds(0.5)));
+        run([&] { ai.segmentObject((320.0 + 100.0 * std::sin(1.5)) / 640.0, 0.5); });
         CHECK(p().findClip(clip)->matte.active());
+        CHECK(p().findClip(clip)->matte.start == 0);
+        project.player()->seekFrame(0);
 
         // Seguimiento: una máscara rectangular sobre la bola sigue su movimiento.
         REQUIRE(project.addMask(qint64(clip), "rectangle") == 0);
@@ -185,6 +188,53 @@ TEST_CASE("Aplicación: pulsos, escenas, subtítulos y silencios con el proceso 
         CHECK(p().findClip(clip)->speed == Catch::Approx(0.5));
         CHECK(p().findClip(clip)->duration == 2 * duration);
         CHECK(p().findMedia(p().findClip(clip)->mediaId)->frameRate == Catch::Approx(20.0));
+    }
+
+    SECTION("Seguimiento con escala y giro de la máscara y de un título adjunto")
+    {
+        // Tarjeta que avanza (x = 200 + 120·t px), crece (1 + 0,4·t) y gira (0,6·t rad, horario).
+        const core::Id clip = placeMedia(project, "subject_card.mp4");
+        const auto& p = [&]() -> const core::Project& { return project.project(); };
+        REQUIRE(p().settings.width == 640);
+        project.player()->seekFrame(0);
+        REQUIRE(project.addTitle(0, -1, 0));
+        core::Id title = core::kNoId;
+        for (const auto& t : p().videoTracks)
+            for (const auto& c : t.clips)
+                if (c.id != clip)
+                    title = c.id;
+        REQUIRE(title != core::kNoId);
+        project.setClipProperty(qint64(title), "x", 0.0);
+        project.setClipProperty(qint64(title), "y", -0.25); // 90 px por encima del centro del lienzo
+        REQUIRE(project.addMask(qint64(clip), "rectangle") == 0);
+        project.setClipProperty(qint64(clip), "mask.0.x", 200.0 / 640.0);
+        project.setClipProperty(qint64(clip), "mask.0.y", 0.5);
+        project.setClipProperty(qint64(clip), "mask.0.width", 130.0 / 640.0);
+        project.setClipProperty(qint64(clip), "mask.0.height", 90.0 / 360.0);
+        project.select(qint64(clip), false);
+        project.select(qint64(title), true);
+        ai.trackMotion(true);
+        waitIdle(ai);
+        INFO((errors.isEmpty() ? QString() : errors.last().at(0).toString()).toStdString());
+        REQUIRE(errors.isEmpty());
+
+        const core::Clip& c = *p().findClip(clip);
+        const core::FramePos last = c.duration - 1;
+        const double t = toSeconds(p().settings.frameToTime(last)), angle = 0.6 * t * 180 / 3.14159265, scale = 1 + 0.4 * t;
+        const core::Mask& mask = c.masks[0];
+        CHECK(mask.x.at(last) * 640 == Catch::Approx(200 + 120 * t).margin(3));
+        CHECK(mask.width.at(last) == Catch::Approx(130.0 / 640.0 * scale).epsilon(0.03));
+        CHECK(mask.height.at(last) == Catch::Approx(90.0 / 360.0 * scale).epsilon(0.03));
+        CHECK(mask.rotation.at(last) == Catch::Approx(angle).margin(1.5));
+        // El título conserva su separación del objeto (120 px a la derecha y 90 px arriba al empezar),
+        // girada y escalada con él.
+        const core::Clip& tc = *p().findClip(title);
+        const core::FramePos tl = last + c.start - tc.start;
+        CHECK(tc.transform.scale.at(tl) == Catch::Approx(scale).epsilon(0.03));
+        CHECK(tc.transform.rotation.at(tl) == Catch::Approx(angle).margin(1.5));
+        const double a = 0.6 * t, dx = 120, dy = -90;
+        CHECK(tc.transform.x.at(tl) * 640 == Catch::Approx(200 + 120 * t - 320 + scale * (dx * std::cos(a) - dy * std::sin(a))).margin(6));
+        CHECK(tc.transform.y.at(tl) * 360 == Catch::Approx(scale * (dx * std::sin(a) + dy * std::cos(a))).margin(6));
     }
 
     SECTION("Texto a voz y separación de voz")

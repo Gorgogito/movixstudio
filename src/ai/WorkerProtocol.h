@@ -22,10 +22,11 @@
 //    "output": "<ruta .mp4>"}
 //   {"id": 10, "type": "interpolate", "model": "<ruta .onnx>", "media": "<ruta>", "from": µs, "to": µs,
 //    "factor": 2..8, "output": "<ruta .mp4>"}
-//   {"id": 11, "type": "track", "media": "<ruta>", "from": µs, "to": µs, "region": [cx, cy, w, h] (fracciones)}
+//   {"id": 11, "type": "track", "media": "<ruta>", "from": µs, "to": µs, "region": [cx, cy, w, h, giro°],
+//    "scaleRotation": bool}  (región en fracciones del fotograma)
 //   {"id": 12, "type": "subjectCenters", "media": "<ruta>", "from": µs, "to": µs, "step": µs, "model": "<MODNet opcional>"}
 //   {"id": 13, "type": "segmentObject", "model": "<carpeta de SAM 2>", "media": "<ruta>", "from": µs, "to": µs,
-//    "x": 0..1, "y": 0..1, "output": "<ruta .mp4 del mate>"}  → como removeBackground
+//    "at": µs (fotograma del clic), "x": 0..1, "y": 0..1, "output": "<ruta .mp4 del mate>"}  → como removeBackground
 //   {"type": "cancel", "id": 1}
 // Eventos:
 //   {"id": 1, "event": "started"}
@@ -39,7 +40,7 @@
 //                                      separate → "vocals": ruta, "accompaniment": ruta, "duration": µs
 //                                      removeBackground → "output": ruta, "start": µs, "frames": n
 //                                      upscale / interpolate → "output": ruta, "width", "height", "fps", "frames"
-//                                      track / subjectCenters → "points": [[µs, cx, cy, confianza], ...]
+//                                      track / subjectCenters → "points": [[µs, cx, cy, confianza, escala, giro°], ...]
 //   {"id": 1, "event": "error", "message": "...", "canceled": false}
 namespace movix::ai::protocol {
 

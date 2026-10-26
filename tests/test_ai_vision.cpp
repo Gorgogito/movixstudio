@@ -314,7 +314,7 @@ TEST_CASE("Seguimiento de movimiento y localización del sujeto", "[ai][vision][
     std::string error;
     // La región de la bola en t = 0 (160 × 160 px sobre 640 × 360).
     const ai::Region start{ballX(0) / 640.0, 0.5, 160.0 / 640.0, 160.0 / 360.0};
-    REQUIRE(ai::trackRegion(test::mediaPath("subject_ball.mp4"), 0, 0, start, points, &error));
+    REQUIRE(ai::trackRegion(test::mediaPath("subject_ball.mp4"), 0, 0, start, false, points, &error));
     REQUIRE(points.size() == 10);
     double worst = 0;
     for (const auto& p : points) {
@@ -326,9 +326,40 @@ TEST_CASE("Seguimiento de movimiento y localización del sujeto", "[ai][vision][
 
     // Desde la mitad del clip (como desde el cabezal).
     REQUIRE(ai::trackRegion(test::mediaPath("subject_ball.mp4"), fromSeconds(0.5), 0,
-                            {ballX(0.5) / 640.0, 0.5, 0.25, 0.44}, points, &error));
+                            {ballX(0.5) / 640.0, 0.5, 0.25, 0.44}, false, points, &error));
     CHECK(points.size() == 5);
     CHECK(points.back().cx * 640.0 == Catch::Approx(ballX(0.9)).margin(8));
+
+    // Con escala y giro, un objeto que solo se desplaza no cambia de tamaño.
+    REQUIRE(ai::trackRegion(test::mediaPath("subject_ball.mp4"), 0, 0, start, true, points, &error));
+    REQUIRE(points.size() == 10);
+    for (const auto& p : points) {
+        CHECK(p.cx * 640.0 == Catch::Approx(ballX(toSeconds(p.time))).margin(8));
+        CHECK(p.scale == Catch::Approx(1.0).margin(0.05));
+    }
+
+    // Tarjeta que avanza, crece (1 + 0,4·t) y gira (0,6·t rad, horario), con la región ya girada
+    // 10° al empezar (como una máscara girada): la escala y el giro se miden respecto de ella.
+    {
+        const auto card = test::mediaPath("subject_card.mp4");
+        REQUIRE(ai::trackRegion(card, 0, 0, {200.0 / 640.0, 0.5, 130.0 / 640.0, 90.0 / 360.0, 10.0}, true, points, &error));
+        REQUIRE(points.size() == 30);
+        double worstPos = 0, worstScale = 0, worstAngle = 0;
+        for (const auto& p : points) {
+            const double t = toSeconds(p.time);
+            worstPos = std::max({worstPos, std::abs(p.cx * 640.0 - (200 + 120 * t)), std::abs(p.cy * 360.0 - 180)});
+            worstScale = std::max(worstScale, std::abs(p.scale / (1 + 0.4 * t) - 1));
+            worstAngle = std::max(worstAngle, std::abs(p.angle - 0.6 * t * 180 / 3.14159265));
+        }
+        INFO("error máximo: " << worstPos << " px, escala " << worstScale * 100 << " %, giro " << worstAngle << "°");
+        CHECK(worstPos < 3.0);
+        CHECK(worstScale < 0.02);
+        CHECK(worstAngle < 1.5);
+        // Sin escala ni giro, la posición se sigue igualmente (peor, porque la plantilla no encaja).
+        REQUIRE(ai::trackRegion(card, 0, 0, {200.0 / 640.0, 0.5, 130.0 / 640.0, 90.0 / 360.0}, false, points, &error));
+        CHECK(points.back().cx * 640.0 == Catch::Approx(440.0).margin(20));
+        CHECK(points.back().scale == 1.0);
+    }
 
     // Sujeto sin personas: lo que destaca del fondo (la bola), suavizado a ±0,5 s.
     REQUIRE(ai::subjectCenters(test::mediaPath("subject_ball.mp4"), 0, 0, fromSeconds(0.1), {}, points, &error));
@@ -367,7 +398,7 @@ TEST_CASE("SAM 2.1 segmenta el objeto señalado y lo sigue por el clip", "[ai][v
     // Por todo el clip: a 0,6 s la máscara sigue sobre la bola.
     QTemporaryDir dir;
     ai::MatteResult result;
-    REQUIRE(ai::segmentObject(folder.string(), test::mediaPath("subject_ball.mp4"), 0, 0, ballX(0) / 640.0, 0.5,
+    REQUIRE(ai::segmentObject(folder.string(), test::mediaPath("subject_ball.mp4"), 0, 0, 0, ballX(0) / 640.0, 0.5,
                               QDir::toNativeSeparators(dir.filePath("obj.mp4")).toStdString(), result, &error));
     CHECK(result.frames == 10);
     media::VideoDecoder dec;
@@ -382,4 +413,36 @@ TEST_CASE("SAM 2.1 segmenta el objeto señalado y lo sigue por el clip", "[ai][v
     INFO("a 0,6 s: objeto " << in6 << ", fondo " << out6);
     CHECK(in6 > 0.9);
     CHECK(out6 < 0.05);
+
+    // Clic cerca del final (2,2 s de 2,5): el mate cubre todo el tramo, también hacia atrás (tres
+    // tramos de un segundo decodificados y recorridos al revés).
+    auto maskAt = [&](const std::string& path, double seconds) {
+        media::VideoDecoder d;
+        REQUIRE(d.open(path));
+        REQUIRE(d.seek(fromSeconds(seconds)));
+        auto frame = d.decodeNext();
+        REQUIRE(frame);
+        std::vector<uint8_t> l(frame->y.begin(), frame->y.begin() + std::ptrdiff_t(frame->width) * frame->height);
+        for (uint8_t& v : l)
+            v = uint8_t(std::clamp((v - 16) * 255 / 219, 0, 255));
+        return l;
+    };
+    double lastProgress = 0;
+    bool monotonic = true;
+    REQUIRE(ai::segmentObject(folder.string(), test::mediaPath("subject_ball_long.mp4"), 0, 0, fromSeconds(2.2), ballX(2.2) / 640.0, 0.5,
+                              QDir::toNativeSeparators(dir.filePath("atras.mp4")).toStdString(), result, &error,
+                              [&](double p) {
+                                  monotonic = monotonic && p >= lastProgress - 1e-9;
+                                  lastProgress = p;
+                              }));
+    CHECK(result.start == 0);
+    CHECK(result.frames == 25);
+    CHECK(monotonic);
+    CHECK(lastProgress == Catch::Approx(1.0).margin(0.05));
+    for (const double t : {0.0, 0.5, 1.0, 1.5, 2.4}) {
+        const auto [inside, outside] = insideOutside(maskAt(result.output, t), 640, 360, ballX(t), 180, 55, 90);
+        INFO("bola a " << t << " s: objeto " << inside << ", fondo " << outside);
+        CHECK(inside > 0.9);
+        CHECK(outside < 0.05);
+    }
 }

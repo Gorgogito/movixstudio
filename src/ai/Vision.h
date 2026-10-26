@@ -34,8 +34,8 @@ bool removeBackground(const std::string& modelPath, MatteModel model, const std:
                       const std::string& output, MatteResult& result, std::string* error = nullptr,
                       const ProgressFn& progress = {}, const CancelFn& cancel = {});
 
-// Mate por fotograma: opacidad (0..255, w × h) del fotograma RGBA número `index` del tramo.
-using MatteFn = std::function<bool(const uint8_t* rgba, int width, int height, int index, std::vector<uint8_t>& alpha,
+// Mate por fotograma: opacidad (0..255, w × h) del fotograma RGBA del instante `pts` del medio.
+using MatteFn = std::function<bool(const uint8_t* rgba, int width, int height, TimeUs pts, std::vector<uint8_t>& alpha,
                                    std::string* error)>;
 // Decodifica [from, to) y escribe el mate de cada fotograma como video en escala de grises.
 bool writeMatte(const std::string& mediaPath, TimeUs from, TimeUs to, const std::string& output, const MatteFn& matte,
@@ -51,10 +51,11 @@ struct SegmentPrompt {
 bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width, int height, const SegmentPrompt& prompt,
                   std::vector<uint8_t>& alpha, float* score = nullptr, std::string* error = nullptr);
 
-// Mate del objeto que hay en (x, y) del primer fotograma de [from, to), seguido por el resto del
-// tramo (cada fotograma se guía por la caja y el centro de la máscara anterior).
-bool segmentObject(const std::string& modelFolder, const std::string& mediaPath, TimeUs from, TimeUs to, double x, double y,
-                   const std::string& output, MatteResult& result, std::string* error = nullptr,
+// Mate de todo el tramo [from, to) del objeto que hay en (x, y) del fotograma del instante `at`,
+// seguido desde ahí hacia delante y hacia atrás (cada fotograma se guía por la caja y el centro de
+// la máscara de su vecino).
+bool segmentObject(const std::string& modelFolder, const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs at, double x,
+                   double y, const std::string& output, MatteResult& result, std::string* error = nullptr,
                    const ProgressFn& progress = {}, const CancelFn& cancel = {});
 
 // Redimensiona un plano de floats (bilineal) a bytes 0..255.

@@ -1,0 +1,5 @@
+[0:v][1:v]xfade=transition=fade:duration=1:offset=2[ab];
+[ab][2:v]xfade=transition=fadeblack:duration=1.2:offset=3.8[abc];
+[3:v]fade=t=out:st=0.7:d=0.8[d];
+[5:v]fade=t=in:st=0:d=0.8[e];
+[abc][d][4:v][e]concat=n=4:v=1:a=0,format=yuv420p

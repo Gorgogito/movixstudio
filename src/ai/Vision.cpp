@@ -6,6 +6,8 @@
 #include "media/FrameConvert.h"
 #include "media/VideoDecoder.h"
 
+#include <QByteArray>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -154,7 +156,7 @@ bool writeMatte(const std::string& mediaPath, TimeUs from, TimeUs to, const std:
             encoderOpen = true;
             result.start = frame->pts;
         }
-        if (!media::frameToRgba(*frame, w, h, rgba) || !matte(rgba.data(), w, h, result.frames, alpha, error)) {
+        if (!media::frameToRgba(*frame, w, h, rgba) || !matte(rgba.data(), w, h, frame->pts, alpha, error)) {
             encoder.abort();
             if (error && error->empty())
                 *error = "No se pudo convertir el fotograma.";
@@ -192,7 +194,7 @@ bool removeBackground(const std::string& modelPath, MatteModel model, const std:
 {
     return writeMatte(
         mediaPath, from, to, output,
-        [&](const uint8_t* rgba, int w, int h, int, std::vector<uint8_t>& alpha, std::string* err) {
+        [&](const uint8_t* rgba, int w, int h, TimeUs, std::vector<uint8_t>& alpha, std::string* err) {
             return matteFrame(modelPath, model, rgba, w, h, alpha, err);
         },
         result, error, progress, cancel);
@@ -230,8 +232,11 @@ bool loadSam(const std::string& folder, std::string* error)
 
 } // namespace
 
-bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width, int height, const SegmentPrompt& prompt,
-                  std::vector<uint8_t>& alpha, float* score, std::string* error)
+namespace {
+
+// Probabilidad del objeto a la resolución de salida de SAM (`mw` × `mh`, todo el fotograma estirado).
+bool segmentLowRes(const std::string& modelFolder, const uint8_t* rgba, int width, int height, const SegmentPrompt& prompt,
+                   std::vector<float>& prob, int& mw, int& mh, float* score, std::string* error)
 {
     if (!loadSam(modelFolder, error))
         return false;
@@ -275,7 +280,9 @@ bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width
                                  decIn, {"iou_scores", "pred_masks", "object_score_logits"});
         const float* iou = out[0].GetTensorData<float>();
         const auto shape = out[1].GetTensorTypeAndShapeInfo().GetShape(); // [1, 1, 3, 256, 256]
-        const int masks = int(shape[2]), mh = int(shape[3]), mw = int(shape[4]);
+        const int masks = int(shape[2]);
+        mh = int(shape[3]);
+        mw = int(shape[4]);
         int best = 0;
         for (int i = 1; i < masks; ++i)
             if (iou[i] > iou[best])
@@ -284,11 +291,9 @@ bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width
             *score = iou[best];
         const bool present = out[2].GetTensorData<float>()[0] > 0.0f;
         const float* logits = out[1].GetTensorData<float>() + size_t(best) * size_t(mw) * size_t(mh);
-        // Logits → probabilidad, ampliada al tamaño del fotograma y con borde suave.
-        std::vector<float> prob(size_t(mw) * size_t(mh));
+        prob.resize(size_t(mw) * size_t(mh));
         for (size_t i = 0; i < prob.size(); ++i)
             prob[i] = present ? 1.0f / (1.0f + std::exp(-logits[i])) : 0.0f;
-        resizePlane(prob.data(), mw, mh, alpha, width, height);
         return true;
     } catch (const std::exception& e) {
         if (error)
@@ -297,46 +302,166 @@ bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width
     }
 }
 
-bool segmentObject(const std::string& modelFolder, const std::string& mediaPath, TimeUs from, TimeUs to, double x, double y,
-                   const std::string& output, MatteResult& result, std::string* error, const ProgressFn& progress,
+// El fotograma vecino (en cualquier sentido) se guía por la caja (un 10 % mayor) y el centro de esta
+// máscara. Sin máscara, el prompt no cambia.
+void followMask(const std::vector<float>& prob, int mw, int mh, SegmentPrompt& prompt)
+{
+    double sx = 0, sy = 0, sw = 0;
+    int minX = mw, minY = mh, maxX = -1, maxY = -1;
+    for (int y = 0; y < mh; ++y)
+        for (int x = 0; x < mw; ++x)
+            if (prob[size_t(y) * size_t(mw) + size_t(x)] > 0.5f) {
+                sx += x + 0.5;
+                sy += y + 0.5;
+                sw += 1;
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+    if (sw == 0)
+        return;
+    const double mx = 0.1 * (maxX + 1 - minX), my = 0.1 * (maxY + 1 - minY);
+    prompt.x = sx / sw / mw;
+    prompt.y = sy / sw / mh;
+    prompt.box = {std::max(0.0, (minX - mx) / mw), std::max(0.0, (minY - my) / mh), std::min(1.0, (maxX + 1 + mx) / mw),
+                  std::min(1.0, (maxY + 1 + my) / mh)};
+    prompt.useBox = true;
+}
+
+// Fotograma en RGBA a una resolución suficiente para SAM (que lo lleva a 1024 × 1024).
+bool samRgba(const media::VideoFrame& frame, std::vector<uint8_t>& rgba, int& w, int& h)
+{
+    const double scale = std::min(1.0, 1024.0 / std::max(frame.width, frame.height));
+    w = std::max(2, int(std::lround(frame.width * scale)) & ~1);
+    h = std::max(2, int(std::lround(frame.height * scale)) & ~1);
+    return media::frameToRgba(frame, w, h, rgba);
+}
+
+// Máscara de baja resolución guardada (comprimida) hasta escribir el mate en orden.
+struct StoredMask {
+    int w = 0, h = 0;
+    QByteArray data; // bytes 0..255 comprimidos
+};
+
+} // namespace
+
+bool segmentFrame(const std::string& modelFolder, const uint8_t* rgba, int width, int height, const SegmentPrompt& prompt,
+                  std::vector<uint8_t>& alpha, float* score, std::string* error)
+{
+    std::vector<float> prob;
+    int mw = 0, mh = 0;
+    if (!segmentLowRes(modelFolder, rgba, width, height, prompt, prob, mw, mh, score, error))
+        return false;
+    // Ampliada al tamaño del fotograma, con borde suave.
+    resizePlane(prob.data(), mw, mh, alpha, width, height);
+    return true;
+}
+
+bool segmentObject(const std::string& modelFolder, const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs at, double x,
+                   double y, const std::string& output, MatteResult& result, std::string* error, const ProgressFn& progress,
                    const CancelFn& cancel)
 {
-    SegmentPrompt prompt;
-    prompt.x = x;
-    prompt.y = y;
+    SegmentPrompt click;
+    click.x = x;
+    click.y = y;
+    std::vector<float> prob;
+    int mw = 0, mh = 0;
+
+    // 1) Hacia atrás, desde el fotograma del clic hasta `from`: por tramos de un segundo que se
+    //    decodifican hacia delante y se recorren al revés. Las máscaras se guardan a la resolución
+    //    de SAM hasta escribir el mate en orden.
+    std::map<TimeUs, StoredMask> backward;
+    TimeUs clickPts = from;
+    double backwardShare = 0; // parte del progreso que corresponde a esta pasada
+    if (at > from) {
+        media::VideoDecoder decoder;
+        if (!decoder.open(mediaPath, {}, error))
+            return false;
+        const TimeUs end = to > from ? to : decoder.duration();
+        backwardShare = std::clamp(double(at - from) / double(std::max<TimeUs>(1, end - from)), 0.0, 1.0);
+        std::vector<uint8_t> rgba;
+        int w = 0, h = 0;
+        decoder.seek(at);
+        auto first = decoder.decodeNext();
+        if (!first || !samRgba(*first, rgba, w, h)) {
+            if (error)
+                *error = "No se pudo decodificar el fotograma del clic.";
+            return false;
+        }
+        clickPts = first->pts;
+        // El fotograma del clic da la guía de partida.
+        SegmentPrompt prompt = click;
+        if (!segmentLowRes(modelFolder, rgba.data(), w, h, prompt, prob, mw, mh, nullptr, error))
+            return false;
+        followMask(prob, mw, mh, prompt);
+        constexpr TimeUs kChunk = 1'000'000;
+        TimeUs chunkEnd = first->pts;
+        std::vector<std::pair<TimeUs, std::vector<uint8_t>>> frames;
+        while (chunkEnd > from) {
+            const TimeUs chunkStart = std::max(from, chunkEnd - kChunk);
+            frames.clear();
+            decoder.seek(chunkStart);
+            while (auto f = decoder.decodeNext()) {
+                if (f->pts >= chunkEnd)
+                    break;
+                if (!samRgba(*f, rgba, w, h))
+                    break;
+                frames.emplace_back(f->pts, rgba);
+            }
+            if (frames.empty())
+                break;
+            for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+                if (cancel && cancel()) {
+                    if (error)
+                        *error = "cancelado";
+                    return false;
+                }
+                if (!segmentLowRes(modelFolder, it->second.data(), w, h, prompt, prob, mw, mh, nullptr, error))
+                    return false;
+                followMask(prob, mw, mh, prompt);
+                QByteArray bytes(qsizetype(prob.size()), Qt::Uninitialized);
+                for (size_t i = 0; i < prob.size(); ++i)
+                    bytes[qsizetype(i)] = char(uint8_t(std::lround(std::clamp(prob[i], 0.0f, 1.0f) * 255.0f)));
+                backward[it->first] = {mw, mh, qCompress(bytes, 1)};
+                if (progress)
+                    progress(backwardShare * std::clamp(double(at - it->first) / double(std::max<TimeUs>(1, at - from)), 0.0, 1.0));
+            }
+            if (chunkStart <= from)
+                break;
+            chunkEnd = frames.front().first;
+        }
+    }
+
+    // 2) El mate completo, hacia delante: lo guardado y, desde el clic, cada fotograma guiado por el anterior.
+    SegmentPrompt prompt = click;
+    std::vector<float> stored;
+    const ProgressFn forwardProgress = [&](double p) {
+        if (progress)
+            progress(std::max(p, backwardShare));
+    };
     return writeMatte(
         mediaPath, from, to, output,
-        [&](const uint8_t* rgba, int w, int h, int index, std::vector<uint8_t>& alpha, std::string* err) {
-            if (!segmentFrame(modelFolder, rgba, w, h, prompt, alpha, nullptr, err))
-                return false;
-            // El siguiente fotograma se guía por la caja (un 10 % mayor) y el centro de esta máscara.
-            double sx = 0, sy = 0, sw = 0;
-            int minX = w, minY = h, maxX = -1, maxY = -1;
-            for (int yy = 0; yy < h; ++yy)
-                for (int xx = 0; xx < w; ++xx)
-                    if (alpha[size_t(yy) * size_t(w) + size_t(xx)] > 127) {
-                        sx += xx;
-                        sy += yy;
-                        sw += 1;
-                        minX = std::min(minX, xx);
-                        maxX = std::max(maxX, xx);
-                        minY = std::min(minY, yy);
-                        maxY = std::max(maxY, yy);
-                    }
-            if (sw > 0) {
-                const double mx = 0.1 * (maxX - minX), my = 0.1 * (maxY - minY);
-                prompt.x = sx / sw / w;
-                prompt.y = sy / sw / h;
-                prompt.box = {std::max(0.0, (minX - mx) / w), std::max(0.0, (minY - my) / h), std::min(1.0, (maxX + mx) / w),
-                              std::min(1.0, (maxY + my) / h)};
-                prompt.useBox = true;
+        [&](const uint8_t* rgba, int w, int h, TimeUs pts, std::vector<uint8_t>& alpha, std::string* err) {
+            if (const auto it = backward.find(pts); it != backward.end()) {
+                const QByteArray bytes = qUncompress(it->second.data);
+                stored.resize(size_t(bytes.size()));
+                for (qsizetype i = 0; i < bytes.size(); ++i)
+                    stored[size_t(i)] = uint8_t(bytes[i]) / 255.0f;
+                resizePlane(stored.data(), it->second.w, it->second.h, alpha, w, h);
+                return true;
             }
-            (void)index;
+            // Antes del clic sin máscara guardada (no debería pasar): solo con el punto del clic.
+            const bool before = pts < clickPts;
+            SegmentPrompt single = click;
+            if (!segmentLowRes(modelFolder, rgba, w, h, before ? single : prompt, prob, mw, mh, nullptr, err))
+                return false;
+            if (!before)
+                followMask(prob, mw, mh, prompt);
+            resizePlane(prob.data(), mw, mh, alpha, w, h);
             return true;
         },
-        result, error, progress, cancel);
+        result, error, forwardProgress, cancel);
 }
 
 } // namespace movix::ai
-
-

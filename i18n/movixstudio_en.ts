@@ -1937,6 +1937,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Pantalla sin HDR: se muestra convertido a SDR</source>
         <translation>Display without HDR: shown converted to SDR</translation>
     </message>
+    <message>
+        <source>Seguir el movimiento con escala y &amp;giro</source>
+        <translation>Track motion with scale and rota&amp;tion</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>
