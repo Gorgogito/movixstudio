@@ -182,8 +182,8 @@ const std::vector<ModelInfo>& modelCatalog()
                "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9", 25888640);
         single("birefnet-lite", ModelTask::Matting, "BiRefNet lite",
                QT_TRANSLATE_NOOP("ModelCatalog", "Recorta cualquier sujeto del fondo; más preciso y más lento."), "MIT",
-               "onnx-community/BiRefNet_lite-ONNX", "de15b22ba131738a16dff04aab8bdf8dc32e3ac1", "onnx/model.onnx",
-               "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333", 224005088);
+               "onnx-community/BiRefNet_lite-ONNX", "de15b22ba131738a16dff04aab8bdf8dc32e3ac1", "onnx/model_fp16.onnx",
+               "d39b897ceb16ae654c1731f3dba0cf9b368d9cae74b5a57459b455cc8bfec402", 114538221);
         single("realesrgan-x4v3", ModelTask::Upscaling, "Real-ESRGAN general x4v3",
                QT_TRANSLATE_NOOP("ModelCatalog", "Aumenta la resolución del video (hasta ×4) recuperando detalle."), "BSD-3-Clause",
                "skillsafe-ai/realesr-general-x4v3", "042a40bc4c918349ad3e2e607a68ae509a4c27b5", "model.onnx",

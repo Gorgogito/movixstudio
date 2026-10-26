@@ -105,7 +105,7 @@ TEST_CASE("Recorte de fondo de un video: mate en escala de grises que usa el mot
     ai::MatteResult result;
     std::string error;
     double lastProgress = 0;
-    // BiRefNet no cabe en la GPU (WebGPU) y en la CPU es lento: bastan los primeros 4 fotogramas.
+    // BiRefNet es lento (~1 s por fotograma en la GPU, ~10 s en la CPU): bastan los primeros 4 fotogramas.
     REQUIRE(ai::removeBackground(visionModel("birefnet-lite"), ai::MatteModel::General, test::mediaPath("subject_ball.mp4"), 0,
                                  fromSeconds(0.35), output, result, &error, [&](double p) { lastProgress = p; }));
     INFO(error);

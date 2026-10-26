@@ -20,6 +20,7 @@ add_library(movix_ai STATIC
     Beats.h Beats.cpp
     AudioSync.h AudioSync.cpp
     Onnx.h Onnx.cpp
+    OnnxRewrite.h OnnxRewrite.cpp
     Tts.h Tts.cpp
     Translate.h Translate.cpp
     Separation.h Separation.cpp

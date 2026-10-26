@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Utilidades comunes para los modelos ONNX (ONNX Runtime en CPU).
+// Utilidades comunes para los modelos ONNX (ONNX Runtime en la CPU o, con WebGPU, en la GPU).
 namespace movix::ai::onnx {
 
 Ort::Env& env();
@@ -17,8 +17,9 @@ bool gpuAvailable();
 std::string gpuDescription();
 
 // Sesión con hilos automáticos (hasta 8) y optimización completa del grafo; con `preferGpu`, en la
-// GPU si hay (lo que no admita, en la CPU). Lanza Ort::Exception.
-std::unique_ptr<Ort::Session> openSession(const std::string& path, int threads = 0, bool preferGpu = false);
+// GPU si hay (lo que no admita, en la CPU, y también los nodos de `cpuNodes`). Lanza Ort::Exception.
+std::unique_ptr<Ort::Session> openSession(const std::string& path, int threads = 0, bool preferGpu = false,
+                                          const std::vector<std::string>& cpuNodes = {});
 
 // Nombres de las entradas y salidas de una sesión.
 std::vector<std::string> inputNames(Ort::Session& session);
@@ -30,14 +31,17 @@ std::vector<Ort::Value> run(Ort::Session& session, const std::vector<std::string
 
 Ort::MemoryInfo& cpuMemory();
 
-// Modelo que prefiere la GPU y, si una ejecución falla en ella (operador no admitido), se recarga
-// en la CPU y repite. Así un fallo del proveedor de GPU nunca impide el trabajo.
+// Modelo que prefiere la GPU. Si una ejecución falla en ella por un nodo concreto (p. ej. un Split
+// con más salidas de las que admite un sombreador), ese nodo pasa a la CPU y el resto sigue en la
+// GPU; la lista se guarda junto al modelo (`<modelo>.cpu-nodes`) para las siguientes cargas. Si aun
+// así falla, todo se recarga en la CPU. Un fallo del proveedor de GPU nunca impide el trabajo.
 class Model {
 public:
     bool load(const std::string& path, bool preferGpu, std::string* error = nullptr);
     bool loaded() const { return m_session != nullptr; }
     const std::string& path() const { return m_path; }
     bool onGpu() const { return m_gpu; }
+    const std::vector<std::string>& cpuNodes() const { return m_cpuNodes; } // forzados a la CPU
     const std::vector<std::string>& inputs() const { return m_inputs; }
     const std::vector<std::string>& outputs() const { return m_outputs; }
     Ort::Session& session() { return *m_session; }
@@ -49,6 +53,7 @@ private:
     std::unique_ptr<Ort::Session> m_session;
     std::string m_path;
     bool m_gpu = false;
+    std::vector<std::string> m_cpuNodes;
     std::vector<std::string> m_inputs, m_outputs;
 };
 

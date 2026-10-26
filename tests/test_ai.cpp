@@ -44,9 +44,13 @@ TimedWord tw(double s, double e, const char* text)
     return {fromSeconds(s), fromSeconds(e), text, kNoId};
 }
 
-// Minúsculas y sin puntuación (para comparar lo reconocido).
-std::string normalized(const std::string& s)
+// Minúsculas y sin puntuación, también la de apertura del español (para comparar lo reconocido:
+// Whisper a veces escribe «¡Hola,» y a veces «Hola,»).
+std::string normalized(std::string s)
 {
+    for (const char* opening : {"\xC2\xA1", "\xC2\xBF"}) // ¡ ¿
+        for (size_t at; (at = s.find(opening)) != std::string::npos;)
+            s.erase(at, 2);
     std::string r;
     for (char c : s)
         if (!std::ispunct(static_cast<unsigned char>(c)))

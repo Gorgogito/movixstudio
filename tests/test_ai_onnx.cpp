@@ -1,3 +1,5 @@
+#include "ai/Onnx.h"
+#include "ai/OnnxRewrite.h"
 #include "ai/Separation.h"
 #include "ai/Speech.h"
 #include "ai/Translate.h"
@@ -12,6 +14,8 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <numbers>
 #include <random>
 
@@ -153,6 +157,71 @@ TEST_CASE("Opus-MT traduce entre español e inglés", "[ai][translate]")
     CHECK(lower(out[1]).find("v\xC3\xAD""deos") != std::string::npos); // vídeos
 
     CHECK_FALSE(ai::translate((models() / "no-existe").string(), {"hola"}, out, &error));
+}
+
+TEST_CASE("Reescritura de ONNX para la GPU con los mismos resultados", "[ai][onnx]")
+{
+    // Split de 17 salidas, Sum de tres entradas y ConvTranspose 1D de núcleo 128 (data/onnx/generar_reescritura.py).
+    const auto path = std::filesystem::path(MOVIX_TEST_DATA_DIR) / "onnx" / "reescritura.onnx";
+    std::ifstream file(path, std::ios::binary);
+    const std::string original((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    REQUIRE(!original.empty());
+
+    ai::onnx::RewriteStats stats;
+    const std::string rewritten = ai::onnx::rewriteForGpu(original.data(), original.size(), 8, &stats);
+    REQUIRE(!rewritten.empty());
+    CHECK(stats.splits == 1);
+    CHECK(stats.sums == 1);
+    CHECK(stats.convTransposes == 1);
+    // Si el sombreador admite búferes de sobra, el Split se queda como está.
+    ai::onnx::rewriteForGpu(original.data(), original.size(), 32, &stats);
+    CHECK(stats.splits == 0);
+    CHECK(stats.sums == 1);
+    // Lo que no es un modelo no se toca.
+    CHECK(ai::onnx::rewriteForGpu("\xff\xff\xff", 3, 8).empty());
+
+    std::vector<float> x(34 * 5);
+    std::mt19937 rng(5);
+    std::normal_distribution<float> normal;
+    for (float& v : x)
+        v = normal(rng);
+    const std::vector<std::string> outputs = {"unido", "p16", "istft"};
+    auto runModel = [&](Ort::Session& session) {
+        std::vector<Ort::Value> inputs;
+        inputs.push_back(ai::onnx::tensor(x, {1, 34, 5}));
+        auto values = ai::onnx::run(session, {"x"}, inputs, outputs);
+        std::vector<std::vector<float>> result;
+        for (Ort::Value& v : values) {
+            const float* p = v.GetTensorData<float>();
+            result.emplace_back(p, p + v.GetTensorTypeAndShapeInfo().GetElementCount());
+        }
+        return result;
+    };
+    auto maxDifference = [](const std::vector<std::vector<float>>& a, const std::vector<std::vector<float>>& b) {
+        double worst = 0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            REQUIRE(a[i].size() == b[i].size());
+            for (size_t j = 0; j < a[i].size(); ++j)
+                worst = std::max(worst, double(std::abs(a[i][j] - b[i][j])));
+        }
+        return worst;
+    };
+
+    Ort::SessionOptions options;
+    Ort::Session reference(ai::onnx::env(), path.wstring().c_str(), options);
+    Ort::Session changed(ai::onnx::env(), rewritten.data(), rewritten.size(), options);
+    const auto expected = runModel(reference);
+    REQUIRE(expected.size() == 3);
+    CHECK(expected[2].size() == 3 * 256);
+    CHECK(maxDifference(expected, runModel(changed)) < 1e-4);
+
+    // En la GPU, openSession reescribe al cargar.
+    if (ai::onnx::gpuAvailable()) {
+        auto gpu = ai::onnx::openSession(path.string(), 0, true);
+        const double difference = maxDifference(expected, runModel(*gpu));
+        INFO("diferencia en la GPU " << difference);
+        CHECK(difference < 1e-3);
+    }
 }
 
 TEST_CASE("HTDemucs separa la voz de la percusión", "[ai][separation]")

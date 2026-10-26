@@ -189,7 +189,8 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - [x] Mates de IA por clip: video en escala de grises cuya luma es la opacidad, decodificado al
       instante de la fuente y combinado con las máscaras (`.mxproj` v6); invertir o quitar
 - [x] Quitar el fondo: MODNet (personas, en GPU: ~7 fps en 1080p, 3,7× la CPU) y BiRefNet lite
-      (cualquier sujeto; en CPU porque supera el límite de búferes del proveedor WebGPU)
+      (cualquier sujeto; en CPU porque supera el límite de búferes del proveedor WebGPU; en GPU
+      desde F6)
 - [x] Seleccionar un objeto con un clic (SAM 2.1 tiny, en GPU) y seguirlo por el clip
 - [x] Seguimiento de movimiento: correlación cruzada normalizada sobre luma y croma con plantilla
       gaussiana adaptable; anima la máscara y mueve con ella los clips adjuntos (títulos, imágenes)
@@ -212,6 +213,7 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 
 - BiRefNet en la CPU tarda ~10 s por fotograma (1024 × 1024): para video, mejor «Personas» o el
   clic con SAM 2. HTDemucs sigue en la CPU (crear su sesión en la GPU cuesta más de lo que ahorra).
+  *(Resuelto en F6: los dos van en la GPU.)*
 - La primera ejecución en la GPU tarda unos segundos más (el controlador compila los sombreadores).
 - SAM 2 se propaga desde el cabezal hasta el final del clip (no hacia atrás) guiándose por la
   máscara anterior; con oclusiones largas puede perder el objeto.
@@ -307,8 +309,15 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       intercambio scRGB en coma flotante: nits absolutos, compresión por encima del pico de la
       pantalla y proyectos SDR con su blanco SDR. Sin HDR muestra la conversión a SDR. Dibuja en
       su propio hilo y dispositivo D3D11; solo en Windows
-- [ ] BiRefNet y HTDemucs en la GPU, seguimiento con escala y giro, SAM 2 hacia atrás, escenas
-      con fundidos
+- [x] BiRefNet y HTDemucs en la GPU. Al cargar un modelo para la GPU se reescriben, leyendo el
+      protobuf directamente, los nodos que el proveedor WebGPU no admite o ejecuta muy despacio:
+      Split de más salidas que búferes por sombreador → Slice, Sum → Add y ConvTranspose 1D de
+      núcleo grande (la STFT inversa de HTDemucs) → MatMul y suma con solapamiento. Mismo
+      resultado que en la CPU. BiRefNet pasa a media precisión (115 MB en vez de 224 MB; mate
+      igual a ≤ 0,03/255 de media en fotos reales) para caber en 8 GB: ~1,1 s por fotograma
+      1024² (CPU ~9,5 s). HTDemucs: ~0,5 s por ventana de 7,8 s (CPU ~3 s). Si un nodo aún falla
+      en la GPU, solo ese nodo pasa a la CPU (se recuerda en `<modelo>.cpu-nodes`)
+- [ ] Seguimiento con escala y giro, SAM 2 hacia atrás, escenas con fundidos
 - [ ] Multicámara: sincronía más allá de 10 minutos; multicámara en OTIO
 
 ### Limitaciones de OpenFX

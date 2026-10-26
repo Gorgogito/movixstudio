@@ -14,9 +14,7 @@ namespace movix::ai {
 namespace {
 
 struct DemucsModel {
-    std::string path;
-    std::unique_ptr<Ort::Session> session;
-    std::string input, output;
+    onnx::Model model;
     int64_t segment = 343980; // 7,8 s a 44,1 kHz (tamaño fijo de la entrada del grafo)
 };
 
@@ -29,23 +27,22 @@ DemucsModel& demucs()
 bool load(const std::string& path, std::string* error)
 {
     DemucsModel& m = demucs();
-    if (m.session && m.path == path)
+    if (m.model.loaded() && m.model.path() == path)
         return true;
-    try {
-        m.session = onnx::openSession(path); // en CPU: en la GPU crear la sesión cuesta más de lo que ahorra
-        m.input = onnx::inputNames(*m.session).at(0);
-        m.output = onnx::outputNames(*m.session).at(0);
-        const auto shape = m.session->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-        if (shape.size() == 3 && shape[2] > 0)
-            m.segment = shape[2];
-        m.path = path;
-        return true;
-    } catch (const std::exception& e) {
-        m.session.reset();
+    std::string why;
+    const auto t0 = std::chrono::steady_clock::now();
+    if (!m.model.load(path, true, &why)) { // en la GPU con la STFT inversa reescrita (ver OnnxRewrite.h)
         if (error)
-            *error = std::string("No se pudo cargar el modelo de separación: ") + e.what();
+            *error = "No se pudo cargar el modelo de separación: " + why;
         return false;
     }
+    if (std::getenv("MOVIX_AI_VERBOSE"))
+        std::fprintf(stderr, "demucs: sesión en %.0f ms\n",
+                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+    const auto shape = m.model.session().GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    if (shape.size() == 3 && shape[2] > 0)
+        m.segment = shape[2];
+    return true;
 }
 
 } // namespace
@@ -104,7 +101,7 @@ bool separate(const std::string& modelPath, const std::vector<float>& stereo, St
             std::vector<Ort::Value> inputs;
             inputs.push_back(onnx::tensor(chunk, {1, 2, segment}));
             const auto t0 = std::chrono::steady_clock::now();
-            auto outputs = onnx::run(*m.session, {m.input}, inputs, {m.output});
+            auto outputs = m.model.run({m.model.inputs().at(0)}, inputs, {m.model.outputs().at(0)});
             if (std::getenv("MOVIX_AI_VERBOSE"))
                 std::fprintf(stderr, "demucs: ventana %lld en %.0f ms\n", (long long)c,
                              std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
