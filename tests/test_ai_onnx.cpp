@@ -12,7 +12,9 @@
 #include <QCoreApplication>
 #include <QTemporaryDir>
 
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -157,6 +159,41 @@ TEST_CASE("Opus-MT traduce entre español e inglés", "[ai][translate]")
     CHECK(lower(out[1]).find("v\xC3\xAD""deos") != std::string::npos); // vídeos
 
     CHECK_FALSE(ai::translate((models() / "no-existe").string(), {"hola"}, out, &error));
+}
+
+TEST_CASE("Opus-MT: la búsqueda en haz encuentra traducciones al menos tan probables como la voraz", "[ai][translate]")
+{
+    const auto esEn = models() / "opus-mt-es-en";
+    if (!std::filesystem::exists(esEn / "decoder.onnx"))
+        SKIP("Faltan los modelos de prueba");
+    const std::vector<std::string> texts = {
+        "Si hubiera sabido que vendrías, habría preparado algo de cenar.",
+        "Lo que más me gusta de este pueblo es que la gente se saluda por la calle.",
+        "No es que no quiera ir, es que no me da tiempo.",
+        "El montaje de un vídeo lleva más tiempo del que parece.",
+        "Ella le dijo que se lo devolvería mañana sin falta.",
+        "Hace un frío que pela.",
+    };
+    std::vector<std::string> greedy, beam;
+    std::string error;
+    auto t0 = std::chrono::steady_clock::now();
+    REQUIRE(ai::translate(esEn.string(), texts, greedy, &error, {}, {}, 1));
+    const double greedySeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    t0 = std::chrono::steady_clock::now();
+    REQUIRE(ai::translate(esEn.string(), texts, beam, &error, {}, {}, ai::kTranslationBeams));
+    const double beamSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    int better = 0;
+    for (size_t i = 0; i < texts.size(); ++i) {
+        double g = 0, b = 0;
+        REQUIRE(ai::translationScore(esEn.string(), texts[i], greedy[i], g, &error));
+        REQUIRE(ai::translationScore(esEn.string(), texts[i], beam[i], b, &error));
+        std::printf("[traducción] %.3f %s\n             %.3f %s\n", g, greedy[i].c_str(), b, beam[i].c_str());
+        INFO(texts[i]);
+        CHECK(b >= g - 1e-3);
+        better += b > g + 1e-3 ? 1 : 0;
+    }
+    std::printf("[traducción] voraz %.2f s, en haz %.2f s; %d de %zu frases mejoran\n", greedySeconds, beamSeconds, better,
+                texts.size());
 }
 
 TEST_CASE("Reescritura de ONNX para la GPU con los mismos resultados", "[ai][onnx]")

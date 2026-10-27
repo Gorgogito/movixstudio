@@ -180,7 +180,8 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - La IA se ejecuta en la CPU. La GPU (DirectML o CUDA) queda pendiente de decidir: el paquete de
   DirectML incluye un redistribuible propietario de Microsoft.
 - El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
-  menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*).
+  menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*). *(Búsqueda
+  en haz: resuelto en F6.)*
 - La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
   *(Fundidos y disolvencias, y tempo variable: resuelto en F6.)*
 
@@ -382,6 +383,10 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       programación dinámica sigue el periodo de cada instante. Con tempo constante se usa el
       global, como antes. Percusión sintética: accelerando de 90 a 150 BPM (79 de 79 pulsos a
       menos de 50 ms), ritardando de 140 a 100 (60 de 60) y salto de 100 a 128 (57 de 58)
+- [x] Traducción con búsqueda en haz (4 hipótesis, como la configuración de Opus-MT): el
+      decodificador evalúa las hipótesis en un mismo lote y se elige la de mayor log-probabilidad
+      media. En frases de prueba, 4 de 6 traducciones más probables que con la voraz y ninguna
+      peor («Hace un frío que pela»: «It's cold and cold» → «It's freezing»), casi sin más tiempo
 
 ### Limitaciones de OpenFX
 
