@@ -113,6 +113,121 @@ std::vector<float> onsetEnvelope(const std::vector<float>& pcm, int rate)
     return env;
 }
 
+// Autocorrelación de la envolvente sin su media en [first, last), corregida por el solapamiento,
+// para los retardos hasta maxLag + 1.
+std::vector<double> autocorrelation(const std::vector<float>& o, size_t first, size_t last, int minLag, int maxLag, double* energy)
+{
+    const size_t n = last - first;
+    double mean = 0;
+    for (size_t i = first; i < last; ++i)
+        mean += o[i];
+    mean /= double(n);
+    std::vector<double> centered(n);
+    double e = 0;
+    for (size_t i = 0; i < n; ++i) {
+        centered[i] = o[first + i] - mean;
+        e += centered[i] * centered[i];
+    }
+    if (energy)
+        *energy = e / double(n);
+    std::vector<double> ac(size_t(maxLag + 2), 0.0);
+    for (int lag = std::max(1, minLag - 1); lag <= maxLag + 1 && size_t(lag) < n; ++lag) {
+        double sum = 0;
+        for (size_t i = size_t(lag); i < n; ++i)
+            sum += centered[i] * centered[i - size_t(lag)];
+        ac[size_t(lag)] = sum / double(n - size_t(lag));
+    }
+    return ac;
+}
+
+// Puntuación de cada retardo como periodo: un periodo no entero reparte la correlación entre dos
+// retardos vecinos, así que cuenta con ellos; ponderada (log-gaussiana) hacia 120 BPM.
+double lagScore(const std::vector<double>& ac, int lag, double fr)
+{
+    const double bpm = 60.0 * fr / lag;
+    const double w = std::exp(-0.5 * std::pow(std::log2(bpm / 120.0), 2));
+    const double local = 0.5 * std::max(0.0, ac[size_t(lag - 1)]) + std::max(0.0, ac[size_t(lag)]) + 0.5 * std::max(0.0, ac[size_t(lag + 1)]);
+    return local * w;
+}
+
+// Ajuste parabólico del máximo en `best` para un periodo fraccionario.
+double refineLag(const std::vector<double>& ac, int best)
+{
+    const double a = ac[size_t(best - 1)], b = ac[size_t(best)], c = ac[size_t(best + 1)];
+    const double den = a - 2 * b + c;
+    return std::abs(den) > 1e-12 ? best + std::clamp(0.5 * (a - c) / den, -0.5, 0.5) : double(best);
+}
+
+// Periodo local (en fotogramas de envolvente) para cada fotograma: tempo en ventanas de 8 s cada
+// segundo y, entre ellas, el recorrido más probable que no cambia a saltos (Viterbi: un cambio de
+// una octava cuesta tanto que solo se acepta si la música lo pide de verdad). `strength`: mediana,
+// por ventanas, de la correlación en el periodo elegido respecto de la energía (cuánto ritmo hay).
+std::vector<double> tempoCurve(const std::vector<float>& o, double fr, int minLag, int maxLag, double& strength)
+{
+    strength = 0;
+    const size_t n = o.size();
+    const size_t window = size_t(8.0 * fr), hop = size_t(fr);
+    std::vector<size_t> centers;
+    for (size_t c = window / 2; c + window / 2 <= n; c += hop)
+        centers.push_back(c);
+    if (centers.size() < 2)
+        return {};
+    const int lags = maxLag - minLag + 1;
+    std::vector<std::vector<double>> acs;
+    std::vector<double> energies(centers.size(), 0.0);
+    std::vector<std::vector<double>> emit(centers.size(), std::vector<double>(size_t(lags)));
+    for (size_t w = 0; w < centers.size(); ++w) {
+        acs.push_back(autocorrelation(o, centers[w] - window / 2, centers[w] + window / 2, minLag, maxLag, &energies[w]));
+        double total = 1e-12;
+        for (int l = 0; l < lags; ++l)
+            total += emit[w][size_t(l)] = lagScore(acs[w], minLag + l, fr);
+        for (double& e : emit[w])
+            e = std::log(e / total + 1e-6);
+    }
+    constexpr double kChange = 60.0; // coste de cambiar el periodo, por (octavas)²
+    std::vector<double> cost(emit[0]);
+    std::vector<std::vector<int>> from(centers.size(), std::vector<int>(size_t(lags), 0));
+    for (size_t w = 1; w < centers.size(); ++w) {
+        std::vector<double> next(size_t(lags), 0.0);
+        for (int l = 0; l < lags; ++l) {
+            double bestValue = -1e300;
+            for (int k = 0; k < lags; ++k) {
+                const double change = std::log2(double(minLag + l) / double(minLag + k));
+                const double v = cost[size_t(k)] - kChange * change * change;
+                if (v > bestValue) {
+                    bestValue = v;
+                    from[w][size_t(l)] = k;
+                }
+            }
+            next[size_t(l)] = bestValue + emit[w][size_t(l)];
+        }
+        cost = std::move(next);
+    }
+    std::vector<double> path(centers.size()), ratios(centers.size());
+    int l = int(std::max_element(cost.begin(), cost.end()) - cost.begin());
+    for (size_t w = centers.size(); w-- > 0;) {
+        path[w] = refineLag(acs[w], minLag + l);
+        ratios[w] = energies[w] > 0 ? acs[w][size_t(minLag + l)] / energies[w] : 0.0;
+        l = from[w][size_t(l)];
+    }
+    std::nth_element(ratios.begin(), ratios.begin() + std::ptrdiff_t(ratios.size() / 2), ratios.end());
+    strength = ratios[ratios.size() / 2];
+    // Interpolado entre los centros de las ventanas (constante antes del primero y tras el último).
+    std::vector<double> curve(n);
+    for (size_t t = 0; t < n; ++t) {
+        if (t <= centers.front()) {
+            curve[t] = path.front();
+        } else if (t >= centers.back()) {
+            curve[t] = path.back();
+        } else {
+            const size_t w = (t - centers.front()) / hop;
+            const double f = double(t - centers[w]) / double(centers[w + 1] - centers[w]);
+            curve[t] = path[w] + (path[w + 1] - path[w]) * f;
+        }
+    }
+    return curve;
+}
+
 } // namespace
 
 bool detectBeats(const std::vector<float>& pcm, int rate, BeatResult& out)
@@ -123,53 +238,40 @@ bool detectBeats(const std::vector<float>& pcm, int rate, BeatResult& out)
     if (o.size() < size_t(fr * 3))
         return false; // menos de 3 s
 
-    // Tempo: autocorrelación en 40..220 BPM, ponderada (log-gaussiana) hacia 120 BPM.
+    // Tempo global: autocorrelación en 40..220 BPM (sin la media: el ruido da ~0).
     const int minLag = int(std::floor(fr * 60.0 / 220.0)), maxLag = int(std::ceil(fr * 60.0 / 40.0));
-    // Autocorrelación de la envolvente sin su media (el ruido da ~0) y corregida por el solapamiento.
-    double mean = 0;
-    for (float v : o)
-        mean += v;
-    mean /= double(o.size());
-    std::vector<double> centered(o.size());
     double energy = 0;
-    for (size_t i = 0; i < o.size(); ++i) {
-        centered[i] = o[i] - mean;
-        energy += centered[i] * centered[i];
-    }
-    energy /= double(o.size());
-    std::vector<double> ac(size_t(maxLag + 2), 0.0);
-    for (int lag = minLag - 1; lag <= maxLag + 1 && size_t(lag) < o.size(); ++lag) {
-        double sum = 0;
-        for (size_t i = size_t(lag); i < o.size(); ++i)
-            sum += centered[i] * centered[i - size_t(lag)];
-        ac[size_t(lag)] = sum / double(o.size() - size_t(lag));
-    }
-    // Un periodo no entero reparte la correlación entre dos retardos vecinos: se elige por la suma
-    // ponderada de cada retardo con sus vecinos.
+    const std::vector<double> ac = autocorrelation(o, 0, o.size(), minLag, maxLag, &energy);
     int best = -1;
     double bestScore = 0;
-    for (int lag = minLag; lag <= maxLag; ++lag) {
-        const double bpm = 60.0 * fr / lag;
-        const double w = std::exp(-0.5 * std::pow(std::log2(bpm / 120.0) / 1.0, 2));
-        const double local = 0.5 * std::max(0.0, ac[size_t(lag - 1)]) + std::max(0.0, ac[size_t(lag)])
-            + 0.5 * std::max(0.0, ac[size_t(lag + 1)]);
-        if (local * w > bestScore) {
-            bestScore = local * w;
+    for (int lag = minLag; lag <= maxLag; ++lag)
+        if (const double s = lagScore(ac, lag, fr); s > bestScore) {
+            bestScore = s;
             best = lag;
         }
-    }
-    // Sin periodicidad clara (voz, ruido, silencio): no hay ritmo.
-    if (best < 0 || energy <= 0 || ac[size_t(best)] / energy < 0.15)
+    // Periodicidad clara en todo el tramo o, si el tempo cambia, en cada ventana siguiendo su tempo.
+    // Sin ella (voz, ruido, silencio) no hay ritmo.
+    const bool steady = best >= 0 && energy > 0 && ac[size_t(best)] / energy >= 0.15;
+    double rhythm = 0;
+    auto curve = tempoCurve(o, fr, minLag, maxLag, rhythm);
+    const bool varying = !curve.empty() && rhythm >= 0.15;
+    if (!steady && !varying)
         return false;
-    // Ajuste parabólico del máximo para un tempo fino.
-    double lag = best;
-    {
-        const double a = ac[size_t(best - 1)], b = ac[size_t(best)], c = ac[size_t(best + 1)];
-        const double den = a - 2 * b + c;
-        if (std::abs(den) > 1e-12)
-            lag = best + std::clamp(0.5 * (a - c) / den, -0.5, 0.5);
+    const double globalLag = steady ? refineLag(ac, best) : curve[curve.size() / 2];
+    out.bpm = 60.0 * fr / globalLag;
+
+    // Periodo de cada instante: el global salvo que el tempo cambie de verdad (más de un 4 %).
+    std::vector<double> period(o.size(), globalLag);
+    if (varying) {
+        const bool varies = !steady || std::any_of(curve.begin(), curve.end(), [&](double l) { return std::abs(l / globalLag - 1.0) > 0.04; });
+        if (varies) {
+            period = std::move(curve);
+            out.variableTempo = true;
+            std::vector<double> sorted = period;
+            std::nth_element(sorted.begin(), sorted.begin() + std::ptrdiff_t(sorted.size() / 2), sorted.end());
+            out.bpm = 60.0 * fr / sorted[sorted.size() / 2];
+        }
     }
-    out.bpm = 60.0 * fr / lag;
 
     // Pulsos: cada uno suma su ataque y premia que el anterior esté a un periodo de distancia.
     const double tightness = 400.0;
@@ -179,6 +281,7 @@ bool detectBeats(const std::vector<float>& pcm, int rate, BeatResult& out)
     for (size_t t = 0; t < n; ++t) {
         double bestPrev = 0;
         int64_t arg = -1;
+        const double lag = period[t];
         const int64_t lo = int64_t(t) - int64_t(std::lround(2 * lag)), hi = int64_t(t) - int64_t(std::lround(lag / 2));
         for (int64_t tau = std::max<int64_t>(0, lo); tau <= hi; ++tau) {
             const double dev = std::log(double(int64_t(t) - tau) / lag);
@@ -193,7 +296,7 @@ bool detectBeats(const std::vector<float>& pcm, int rate, BeatResult& out)
     }
     // El último pulso: el mejor del último periodo.
     size_t end = n - 1;
-    for (size_t t = n - std::min(n, size_t(std::lround(lag))); t < n; ++t)
+    for (size_t t = n - std::min(n, size_t(std::lround(period.back()))); t < n; ++t)
         if (score[t] > score[end] || end == n - 1)
             end = t;
     std::vector<int64_t> frames;

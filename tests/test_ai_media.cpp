@@ -10,6 +10,8 @@
 #include <QTemporaryDir>
 
 #include <cmath>
+#include <cstdio>
+#include <functional>
 #include <numbers>
 #include <random>
 
@@ -18,8 +20,8 @@ using namespace movix;
 namespace {
 
 // Pista de percusión sintética en 4/4: charles en cada corchea, bombo en los tiempos 1 y 3 y caja
-// en el 2 y el 4. Los pulsos son las negras.
-std::vector<float> drumTrack(double bpm, double offset, double seconds, int rate, std::vector<double>& beats)
+// en el 2 y el 4. Los pulsos son las negras; el tempo de cada una, el de `bpmAt` en su instante.
+std::vector<float> drumTrack(const std::function<double(double)>& bpmAt, double offset, double seconds, int rate, std::vector<double>& beats)
 {
     std::vector<float> pcm(size_t(seconds * rate), 0.0f);
     std::mt19937 rng(42);
@@ -41,9 +43,8 @@ std::vector<float> drumTrack(double bpm, double offset, double seconds, int rate
             pcm[start + i] += float(s);
         }
     };
-    const double period = 60.0 / bpm;
     int n = 0;
-    for (double t = offset; t < seconds - 0.3; t += period, ++n) {
+    for (double t = offset, period = 60.0 / bpmAt(t); t < seconds - 0.3; t += period, period = 60.0 / bpmAt(t), ++n) {
         beats.push_back(t);
         hit(t, n % 2 == 0 ? Kick : Snare);
         hit(t, Hat);
@@ -52,10 +53,28 @@ std::vector<float> drumTrack(double bpm, double offset, double seconds, int rate
     return pcm;
 }
 
+// Pulsos reales encontrados (a menos de `tolerance` s de uno detectado) y detectados que caen
+// sobre uno real.
+std::pair<int, int> matchBeats(const std::vector<double>& truth, const std::vector<TimeUs>& found, double tolerance)
+{
+    auto near = [&](double t, const auto& list, auto toS) {
+        for (const auto& x : list)
+            if (std::abs(toS(x) - t) < tolerance)
+                return true;
+        return false;
+    };
+    int recalled = 0, precise = 0;
+    for (double t : truth)
+        recalled += near(t, found, [](TimeUs b) { return toSeconds(b); });
+    for (TimeUs b : found)
+        precise += near(toSeconds(b), truth, [](double x) { return x; });
+    return {recalled, precise};
+}
+
 void checkBeats(double bpm, double offset)
 {
     std::vector<double> truth;
-    const auto pcm = drumTrack(bpm, offset, 20.0, ai::kBeatSampleRate, truth);
+    const auto pcm = drumTrack([&](double) { return bpm; }, offset, 20.0, ai::kBeatSampleRate, truth);
     ai::BeatResult r;
     REQUIRE(ai::detectBeats(pcm, ai::kBeatSampleRate, r));
     INFO(bpm << " BPM → " << r.bpm << ", " << r.beats.size() << " pulsos; primeros: " << toSeconds(r.beats[0]) << " "
@@ -71,6 +90,23 @@ void checkBeats(double bpm, double offset)
         aligned += nearest < 0.035;
     }
     CHECK(aligned >= int(r.beats.size()) - 1);
+    CHECK_FALSE(r.variableTempo);
+}
+
+void checkVaryingBeats(const char* name, const std::function<double(double)>& bpmAt, double seconds, double medianBpm)
+{
+    std::vector<double> truth;
+    const auto pcm = drumTrack(bpmAt, 0.2, seconds, ai::kBeatSampleRate, truth);
+    ai::BeatResult r;
+    REQUIRE(ai::detectBeats(pcm, ai::kBeatSampleRate, r));
+    const auto [recalled, precise] = matchBeats(truth, r.beats, 0.05);
+    std::printf("[beats] %s: %zu pulsos reales, %zu detectados; %d encontrados, %d bien colocados; %.1f BPM típico\n", name, truth.size(),
+                r.beats.size(), recalled, precise, r.bpm);
+    INFO(name);
+    CHECK(r.variableTempo);
+    CHECK(recalled >= int(0.9 * double(truth.size())));
+    CHECK(precise >= int(0.9 * double(r.beats.size())));
+    CHECK(r.bpm == Catch::Approx(medianBpm).epsilon(0.06));
 }
 
 } // namespace
@@ -90,6 +126,14 @@ TEST_CASE("Ritmo: tempo y pulsos de una pista de percusión", "[ai][beats]")
     ai::BeatResult r;
     CHECK_FALSE(ai::detectBeats(noise, ai::kBeatSampleRate, r));
     CHECK_FALSE(ai::detectBeats(std::vector<float>(ai::kBeatSampleRate * 10, 0.0f), ai::kBeatSampleRate, r));
+}
+
+TEST_CASE("Ritmo: pulsos con el tempo cambiando", "[ai][beats]")
+{
+    // Accelerando de 90 a 150 BPM en 40 s, ritardando de 140 a 100 y un salto de 100 a 128 a los 12 s.
+    checkVaryingBeats("accelerando", [](double t) { return 90.0 + 60.0 * std::min(1.0, t / 40.0); }, 40.0, 120.0);
+    checkVaryingBeats("ritardando", [](double t) { return 140.0 - 40.0 * std::min(1.0, t / 30.0); }, 30.0, 120.0);
+    checkVaryingBeats("cambio brusco", [](double t) { return t < 12.0 ? 100.0 : 128.0; }, 30.0, 128.0);
 }
 
 TEST_CASE("Escenas: picos aislados por encima de su entorno", "[ai][scenes]")

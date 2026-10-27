@@ -414,6 +414,13 @@
         <source>Selecciona un clip de video con una máscara (la región que se seguirá) y pon el cabezal sobre él.</source>
         <translation>Select a video clip with a mask (the region to track) and place the playhead over it.</translation>
     </message>
+    <message numerus="yes">
+        <source>%n pulsos marcados (tempo variable, en torno a %1 BPM).</source>
+        <translation>
+            <numerusform>%n beat marked (variable tempo, around %1 BPM).</numerusform>
+            <numerusform>%n beats marked (variable tempo, around %1 BPM).</numerusform>
+        </translation>
+    </message>
 </context>
 <context>
     <name>AiStatus</name>

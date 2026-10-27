@@ -618,7 +618,10 @@ void AiController::onJobFinished(int job, const QJsonObject& result)
         });
         const double bpm = result["bpm"].toDouble();
         finishTask();
-        emit notice(tr("%n pulsos marcados (%1 BPM).", nullptr, added).arg(bpm, 0, 'f', 1));
+        if (result["variableTempo"].toBool())
+            emit notice(tr("%n pulsos marcados (tempo variable, en torno a %1 BPM).", nullptr, added).arg(bpm, 0, 'f', 0));
+        else
+            emit notice(tr("%n pulsos marcados (%1 BPM).", nullptr, added).arg(bpm, 0, 'f', 1));
         return;
     } else if (m_task == Task::Scenes && sameMedia) {
         std::vector<FramePos> frames;

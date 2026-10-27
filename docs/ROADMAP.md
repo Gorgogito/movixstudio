@@ -182,7 +182,7 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 - El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
   menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*).
 - La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
-  *(Fundidos y disolvencias: resuelto en F6.)*
+  *(Fundidos y disolvencias, y tempo variable: resuelto en F6.)*
 
 ## F5 — IA visual (local) ✅
 
@@ -377,6 +377,11 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Reencuadre en los dos ejes: se localizan el centro y el tamaño del sujeto, y el encuadre lo
       sigue en horizontal y en vertical; nuevo formato horizontal 16:9 (para videos verticales) y,
       opcional, acercarse (hasta ×2, con cambios lentos) cuando el sujeto ocupa poco
+- [x] Pulsos con tempo variable: el tempo se estima en ventanas de 8 s cada segundo y se elige el
+      recorrido más probable entre ellas (Viterbi, que castiga los saltos de octava); la
+      programación dinámica sigue el periodo de cada instante. Con tempo constante se usa el
+      global, como antes. Percusión sintética: accelerando de 90 a 150 BPM (79 de 79 pulsos a
+      menos de 50 ms), ritardando de 140 a 100 (60 de 60) y salto de 100 a 128 (57 de 58)
 
 ### Limitaciones de OpenFX
 

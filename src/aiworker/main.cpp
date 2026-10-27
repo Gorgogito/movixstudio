@@ -172,6 +172,7 @@ void runJob(Queue& queue, const QJsonObject& job)
             list.append(qint64(b));
         QJsonObject e = event(id, "result");
         e["bpm"] = beats.bpm;
+        e["variableTempo"] = beats.variableTempo;
         e["beats"] = list;
         send(e);
     } else if (type == QLatin1String(ai::protocol::kSynthesize)) {
