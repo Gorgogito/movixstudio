@@ -1,7 +1,9 @@
 #include "TestMedia.h"
 #include "core/Edits.h"
 #include "engine/MediaImport.h"
+#include "media/GpuFrames.h"
 #include "playback/TimelinePlayer.h"
+#include "render/OffscreenRenderer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -264,4 +266,66 @@ TEST_CASE("Proyecto vacío: no reproduce y muestra el lienzo", "[timeline-player
     auto b = player.frameForPresentation();
     REQUIRE(b);
     CHECK(b->layers.empty());
+}
+
+TEST_CASE("Copia cero en la vista previa: los fotogramas se quedan en la GPU", "[timeline-player][zerocopy]")
+{
+    TestProject t("scenes_720p30.mp4");
+    t.p.settings.width = 1280;
+    t.p.settings.height = 720;
+    REQUIRE(edit::placeClip(t.p, t.p.videoTracks[0].id, t.media, 0, 0, 120) != kNoId);
+    render::OffscreenRenderer renderer;
+    REQUIRE(renderer.init(1280, 720));
+    void* device = renderer.d3d11Device();
+    if (!device)
+        SKIP("Sin Direct3D 11");
+
+    TimelinePlayer player(testOptions());
+    player.setProject(t.snapshot());
+    player.seekFrame(45);
+    auto onGpu = [](const engine::FrameBundle& b) { return !b.layers.empty() && b.layers[0].frame->onGpu(); };
+    const auto cpu = waitFor(player, 5000, [](const engine::FrameBundle& b) { return b.frame == 45 && !b.layers.empty(); });
+    REQUIRE(cpu);
+    CHECK_FALSE(onGpu(*cpu));
+
+    // Con el dispositivo del que dibuja, el mismo fotograma se vuelve a componer sin bajar a memoria.
+    player.setGpuDevice(device);
+    const auto gpu = waitFor(player, 5000, [&](const engine::FrameBundle& b) { return b.frame == 45 && onGpu(b); });
+    REQUIRE(gpu);
+    std::vector<uint8_t> pa, pb;
+    REQUIRE(renderer.render(*cpu, pa));
+    REQUIRE(renderer.render(*gpu, pb));
+    double diff = 0;
+    for (size_t i = 0; i < pa.size(); ++i)
+        diff += std::abs(int(pa[i]) - int(pb[i]));
+    CHECK(diff / double(pa.size()) < 1.5);
+
+    // Lo que necesita los píxeles en la CPU (el cuentagotas) los baja de la GPU.
+    const auto down = media::downloadGpuFrame(*gpu->layers[0].frame);
+    REQUIRE(down);
+    const auto& ref = *cpu->layers[0].frame;
+    REQUIRE(down->y.size() == ref.y.size());
+    REQUIRE(down->uv.size() == ref.uv.size());
+    double yDiff = 0;
+    for (size_t i = 0; i < ref.y.size(); ++i)
+        yDiff += std::abs(int(down->y[i]) - int(ref.y[i]));
+    CHECK(yDiff / double(ref.y.size()) < 1.5);
+
+    // Reproduciendo, todos los fotogramas presentados siguen en la GPU.
+    int presented = 0, inMemory = 0;
+    player.play();
+    pump(player, 800, [&](const engine::FrameBundle& b, TimeUs) {
+        if (b.layers.empty())
+            return;
+        ++presented;
+        inMemory += onGpu(b) ? 0 : 1;
+    });
+    player.pause();
+    CHECK(presented > 0);
+    CHECK(inMemory == 0);
+
+    // Sin dispositivo (p. ej. con el monitor HDR abierto) vuelven a memoria, también en pausa.
+    const FramePos shown = player.frameForPresentation()->frame;
+    player.setGpuDevice(nullptr);
+    CHECK(waitFor(player, 5000, [&](const engine::FrameBundle& b) { return b.frame == shown && !b.layers.empty() && !onGpu(b); }));
 }

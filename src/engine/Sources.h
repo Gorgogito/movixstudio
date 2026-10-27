@@ -116,7 +116,7 @@ private:
         std::string path;
         uint64_t lastUse = 0;
         bool failed = false;
-        bool gpu = false; // decodifica con copia cero
+        void* device = nullptr; // decodifica con copia cero en este dispositivo
     };
     bool m_hardware;
     size_t m_maxOpen;

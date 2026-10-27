@@ -1,5 +1,7 @@
 #pragma once
 
+#include "media/VideoFrame.h"
+
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -34,5 +36,9 @@ private:
 
 // Prepara un dispositivo para usarse a la vez desde el hilo que decodifica y el que compone.
 bool enableMultithreadProtection(void* device);
+
+// Copia en memoria de un fotograma que está en la GPU (para leer sus píxeles en la CPU, p. ej. el
+// cuentagotas); nullptr si falla. Lenta: no es para cada fotograma.
+std::shared_ptr<VideoFrame> downloadGpuFrame(const VideoFrame& frame);
 
 } // namespace movix::media

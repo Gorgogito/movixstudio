@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <numbers>
 
@@ -222,4 +223,37 @@ TEST_CASE("Copia cero: el fotograma decodificado en la GPU se compone igual", "[
         INFO("fotograma " << f << ": diferencia media " << diff / double(pa.size()));
         CHECK(diff / double(pa.size()) < 1.5); // decodificador por CPU frente a GPU: casi idénticos
     }
+}
+
+TEST_CASE("Rendimiento: componer 1080p60 con copia cero no baja los fotogramas a memoria", "[render][zerocopy][perf]")
+{
+    Project p = Project::createDefault();
+    auto item = engine::probeMediaItem(test::mediaPath("count_1080p60.mp4"));
+    REQUIRE(item);
+    p.settings.frameRate = {60, 1};
+    REQUIRE(edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *item), 0, 0, 180) != kNoId);
+    render::OffscreenRenderer renderer;
+    REQUIRE(renderer.init(1920, 1080));
+    void* device = renderer.d3d11Device();
+    if (!device)
+        SKIP("Sin Direct3D 11");
+    // Lo que hace el hilo de video de la vista previa: componer cada fotograma (decodificar y, sin
+    // copia cero, bajarlo a memoria) y lo que hace el visor con él (subirlo y dibujarlo).
+    auto measure = [&](void* dev) {
+        engine::VideoSources sources(true);
+        sources.setGpuDevice(dev);
+        std::vector<uint8_t> px;
+        const auto t0 = std::chrono::steady_clock::now();
+        for (FramePos f = 0; f < 180; ++f) {
+            const auto bundle = sources.build(p, f);
+            REQUIRE(bundle.layers.size() == 1);
+            REQUIRE(bundle.layers[0].frame->onGpu() == (dev != nullptr));
+            if (f % 30 == 0) // leer la imagen compuesta espera a la GPU: solo de vez en cuando
+                REQUIRE(renderer.render(bundle, px));
+        }
+        return 180.0 / std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    };
+    const double memory = measure(nullptr), zeroCopy = measure(device);
+    std::printf("[perf] vista previa 1080p60: %.0f fps en memoria, %.0f fps con copia cero\n", memory, zeroCopy);
+    CHECK(zeroCopy > 60.0);
 }

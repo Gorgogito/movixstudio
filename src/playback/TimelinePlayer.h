@@ -54,6 +54,10 @@ public:
     void setProject(std::shared_ptr<const core::Project> project);
     // Archivo que se decodifica para cada medio (proxies); se aplica en el siguiente fotograma.
     void setPathMapper(std::function<std::string(const core::MediaItem&)> mapper);
+    // Copia cero: decodificar en este dispositivo (ID3D11Device* del que dibuja la vista previa,
+    // preparado con media::enableMultithreadProtection) para que los fotogramas no bajen a memoria;
+    // nullptr, en memoria. Al cambiarlo se vuelven a componer los fotogramas que esperaban.
+    void setGpuDevice(void* device);
     std::shared_ptr<const core::Project> project() const;
 
     Q_INVOKABLE void play();
@@ -133,6 +137,7 @@ private:
     mutable std::mutex m_videoMutex;
     std::function<std::string(const core::MediaItem&)> m_pathMapper; // con m_videoMutex
     uint64_t m_pathMapperVersion = 0;
+    void* m_gpuDevice = nullptr; // con m_videoMutex
     std::condition_variable m_videoCv;
     std::deque<std::shared_ptr<engine::FrameBundle>> m_videoQueue;
     std::shared_ptr<engine::FrameBundle> m_displayed;

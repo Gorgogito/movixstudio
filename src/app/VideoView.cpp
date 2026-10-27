@@ -1,5 +1,6 @@
 #include "VideoView.h"
 
+#include "media/GpuFrames.h"
 #include "render/Compositor.h"
 
 #include <QQuickWindow>
@@ -13,6 +14,20 @@ namespace {
 const QColor kViewerBackground(8, 9, 12);
 constexpr int kScopeWidth = 480;                         // ancho de la copia para los scopes
 constexpr std::chrono::milliseconds kScopeInterval{60}; // ~15 lecturas por segundo como máximo
+
+// Dispositivo Direct3D 11 de la ventana para la copia cero: el reproductor decodifica en él y los
+// fotogramas no bajan a memoria. nullptr con otro backend o con MOVIX_NO_ZERO_COPY.
+void* zeroCopyDevice(QRhi* rhi)
+{
+#ifdef Q_OS_WIN
+    if (rhi && rhi->backend() == QRhi::D3D11 && qEnvironmentVariableIsEmpty("MOVIX_NO_ZERO_COPY")) {
+        const auto* handles = static_cast<const QRhiD3D11NativeHandles*>(rhi->nativeHandles());
+        if (handles && handles->dev && movix::media::enableMultithreadProtection(handles->dev))
+            return handles->dev;
+    }
+#endif
+    return nullptr;
+}
 }
 
 class VideoRenderer : public QQuickRhiItemRenderer {
@@ -26,6 +41,7 @@ private:
     void updateScopes(QRhiCommandBuffer* cb);
 
     QRhi* m_rhi = nullptr;
+    void* m_device = nullptr; // copia cero (ver zeroCopyDevice)
     std::unique_ptr<movix::render::Compositor> m_compositor;
     std::shared_ptr<const movix::engine::FrameBundle> m_bundle;
 
@@ -56,6 +72,7 @@ void VideoRenderer::initialize(QRhiCommandBuffer*)
         m_scopePass.reset();
         m_scopeTexture.reset();
         m_rhi = rhi();
+        m_device = zeroCopyDevice(m_rhi);
     }
     if (!m_compositor)
         m_compositor = std::make_unique<movix::render::Compositor>(m_rhi);
@@ -65,6 +82,9 @@ void VideoRenderer::initialize(QRhiCommandBuffer*)
 void VideoRenderer::synchronize(QQuickRhiItem* item)
 {
     auto* view = static_cast<VideoView*>(item);
+    // El monitor HDR dibuja con su propio dispositivo: mientras está abierto, en memoria.
+    if (view->m_player)
+        view->m_player->setGpuDevice(view->m_mirror ? nullptr : m_device);
     m_bundle = view->m_player ? view->m_player->frameForPresentation() : nullptr;
     m_feed = view->m_feed;
     if (view->m_mirror) // el hilo de la interfaz está parado durante la sincronización

@@ -118,6 +118,24 @@ void TimelinePlayer::setPathMapper(std::function<std::string(const core::MediaIt
     m_videoCv.notify_all();
 }
 
+void TimelinePlayer::setGpuDevice(void* device)
+{
+    {
+        std::lock_guard lock(m_videoMutex);
+        if (m_gpuDevice == device)
+            return;
+        m_gpuDevice = device;
+        // Los fotogramas compuestos son del dispositivo anterior: se componen otra vez desde el que
+        // se muestra (en pausa, el monitor HDR necesita ese mismo en memoria).
+        m_videoSeekFrame = m_displayed ? m_displayed->frame : m_videoQueue.empty() ? m_nextFrame : m_videoQueue.front()->frame;
+        m_videoQueue.clear();
+        ++m_videoSerial;
+        m_videoSeekPending = true;
+        m_videoEof = false;
+    }
+    m_videoCv.notify_all();
+}
+
 void TimelinePlayer::videoLoop()
 {
     engine::VideoSources sources(m_options.hardwareDecoding);
@@ -142,6 +160,7 @@ void TimelinePlayer::videoLoop()
             sources.setPathMapper(m_pathMapper);
             mapperVersion = m_pathMapperVersion;
         }
+        sources.setGpuDevice(m_gpuDevice);
         lock.unlock();
 
         const auto proj = project();

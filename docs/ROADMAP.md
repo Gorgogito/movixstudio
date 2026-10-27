@@ -300,7 +300,8 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Exportación más rápida: conversión a NV12 en la GPU (sin bajar RGBA) y decodificación de
       copia cero con D3D11VA en el mismo dispositivo que compone. 1080p60 con NVENC: de ~115 a
       ~190 fps (decodificar 1,1 · componer 3,1 · codificar 4,0 ms); el límite es el codificador.
-      La vista previa todavía baja los fotogramas a memoria
+      La vista previa todavía baja los fotogramas a memoria *(resuelto: copia cero en la vista
+      previa, más abajo)*
 - [x] Forma animada de las máscaras de forma libre: keyframes de todos los puntos a la vez
       (fila «Forma» del panel de efectos); mover los puntos en otro instante crea su keyframe y
       añadir o quitar un punto lo hace en todos los keyframes
@@ -357,6 +358,12 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       igual que sin él (diferencia ≤ 0,0005); en 10 bits, el 60 % de los valores no caen en la
       rejilla de 8 bits. Si el plugin solo admite 8 bits, la imagen pasa por 8 bits pero no pierde
       la señal
+- [x] Copia cero en la vista previa: el reproductor decodifica en el dispositivo Direct3D 11 de
+      la ventana y los fotogramas no bajan a memoria. Componer 1080p60 pasa de ~240 a ~580 fps;
+      reproduciendo, la aplicación usa ~30 % menos CPU. Lo que necesita los píxeles en la CPU
+      (el cuentagotas de la clave) baja solo ese fotograma; con el monitor HDR abierto (otro
+      dispositivo) y en los clips con efectos OpenFX se sigue usando la memoria.
+      `MOVIX_NO_ZERO_COPY` la desactiva
 
 ### Limitaciones de OpenFX
 

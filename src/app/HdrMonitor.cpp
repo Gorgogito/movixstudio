@@ -162,6 +162,10 @@ void HdrMonitor::close()
 
 void HdrMonitor::present(std::shared_ptr<const movix::engine::FrameBundle> bundle)
 {
+    // Al abrirse, el visor puede tener aún fotogramas en su GPU (copia cero) que este dispositivo no
+    // puede leer: se sigue mostrando el anterior hasta que lleguen los que están en memoria.
+    if (bundle && std::any_of(bundle->layers.begin(), bundle->layers.end(), [](const auto& l) { return l.frame && l.frame->onGpu(); }))
+        return;
     std::lock_guard lock(m_mutex);
     if (bundle == m_bundle)
         return;

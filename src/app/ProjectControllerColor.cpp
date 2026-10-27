@@ -6,6 +6,7 @@
 #include "color/Ocio.h"
 #include "media/ColorMatrix.h"
 #include "media/FrameConvert.h"
+#include "media/GpuFrames.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -383,7 +384,11 @@ bool ProjectController::pickKeyColor(qint64 clipId, double u, double v)
     for (const auto& layer : bundle->layers) {
         if (layer.clipId != Id(clipId) || !layer.frame)
             continue;
-        const auto color = sampleFrame(*layer.frame, u, v);
+        // Con copia cero, el fotograma está en la GPU: se baja a memoria solo para esto.
+        const auto cpu = layer.frame->onGpu() ? media::downloadGpuFrame(*layer.frame) : nullptr;
+        if (layer.frame->onGpu() && !cpu)
+            return false;
+        const auto color = sampleFrame(cpu ? *cpu : *layer.frame, u, v);
         if (!color)
             return false;
         setChromaKey(clipId, {{"enabled", true}, {"color", colorName(*color)}});

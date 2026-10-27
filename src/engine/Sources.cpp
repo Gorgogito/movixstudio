@@ -179,10 +179,10 @@ std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLa
     // Los efectos OpenFX trabajan con la imagen en memoria: esos clips no usan la copia cero.
     void* device = layer.ofx ? nullptr : m_gpuDevice;
     const std::string path = m_pathMapper ? m_pathMapper(*layer.media) : layer.media->path;
-    if (!e.reader || e.path != path || e.gpu != (device != nullptr)) {
+    if (!e.reader || e.path != path || e.device != device) {
         e.reader = std::make_unique<VideoReader>();
         e.path = path;
-        e.gpu = device != nullptr;
+        e.device = device;
         e.failed = !e.reader->open(e.path, m_hardware, nullptr, device);
     }
     std::shared_ptr<const media::VideoFrame> result = e.failed ? nullptr : e.reader->frameAt(layer.sourceTime);
