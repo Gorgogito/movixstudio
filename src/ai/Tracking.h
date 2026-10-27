@@ -22,6 +22,9 @@ struct TrackPoint {
     float confidence = 1.0f; // correlación del ajuste (0..1)
     double scale = 1.0;      // tamaño respecto del primer fotograma
     double angle = 0.0;      // giro respecto del primer fotograma (grados, horario)
+    // subjectCenters: tamaño del sujeto (fracciones del ancho y del alto del fotograma).
+    double width = 0.0;
+    double height = 0.0;
 };
 
 // Sigue la región desde `from` hasta `to` (instantes del medio) por correlación cruzada normalizada
@@ -32,11 +35,23 @@ bool trackRegion(const std::string& mediaPath, TimeUs from, TimeUs to, const Reg
                  std::vector<TrackPoint>& out, std::string* error = nullptr, const ProgressFn& progress = {},
                  const CancelFn& cancel = {});
 
-// Centro horizontal del sujeto a lo largo del tramo, cada `step`: el de las personas (MODNet, si se
-// da su modelo y las encuentra) o, si no, el de la zona que más destaca del color medio del fondo.
-// Suavizado para que el reencuadre no tiemble.
+// Centro y tamaño del sujeto a lo largo del tramo, cada `step`: los de las personas (MODNet, si se
+// da su modelo y las encuentra) o, si no, los de la zona que más destaca del color medio del fondo.
+// Suavizados para que el reencuadre no tiemble.
 bool subjectCenters(const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs step, const std::string& portraitModel,
                     std::vector<TrackPoint>& out, std::string* error = nullptr, const ProgressFn& progress = {},
                     const CancelFn& cancel = {});
+
+// Encuadre de un instante para el reencuadre: transformación de la capa (como LayerTransform:
+// desplazamiento en anchos/altos del lienzo y escala respecto de la capa ajustada al lienzo).
+struct FramingKey {
+    TimeUs time = 0;
+    double x = 0.0, y = 0.0, scale = 1.0;
+};
+
+// Encuadres que cubren el lienzo (sin bordes vacíos) y llevan el sujeto al centro, en horizontal y
+// en vertical, para pasar un video de relación `mediaAspect` a un lienzo de `canvasAspect`. Con
+// `zoom` además se acerca (hasta ×2) cuando el sujeto ocupa poco, con cambios lentos.
+std::vector<FramingKey> planReframe(const std::vector<TrackPoint>& subject, double mediaAspect, double canvasAspect, bool zoom);
 
 } // namespace movix::ai

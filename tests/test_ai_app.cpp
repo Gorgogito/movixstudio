@@ -179,6 +179,8 @@ TEST_CASE("Aplicación: pulsos, escenas, subtítulos y silencios con el proceso 
         CHECK(p().settings.height == 640);
         CHECK(p().findClip(clip)->transform.scale.value == Catch::Approx(640.0 / 360.0 * 640.0 / 360.0).epsilon(0.01));
         CHECK(p().findClip(clip)->transform.x.isAnimated());
+        CHECK_FALSE(p().findClip(clip)->transform.y.isAnimated()); // la capa ya llena el alto
+        CHECK_FALSE(p().findClip(clip)->transform.scale.isAnimated()); // sin acercar
 
         // Escalado ×2 y cámara lenta ×2 (el medio se sustituye; la velocidad baja a la mitad).
         const core::FramePos duration = p().findClip(clip)->duration;

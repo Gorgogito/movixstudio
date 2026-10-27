@@ -1941,6 +1941,14 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Seguir el movimiento con escala y &amp;giro</source>
         <translation>Track motion with scale and rota&amp;tion</translation>
     </message>
+    <message>
+        <source>Horizontal 16:9</source>
+        <translation>Landscape 16:9</translation>
+    </message>
+    <message>
+        <source>Acercar al sujeto si ocupa poco</source>
+        <translation>Zoom in when the subject is small</translation>
+    </message>
 </context>
 <context>
     <name>MediaBin</name>

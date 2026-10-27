@@ -1,5 +1,6 @@
 #include "AiController.h"
 
+#include "ai/Tracking.h"
 #include "ai/WorkerProtocol.h"
 #include "core/Edits.h"
 #include "core/ProjectFile.h"
@@ -506,34 +507,50 @@ void AiController::onJobFinished(int job, const QJsonObject& result)
         const QJsonArray points = result["points"].toArray();
         bool ok = false;
         m_project->applyEdit(tr("Reencuadre automático"), [&](Project& p) {
-            // Nuevo formato: se conserva el lado corto del proyecto.
+            // Nuevo formato ("ancho:alto"): se conserva el lado corto del proyecto.
+            const QStringList ratio = m_aspect.split(QLatin1Char(':'));
+            const int rw = ratio.size() == 2 ? std::max(1, ratio[0].toInt()) : 1, rh = ratio.size() == 2 ? std::max(1, ratio[1].toInt()) : 1;
             const int shortSide = std::min(p.settings.width, p.settings.height);
             int w = shortSide, h = shortSide;
-            if (m_aspect == QLatin1String("9:16"))
-                h = (shortSide * 16 / 9) & ~1;
-            else if (m_aspect == QLatin1String("4:5"))
-                h = (shortSide * 5 / 4) & ~1;
+            if (rw > rh)
+                w = (shortSide * rw / rh) & ~1;
+            else
+                h = (shortSide * rh / rw) & ~1;
             edit::setResolution(p, w, h);
             Clip* c = p.findClip(m_clip.clipId);
             const MediaItem* m = c ? p.findMedia(c->mediaId) : nullptr;
             if (!c || !m || !m->width || !m->height)
                 return false;
-            // Escala para cubrir el lienzo (la capa parte ajustada dentro de él).
-            const double layerAspect = double(m->width) / m->height, canvasAspect = double(w) / h;
-            const double cover = layerAspect > canvasAspect ? layerAspect / canvasAspect : canvasAspect / layerAspect;
-            c->transform.scale = Animated(cover);
-            const double layerWidth = layerAspect > canvasAspect ? cover : cover * layerAspect / canvasAspect; // en anchos de lienzo
-            const double limit = std::max(0.0, (layerWidth - 1.0) / 2.0);
-            c->transform.x = Animated(0.0);
+            std::vector<ai::TrackPoint> subject;
             for (const QJsonValue& v : points) {
                 const QJsonArray a = v.toArray();
-                const FramePos rel = toTimeline(a.at(0).toInteger()) - c->start;
+                ai::TrackPoint s{a.at(0).toInteger(), a.at(1).toDouble(0.5), a.at(2).toDouble(0.5), 1.0f};
+                s.width = a.at(6).toDouble(0.0);
+                s.height = a.at(7).toDouble(0.0);
+                subject.push_back(s);
+            }
+            const auto keys = ai::planReframe(subject, double(m->width) / m->height, double(w) / h, m_reframeZoom);
+            if (keys.empty())
+                return false;
+            Transform& t = c->transform;
+            t.scale = Animated(keys.front().scale);
+            t.x = Animated(0.0);
+            t.y = Animated(0.0);
+            for (const ai::FramingKey& k : keys) {
+                const FramePos rel = toTimeline(k.time) - c->start;
                 if (rel < 0 || rel >= c->duration)
                     continue;
-                // Desplazamiento que lleva el sujeto al centro, sin dejar bordes vacíos.
-                const double offset = std::clamp(-(a.at(1).toDouble() - 0.5) * layerWidth, -limit, limit);
-                c->transform.x.setKey(rel, offset, Interpolation::Smooth);
+                t.x.setKey(rel, k.x, Interpolation::Smooth);
+                t.y.setKey(rel, k.y, Interpolation::Smooth);
+                if (m_reframeZoom)
+                    t.scale.setKey(rel, k.scale, Interpolation::Smooth);
             }
+            // Un eje en el que no hay nada que desplazar (la capa ya llena el lienzo) queda fijo.
+            for (Animated* a : {&t.x, &t.y, &t.scale})
+                if (std::all_of(a->keys.begin(), a->keys.end(), [&](const Keyframe& k) { return std::abs(k.value - a->keys.front().value) < 1e-6; })) {
+                    const double v = a->keys.empty() ? a->value : a->keys.front().value;
+                    *a = Animated(v);
+                }
             ok = true;
             return true;
         });
@@ -1063,7 +1080,7 @@ void AiController::trackMotion(bool scaleRotation)
     startTask(Task::Track, {}, {});
 }
 
-void AiController::autoReframe(const QString& aspect)
+void AiController::autoReframe(const QString& aspect, bool zoom)
 {
     if (busy() || !m_project)
         return;
@@ -1074,6 +1091,7 @@ void AiController::autoReframe(const QString& aspect)
     }
     m_clip = *ctx;
     m_aspect = aspect;
+    m_reframeZoom = zoom;
     const Project& p = m_project->project();
     const MediaItem* media = p.findMedia(p.findClip(ctx->clipId)->mediaId);
     const ai::ModelInfo* modnet = ai::findModel(ai::portraitMatteModel());

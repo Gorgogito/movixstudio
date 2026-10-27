@@ -371,6 +371,71 @@ TEST_CASE("Seguimiento de movimiento y localización del sujeto", "[ai][vision][
     for (int i = 0; i < 10; ++i)
         expected += ballX(i * 0.1) / 10;
     CHECK(mean == Catch::Approx(expected).margin(15));
+    // También el centro vertical y el tamaño (la bola mide 140 px de los 640 × 360).
+    for (const auto& p : points) {
+        CHECK(p.cy * 360.0 == Catch::Approx(180.0).margin(6));
+        CHECK(p.width * 640.0 == Catch::Approx(140.0).margin(30));
+        CHECK(p.height * 360.0 == Catch::Approx(140.0).margin(30));
+    }
+
+    // Video vertical con la bola oscilando en vertical (y = 320 + 150·sen 3t).
+    REQUIRE(ai::subjectCenters(test::mediaPath("subject_ball_vertical.mp4"), 0, 0, fromSeconds(0.1), {}, points, &error));
+    REQUIRE(points.size() == 10);
+    // Suavizado a ±0,5 s: se compara con la media de la posición real en la misma ventana.
+    for (const auto& p : points) {
+        double sum = 0;
+        int n = 0;
+        for (int j = 0; j < 10; ++j)
+            if (std::abs(j * 0.1 - toSeconds(p.time)) <= 0.5 + 1e-6) {
+                sum += 320.0 + 150.0 * std::sin(3.0 * j * 0.1);
+                ++n;
+            }
+        INFO("t = " << toSeconds(p.time));
+        CHECK(p.cy * 640.0 == Catch::Approx(sum / n).margin(15));
+        CHECK(p.cx * 360.0 == Catch::Approx(180.0).margin(6));
+    }
+}
+
+TEST_CASE("Reencuadre: encuadres que siguen al sujeto en los dos ejes sin dejar bordes", "[ai][vision]")
+{
+    auto at = [](double cx, double cy, double w, double h) {
+        ai::TrackPoint p{0, cx, cy, 1.0f};
+        p.width = w;
+        p.height = h;
+        return p;
+    };
+    SECTION("de horizontal a vertical: solo se desplaza en horizontal")
+    {
+        const auto keys = ai::planReframe({at(0.7, 0.3, 0.2, 0.3)}, 16.0 / 9, 9.0 / 16, false);
+        REQUIRE(keys.size() == 1);
+        const double cover = (16.0 / 9) / (9.0 / 16); // la capa mide 3,16 anchos de lienzo
+        CHECK(keys[0].scale == Catch::Approx(cover));
+        CHECK(keys[0].x == Catch::Approx(-0.2 * cover));
+        CHECK(keys[0].y == 0.0); // la capa ya llena el alto
+        // En el borde, no se pasa (sin franjas vacías).
+        CHECK(ai::planReframe({at(0.99, 0.5, 0.1, 0.1)}, 16.0 / 9, 9.0 / 16, false)[0].x == Catch::Approx(-(cover - 1) / 2));
+    }
+    SECTION("de vertical a horizontal: en vertical")
+    {
+        const auto keys = ai::planReframe({at(0.5, 0.8, 0.2, 0.1)}, 9.0 / 16, 16.0 / 9, false);
+        const double cover = (16.0 / 9) / (9.0 / 16);
+        CHECK(keys[0].x == 0.0);
+        CHECK(keys[0].y == Catch::Approx(-0.3 * cover));
+    }
+    SECTION("con acercamiento: solo si el sujeto ocupa poco, hasta ×2")
+    {
+        const double cover = 16.0 / 9;
+        // De 16:9 a 1:1 la capa mide 1,78 × 1: un sujeto de 0,1 de alto ocupa el 10 % del lienzo.
+        const auto small = ai::planReframe({at(0.5, 0.5, 0.05, 0.1)}, 16.0 / 9, 1.0, true);
+        CHECK(small[0].scale == Catch::Approx(2.0 * cover));
+        const auto mid = ai::planReframe({at(0.5, 0.5, 0.1, 0.4)}, 16.0 / 9, 1.0, true);
+        CHECK(mid[0].scale == Catch::Approx(1.25 * cover));
+        const auto big = ai::planReframe({at(0.5, 0.5, 0.4, 0.8)}, 16.0 / 9, 1.0, true);
+        CHECK(big[0].scale == Catch::Approx(cover));
+        // Acercado también se puede desplazar en vertical sin dejar bordes.
+        const auto low = ai::planReframe({at(0.5, 0.9, 0.05, 0.1)}, 16.0 / 9, 1.0, true);
+        CHECK(low[0].y == Catch::Approx(-0.5)); // límite: (2 − 1) / 2
+    }
 }
 
 TEST_CASE("SAM 2.1 segmenta el objeto señalado y lo sigue por el clip", "[ai][vision][sam]")

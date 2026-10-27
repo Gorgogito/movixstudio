@@ -347,20 +347,36 @@ bool subjectCenters(const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs
         const int h = std::max(16, int(std::lround(double(frame->height) * w / frame->width)));
         if (!media::frameToRgba(*frame, w, h, rgba))
             break;
-        double cx = 0.5, weight = 0;
-        // 1) Personas (MODNet).
-        if (!portraitModel.empty() && matteFrame(portraitModel, MatteModel::Portrait, rgba.data(), w, h, alpha, nullptr)) {
-            double sx = 0, sw = 0;
+        // Centro y tamaño (cuatro desviaciones típicas: casi todo el sujeto) de un peso por píxel.
+        TrackPoint point{t, 0.5, 0.5, 1.0f};
+        auto locate = [&](const auto& weightAt) {
+            double sx = 0, sy = 0, sxx = 0, syy = 0, sw = 0;
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x) {
-                    const double a = alpha[size_t(y) * w + size_t(x)] / 255.0;
-                    sx += a * x;
-                    sw += a;
+                    const double v = weightAt(size_t(y) * w + size_t(x));
+                    sx += v * x;
+                    sy += v * y;
+                    sxx += v * x * x;
+                    syy += v * y * y;
+                    sw += v;
                 }
-            if (sw > 0.02 * w * h) { // al menos un 2 % de la imagen es una persona
-                cx = sx / sw / w;
-                weight = 1;
-            }
+            if (sw <= 0)
+                return 0.0;
+            const double mx = sx / sw, my = sy / sw;
+            point.cx = (mx + 0.5) / w;
+            point.cy = (my + 0.5) / h;
+            point.width = std::min(1.0, 4.0 * std::sqrt(std::max(0.0, sxx / sw - mx * mx)) / w);
+            point.height = std::min(1.0, 4.0 * std::sqrt(std::max(0.0, syy / sw - my * my)) / h);
+            return sw;
+        };
+        double weight = 0;
+        // 1) Personas (MODNet).
+        if (!portraitModel.empty() && matteFrame(portraitModel, MatteModel::Portrait, rgba.data(), w, h, alpha, nullptr)) {
+            double total = 0;
+            for (uint8_t a : alpha)
+                total += a / 255.0;
+            if (total > 0.02 * w * h) // al menos un 2 % de la imagen es una persona
+                weight = locate([&](size_t i) { return alpha[i] / 255.0; });
         }
         // 2) Lo que más destaca del color medio (el fondo suele ocupar la mayor parte).
         if (weight == 0) {
@@ -380,17 +396,9 @@ bool subjectCenters(const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs
                 maxD = std::max(maxD, d[size_t(i)]);
             }
             // Solo cuenta lo que destaca de verdad (la mitad superior del rango de diferencias).
-            double sx = 0, sw = 0;
-            for (int y = 0; y < h; ++y)
-                for (int x = 0; x < w; ++x) {
-                    const double v = std::max(0.0, d[size_t(y) * w + size_t(x)] - 0.5 * maxD);
-                    sx += v * x;
-                    sw += v;
-                }
-            if (sw > 0)
-                cx = sx / sw / w;
+            locate([&](size_t i) { return std::max(0.0, d[i] - 0.5 * maxD); });
         }
-        out.push_back({t, cx, 0.5, 1.0f});
+        out.push_back(point);
         if (progress)
             progress(std::clamp(double(t - from) / double(std::max<TimeUs>(1, to - from)), 0.0, 1.0));
     }
@@ -402,17 +410,67 @@ bool subjectCenters(const std::string& mediaPath, TimeUs from, TimeUs to, TimeUs
     // Suavizado: media de los vecinos a ±0,5 s (el encuadre no debe saltar con cada gesto).
     std::vector<TrackPoint> smooth = out;
     for (size_t i = 0; i < out.size(); ++i) {
-        double sum = 0;
+        double sum[4] = {0, 0, 0, 0};
         int n = 0;
         for (size_t j = 0; j < out.size(); ++j)
             if (std::llabs(out[j].time - out[i].time) <= 500'000) {
-                sum += out[j].cx;
+                sum[0] += out[j].cx;
+                sum[1] += out[j].cy;
+                sum[2] += out[j].width;
+                sum[3] += out[j].height;
                 ++n;
             }
-        smooth[i].cx = sum / n;
+        smooth[i].cx = sum[0] / n;
+        smooth[i].cy = sum[1] / n;
+        smooth[i].width = sum[2] / n;
+        smooth[i].height = sum[3] / n;
     }
     out = std::move(smooth);
     return true;
+}
+
+std::vector<FramingKey> planReframe(const std::vector<TrackPoint>& subject, double mediaAspect, double canvasAspect, bool zoom)
+{
+    std::vector<FramingKey> keys;
+    if (subject.empty() || mediaAspect <= 0 || canvasAspect <= 0)
+        return keys;
+    // Escala que cubre el lienzo (la capa parte ajustada dentro de él) y tamaño de la capa así, en
+    // anchos y altos del lienzo.
+    const bool wider = mediaAspect > canvasAspect;
+    const double cover = wider ? mediaAspect / canvasAspect : canvasAspect / mediaAspect;
+    const double coverW = wider ? cover : cover * mediaAspect / canvasAspect;
+    const double coverH = wider ? cover * canvasAspect / mediaAspect : cover;
+    // Acercamiento: que el sujeto ocupe la mitad de lo que se ve en su dimensión más justa.
+    std::vector<double> zooms(subject.size(), 1.0);
+    if (zoom) {
+        for (size_t i = 0; i < subject.size(); ++i) {
+            const TrackPoint& s = subject[i];
+            const double fill = std::max({s.width * coverW, s.height * coverH, 1e-3}); // fracción del lienzo
+            zooms[i] = std::clamp(0.5 / fill, 1.0, 2.0);
+        }
+        // El zoom cambia despacio: media a ±1,5 s.
+        std::vector<double> smooth(zooms.size());
+        for (size_t i = 0; i < zooms.size(); ++i) {
+            double sum = 0;
+            int n = 0;
+            for (size_t j = 0; j < zooms.size(); ++j)
+                if (std::llabs(subject[j].time - subject[i].time) <= 1'500'000) {
+                    sum += zooms[j];
+                    ++n;
+                }
+            smooth[i] = sum / n;
+        }
+        zooms = std::move(smooth);
+    }
+    for (size_t i = 0; i < subject.size(); ++i) {
+        const TrackPoint& s = subject[i];
+        const double layerW = coverW * zooms[i], layerH = coverH * zooms[i];
+        // Desplazamiento que lleva el sujeto al centro, sin dejar bordes vacíos.
+        const double limitX = std::max(0.0, (layerW - 1.0) / 2.0), limitY = std::max(0.0, (layerH - 1.0) / 2.0);
+        keys.push_back({s.time, std::clamp(-(s.cx - 0.5) * layerW, -limitX, limitX), std::clamp(-(s.cy - 0.5) * layerH, -limitY, limitY),
+                        cover * zooms[i]});
+    }
+    return keys;
 }
 
 } // namespace movix::ai

@@ -352,9 +352,12 @@ ApplicationWindow {
             Menu {
                 title: qsTr("&Reencuadre automático")
                 enabled: !ai.busy && project.selection.length > 0
-                MenuItem { text: qsTr("Vertical 9:16"); onTriggered: ai.autoReframe("9:16") }
-                MenuItem { text: qsTr("Cuadrado 1:1"); onTriggered: ai.autoReframe("1:1") }
-                MenuItem { text: qsTr("Retrato 4:5"); onTriggered: ai.autoReframe("4:5") }
+                MenuItem { text: qsTr("Vertical 9:16"); onTriggered: ai.autoReframe("9:16", reframeZoom.checked) }
+                MenuItem { text: qsTr("Cuadrado 1:1"); onTriggered: ai.autoReframe("1:1", reframeZoom.checked) }
+                MenuItem { text: qsTr("Retrato 4:5"); onTriggered: ai.autoReframe("4:5", reframeZoom.checked) }
+                MenuItem { text: qsTr("Horizontal 16:9"); onTriggered: ai.autoReframe("16:9", reframeZoom.checked) }
+                MenuSeparator {}
+                MenuItem { id: reframeZoom; text: qsTr("Acercar al sujeto si ocupa poco"); checkable: true }
             }
             MenuSeparator {}
             MenuItem { text: qsTr("Te&xto a voz…"); enabled: !ai.busy; onTriggered: ttsDialog.open() }

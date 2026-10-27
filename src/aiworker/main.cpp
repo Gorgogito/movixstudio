@@ -268,7 +268,7 @@ void runJob(Queue& queue, const QJsonObject& job)
             return fail(error);
         QJsonArray list;
         for (const ai::TrackPoint& t : points)
-            list.append(QJsonArray{qint64(t.time), t.cx, t.cy, double(t.confidence), t.scale, t.angle});
+            list.append(QJsonArray{qint64(t.time), t.cx, t.cy, double(t.confidence), t.scale, t.angle, t.width, t.height});
         QJsonObject e = event(id, "result");
         e["points"] = list;
         send(e);

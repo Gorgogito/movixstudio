@@ -118,6 +118,12 @@ make_media(subject_ball.mp4
     -f lavfi -i "color=c=gray:s=640x360:r=10:d=1,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"
     -c:v libx264 -preset veryfast -crf 12)
 
+# 10b) Video vertical (360×640) con una bola de radio 50 que oscila en vertical (centro x = 180,
+#      y = 320 + 150·sen 3t): el reencuadre a horizontal la sigue en vertical. 1 s a 10 fps.
+make_media(subject_ball_vertical.mp4
+    -f lavfi -i "color=c=gray:s=360x640:r=10:d=1,format=rgb24,geq=r='if(lt(hypot(X-180,Y-320-150*sin(T*3)),50),230,90+20*sin(X/9))':g='if(lt(hypot(X-180,Y-320-150*sin(T*3)),50),40,100+20*sin(Y/7))':b='if(lt(hypot(X-180,Y-320-150*sin(T*3)),50),40,110)',format=yuv420p"
+    -c:v libx264 -preset veryfast -crf 12)
+
 # 10c) La misma bola durante 2,5 s (SAM 2 hacia atrás por varios tramos de un segundo).
 make_media(subject_ball_long.mp4
     -f lavfi -i "color=c=gray:s=640x360:r=10:d=2.5,format=rgb24,geq=r='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),230,90+20*sin(X/9))':g='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,100+20*sin(Y/7))':b='if(lt(hypot(X-320-100*sin(T*3),Y-180),70),40,110)',format=yuv420p"

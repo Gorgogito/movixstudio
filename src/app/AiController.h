@@ -97,7 +97,9 @@ public:
     Q_INVOKABLE void trackMotion(bool scaleRotation = false);
     // Cambia el formato del proyecto (aspect: "9:16", "1:1" o "4:5") y anima la posición del clip
     // seleccionado para que su sujeto quede centrado.
-    Q_INVOKABLE void autoReframe(const QString& aspect);
+    // Reencuadre a otra relación de aspecto ("9:16", "1:1", "4:5", "16:9"...): el clip elegido sigue
+    // al sujeto en horizontal y en vertical; con `zoom`, además se acerca cuando ocupa poco.
+    Q_INVOKABLE void autoReframe(const QString& aspect, bool zoom = false);
     // Recorta el objeto señalado (u, v en fracciones de la capa, en el fotograma del cabezal) del clip
     // seleccionado con SAM 2, por todo el clip: desde el cabezal hacia delante y hacia atrás.
     Q_INVOKABLE void segmentObject(double u, double v);
@@ -189,6 +191,7 @@ private:
     movix::core::FramePos m_trackStartRel = 0; // fotograma (relativo al clip) donde empieza el seguimiento
     bool m_trackScaleRotation = false;
     QString m_aspect;
+    bool m_reframeZoom = false;
     void startVideoJob(Task task, const QString& modelId, const char* type, const QString& suffix, int factor);
     // Carpeta para los audios generados: junto al proyecto guardado o en los datos de la aplicación.
     QString generatedFolder() const;

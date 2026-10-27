@@ -222,7 +222,7 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
   máscara anterior; con oclusiones largas puede perder el objeto. *(Hacia atrás: resuelto en F6.)*
 - El seguimiento usa una región rectangular sin escala ni giro; el reencuadre solo desplaza en
   horizontal (pensado para pasar de un video horizontal a vertical, cuadrado o 4:5).
-  *(Escala y giro: resuelto en F6.)*
+  *(Escala y giro, y reencuadre en los dos ejes: resuelto en F6.)*
 
 ## F6 — Pulido y ecosistema (en curso)
 
@@ -374,6 +374,9 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       primera pista libre
 - [x] Fusiones dentro de un compuesto con fondo transparente: como en el W3C, donde no hay nada
       debajo la capa se ve tal cual (antes se mezclaba con negro)
+- [x] Reencuadre en los dos ejes: se localizan el centro y el tamaño del sujeto, y el encuadre lo
+      sigue en horizontal y en vertical; nuevo formato horizontal 16:9 (para videos verticales) y,
+      opcional, acercarse (hasta ×2, con cambios lentos) cuando el sujeto ocupa poco
 
 ### Limitaciones de OpenFX
 
