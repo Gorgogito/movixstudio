@@ -381,13 +381,178 @@ Id createCompound(Project& p, const std::vector<Id>& clipIds, const std::string&
     return id;
 }
 
+namespace {
+
+// Recorrido del tramo de un clip: instante del origen (µs) que se ve en cada instante del clip
+// (µs desde su comienzo), con la velocidad (también variable) y la marcha atrás. Precalculado por
+// fotogramas, igual que sourceAdvance, para poder evaluarlo e invertirlo muchas veces.
+class SourceMap {
+public:
+    SourceMap(const ProjectSettings& s, const Clip& c) : m_s(s), m_c(c), m_span(double(clipSourceSpan(s, c)))
+    {
+        m_advance.reserve(size_t(c.duration) + 2);
+        double acc = 0.0;
+        for (FramePos k = 0; k <= c.duration + 1; ++k) {
+            m_advance.push_back(acc);
+            acc += double(s.frameToTime(k + 1) - s.frameToTime(k)) * (c.speedAt(k) + c.speedAt(k + 1)) / 2.0;
+        }
+    }
+    double length() const { return double(m_s.frameToTime(m_c.duration)); }
+    double source(double t) const
+    {
+        const double advance = m_c.hasRamp() ? rampAdvance(t) : t * m_c.speed;
+        return double(m_c.sourceIn) + (m_c.reverse ? m_span - advance : advance);
+    }
+    // Instante del clip que muestra `source` (el recorrido es monótono).
+    double timeOf(double source) const
+    {
+        double lo = 0.0, hi = length();
+        const bool rising = !m_c.reverse;
+        for (int i = 0; i < 64; ++i) {
+            const double mid = (lo + hi) / 2;
+            ((this->source(mid) < source) == rising ? lo : hi) = mid;
+        }
+        return (lo + hi) / 2;
+    }
+
+private:
+    double rampAdvance(double t) const
+    {
+        if (t <= 0)
+            return t * m_c.speedAt(0);
+        const FramePos k = std::min<FramePos>(m_s.timeToFrame(TimeUs(t)), FramePos(m_advance.size()) - 2);
+        const double a = double(m_s.frameToTime(k)), b = double(m_s.frameToTime(k + 1));
+        const double v0 = m_c.speedAt(k), v1 = m_c.speedAt(k + 1);
+        const double end = std::min(t, b);
+        const double vEnd = v0 + (v1 - v0) * (end - a) / (b - a);
+        return m_advance[size_t(k)] + (end - a) * (v0 + vEnd) / 2.0 + (t > b ? (t - b) * v1 : 0.0);
+    }
+
+    const ProjectSettings& m_s;
+    const Clip& m_c;
+    double m_span;
+    std::vector<double> m_advance; // avance acumulado al empezar cada fotograma
+};
+
+// Cambia los fotogramas de unos keyframes; si el orden se invierte (clip al revés), cada tramo
+// pasa a empezar en el otro extremo y se lleva su interpolación.
+template <class Key>
+void remapKeys(std::vector<Key>& keys, const auto& map, bool flip)
+{
+    for (Key& k : keys)
+        k.frame = map(k.frame);
+    if (!flip)
+        return;
+    std::reverse(keys.begin(), keys.end());
+    for (size_t i = 0; i + 1 < keys.size(); ++i)
+        keys[i].interp = keys[i + 1].interp;
+    if (!keys.empty())
+        keys.back().interp = Interpolation::Linear;
+}
+
+// Un clip de la secuencia de un compuesto (en sus fotogramas) tal como lo muestra el compuesto en la
+// línea de tiempo: su tramo del origen recorrido con la velocidad y la dirección compuestas.
+// nullopt si en la línea de tiempo ocupa menos de un fotograma.
+std::optional<Clip> retimeForCompound(const Project& p, const Clip& comp, const SourceMap& compMap, const Clip& piece)
+{
+    const ProjectSettings& s = p.settings;
+    const double fps = s.frameRate.value();
+    const double compStart = double(s.frameToTime(comp.start));
+    const double pieceStart = double(s.frameToTime(piece.start));
+    auto frameOf = [&](double t) { return FramePos(std::llround(t / 1e6 * fps)); };
+    // Fotograma relativo al compuesto en que se ve el instante `nested` de su secuencia.
+    auto compFrame = [&](double nested) { return frameOf(compMap.timeOf(nested)); };
+    const FramePos fa = compFrame(pieceStart), fb = compFrame(double(s.frameToTime(piece.end())));
+    const FramePos lo = std::min(fa, fb), hi = std::max(fa, fb);
+    if (hi <= lo)
+        return std::nullopt;
+    const bool flip = comp.reverse;
+
+    const SourceMap pieceMap(s, piece);
+    // Instante del origen de la pieza en el instante `u` (µs) del clip nuevo.
+    const double newStart = double(s.frameToTime(comp.start + lo));
+    auto sourceAt = [&](double u) { return pieceMap.source(compMap.source(newStart - compStart + u) - pieceStart); };
+    Clip out = piece;
+    out.start = comp.start + lo;
+    out.duration = hi - lo;
+    const double length = double(s.frameToTime(out.start + out.duration)) - newStart;
+    const double s0 = sourceAt(0.0), s1 = sourceAt(length);
+    out.reverse = s1 < s0;
+    if (piece.title)
+        out.reverse = false; // los títulos no tienen tramo que recorrer
+    else
+        out.sourceIn = TimeUs(std::llround(std::min(s0, s1)));
+    const double span = std::abs(s1 - s0);
+    out.speed = std::clamp(span / length, 0.01, 100.0);
+    out.speedRamp = Animated(out.speed);
+    if (comp.hasRamp() || piece.hasRamp()) {
+        // Velocidad en el comienzo de cada fotograma (como speedAt) y sin los keyframes que sobran.
+        const double h = double(s.frameDuration()) / 2;
+        std::vector<Keyframe> keys;
+        for (FramePos k = 0; k <= out.duration; ++k) {
+            const double t = double(s.frameToTime(out.start + k)) - newStart;
+            const double a = std::max(0.0, t - h), b = std::min(length, t + h);
+            const double v = b > a ? std::abs(sourceAt(b) - sourceAt(a)) / (b - a) : out.speed;
+            keys.push_back({k, std::clamp(v, 0.01, 100.0), Interpolation::Linear});
+        }
+        std::vector<Keyframe> kept;
+        for (size_t i = 0; i < keys.size(); ++i) {
+            if (!kept.empty() && i + 1 < keys.size()) {
+                const Keyframe& a = kept.back();
+                const Keyframe& b = keys[i + 1];
+                const double expected = a.value + (b.value - a.value) * double(keys[i].frame - a.frame) / double(b.frame - a.frame);
+                if (std::abs(expected - keys[i].value) < 1e-4)
+                    continue;
+            }
+            kept.push_back(keys[i]);
+        }
+        out.speedRamp.keys = std::move(kept);
+        if (out.speedRamp.keys.size() > 1) {
+            // Ajuste fino: el tramo recorrido es exactamente el de la pieza.
+            const double got = double(clipSourceSpan(s, out));
+            if (got > 0)
+                for (Keyframe& k : out.speedRamp.keys)
+                    k.value *= span / got;
+        } else {
+            out.speedRamp.keys.clear();
+        }
+    }
+
+    // Keyframes, fundidos y transición siguen al contenido.
+    auto map = [&](std::int64_t rel) { return compFrame(double(s.frameToTime(piece.start + rel))) - lo; };
+    Transform& tr = out.transform;
+    for (Animated* a : {&tr.x, &tr.y, &tr.scale, &tr.rotation, &tr.opacity, &tr.cropLeft, &tr.cropTop, &tr.cropRight, &tr.cropBottom,
+                        &out.volume})
+        remapKeys(a->keys, map, flip);
+    for (Mask& m : out.masks) {
+        for (Animated* a : {&m.x, &m.y, &m.width, &m.height, &m.rotation, &m.feather})
+            remapKeys(a->keys, map, flip);
+        remapKeys(m.pathKeys, map, flip);
+    }
+    for (OfxEffect& e : out.ofx)
+        for (auto& [name, components] : e.params)
+            for (Animated& a : components)
+                remapKeys(a.keys, map, flip);
+    remapKeys(out.color.keys, map, flip);
+    const double scale = double(out.duration) / double(piece.duration);
+    auto scaled = [&](FramePos f) { return FramePos(std::llround(double(f) * scale)); };
+    out.fadeIn = scaled(flip ? piece.fadeOut : piece.fadeIn);
+    out.fadeOut = scaled(flip ? piece.fadeIn : piece.fadeOut);
+    out.audioFadeIn = scaled(flip ? piece.audioFadeOut : piece.audioFadeIn);
+    out.audioFadeOut = scaled(flip ? piece.audioFadeIn : piece.audioFadeOut);
+    out.transitionIn.duration = scaled(out.transitionIn.duration);
+    clampFades(out);
+    return out;
+}
+} // namespace
+
 std::vector<Id> breakCompound(Project& p, Id clipId)
 {
     auto loc = p.locateClip(clipId);
     if (!loc.track || loc.track->locked)
         return {};
     const Clip comp = *loc.clip();
-    if (!comp.isCompound() || comp.speed != 1.0)
+    if (!comp.isCompound())
         return {};
     const auto* nv = p.videoTracksOf(comp.sequenceId);
     const auto* na = p.audioTracksOf(comp.sequenceId);
@@ -426,33 +591,73 @@ std::vector<Id> breakCompound(Project& p, Id clipId)
     const size_t base = size_t(std::distance(p.tracksOf(kind).data(), loc.track));
     loc.track->clips.erase(loc.track->clips.begin() + std::ptrdiff_t(loc.index));
 
-    const FramePos a = p.settings.timeToFrame(comp.sourceIn);
-    const FramePos b = a + comp.duration;
-    const FramePos offset = comp.start - a;
-    std::vector<Id> created;
-    auto place = [&](const std::vector<Track>& nested, TrackKind k, size_t first) {
-        for (size_t ti = 0; ti < nested.size(); ++ti) {
-            for (const Clip& c : nested[ti].clips) {
-                if (c.end() <= a || c.start >= b)
-                    continue;
-                Clip piece = c;
-                if (piece.start < a)
-                    piece = rightPart(p, piece, a, piece.id);
-                if (piece.end() > b)
-                    piece = leftPart(p, piece, b);
-                piece.id = p.newId(); // la secuencia original se conserva (deshacer)
-                piece.start += offset;
-                while (p.tracksOf(k).size() <= first + ti)
-                    addTrack(p, k);
-                Track& t = p.tracksOf(k)[first + ti];
-                created.push_back(placePrepared(p, t, std::move(piece), PlaceMode::Overwrite));
+    // Tramo de la secuencia que se ve (en sus fotogramas), recortado a los clips.
+    const ProjectSettings& s = p.settings;
+    const SourceMap compMap(s, comp);
+    const TimeUs from = comp.sourceIn, to = comp.sourceIn + clipSourceSpan(s, comp);
+    const FramePos a = s.timeToFrame(from);
+    const FramePos b = std::max(a + 1, s.timeToFrame(to - 1) + 1);
+    auto retimed = [&](const Track& nested) {
+        std::vector<Clip> clips;
+                for (const Clip& c : nested.clips) {
+            if (c.end() <= a || c.start >= b)
+                continue;
+            Clip piece = c;
+            if (piece.start < a)
+                piece = rightPart(p, piece, a, piece.id);
+            if (piece.end() > b)
+                piece = leftPart(p, piece, b);
+            if (auto r = retimeForCompound(p, comp, compMap, piece)) {
+                r->id = p.newId(); // la secuencia original se conserva (deshacer)
+                clips.push_back(std::move(*r));
             }
         }
+        if (comp.reverse) {
+            // Al revés, la transición de cada clip (desde el anterior) pasa al que ahora le sigue.
+            std::sort(clips.begin(), clips.end(), [](const Clip& x, const Clip& y) { return x.start < y.start; });
+            for (size_t i = clips.size(); i-- > 1;)
+                clips[i].transitionIn = clips[i - 1].end() == clips[i].start ? clips[i - 1].transitionIn : TransitionIn{};
+            if (!clips.empty())
+                clips[0].transitionIn = {};
+        }
+        return clips;
     };
-    // Las pistas de video del compuesto empiezan en la suya; las de audio, en A1 (o en la suya si
-    // el compuesto estaba en una pista de audio).
-    place(nestedVideo, TrackKind::Video, kind == TrackKind::Video ? base : 0);
-    place(nestedAudio, TrackKind::Audio, kind == TrackKind::Audio ? base : 0);
+    auto freeFor = [](const Track& t, const std::vector<Clip>& clips) {
+        return std::none_of(clips.begin(), clips.end(), [&](const Clip& c) {
+            return std::any_of(t.clips.begin(), t.clips.end(), [&](const Clip& o) { return o.start < c.end() && c.start < o.end(); });
+        });
+    };
+    std::vector<Id> created;
+    auto put = [&](Track& t, std::vector<Clip>& clips) {
+        for (Clip& c : clips)
+            created.push_back(placePrepared(p, t, std::move(c), PlaceMode::Overwrite));
+    };
+    // Video: juntas y en orden desde la pista del compuesto, para que nada quede entre sus capas ni
+    // las tape; si la pista siguiente está ocupada en ese tramo, se intercala una nueva.
+    size_t next = kind == TrackKind::Video ? base : 0;
+    for (const Track& nested : nestedVideo) {
+        auto clips = retimed(nested);
+        if (clips.empty())
+            continue;
+        auto& list = p.tracksOf(TrackKind::Video);
+        if (next >= list.size() || !freeFor(list[next], clips))
+            addTrack(p, TrackKind::Video, int(next));
+        put(p.tracksOf(TrackKind::Video)[next], clips);
+        ++next;
+    }
+    // Audio (el orden no cambia la mezcla): la primera pista libre desde la del compuesto o A1.
+    for (const Track& nested : nestedAudio) {
+        auto clips = retimed(nested);
+        if (clips.empty())
+            continue;
+        auto& list = p.tracksOf(TrackKind::Audio);
+        size_t target = kind == TrackKind::Audio ? base : 0;
+        while (target < list.size() && !freeFor(list[target], clips))
+            ++target;
+        if (target >= list.size())
+            addTrack(p, TrackKind::Audio);
+        put(p.tracksOf(TrackKind::Audio)[target], clips);
+    }
     normalize(p);
     return created;
 }

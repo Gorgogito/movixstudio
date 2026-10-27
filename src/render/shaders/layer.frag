@@ -230,8 +230,12 @@ void main()
 
     int mode = int(ubuf.params.y + 0.5);
     if (mode != 0) {
-        vec3 b = texture(backdrop, gl_FragCoord.xy * ubuf.canvas.xy).rgb;
-        rgb = vec3(blendChannel(mode, b.r, rgb.r), blendChannel(mode, b.g, rgb.g), blendChannel(mode, b.b, rgb.b));
+        // Fondo premultiplicado (dentro de un compuesto puede ser transparente). Como en el W3C:
+        // Cs' = (1 − αb)·Cs + αb·B(Cb, Cs); donde no hay nada debajo la capa se ve tal cual.
+        vec4 bd = texture(backdrop, gl_FragCoord.xy * ubuf.canvas.xy);
+        vec3 b = bd.a > 1e-5 ? bd.rgb / bd.a : vec3(0.0);
+        vec3 blended = vec3(blendChannel(mode, b.r, rgb.r), blendChannel(mode, b.g, rgb.g), blendChannel(mode, b.b, rgb.b));
+        rgb = mix(rgb, blended, clamp(bd.a, 0.0, 1.0));
     }
     fragColor = vec4(rgb, alpha);
 }

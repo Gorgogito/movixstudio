@@ -119,9 +119,11 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 
 - El visor muestra los proyectos HDR convertidos a SDR (no usa la salida HDR de Windows).
 - La corrección, los modos de fusión y la clave trabajan sobre la señal codificada (no en luz
-  lineal); los modos de fusión dentro de un compuesto suponen un fondo opaco.
+  lineal); los modos de fusión dentro de un compuesto suponen un fondo opaco. *(Luz lineal y
+  fusiones en compuestos: resuelto en F6.)*
 - Los puntos de las máscaras de forma libre no se animan (sí su posición, tamaño, giro y borde).
-- Deshacer un clip compuesto exige velocidad 1× y sobrescribe lo que haya en su sitio.
+- Deshacer un clip compuesto exige velocidad 1× y sobrescribe lo que haya en su sitio. *(Resuelto
+  en F6.)*
 - Pendientes de F2 que siguen abiertos: *speed ramping*, interpolación de keyframes en la interfaz,
   animaciones de texto, atajos configurables, proxies, copia cero, selección por recuadro.
 
@@ -364,6 +366,14 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       (el cuentagotas de la clave) baja solo ese fotograma; con el monitor HDR abierto (otro
       dispositivo) y en los clips con efectos OpenFX se sigue usando la memoria.
       `MOVIX_NO_ZERO_COPY` la desactiva
+- [x] Deshacer un clip compuesto a cualquier velocidad: cada clip recibe la velocidad (también
+      variable) y la dirección con que lo mostraba el compuesto, y sus keyframes, fundidos y
+      transiciones se recolocan con él; fotograma a fotograma se ve lo mismo que antes. Nada se
+      sobrescribe: las pistas de video del compuesto siguen juntas y en orden sobre la suya (se
+      intercala una pista nueva donde la de encima tiene algo en ese tramo) y el audio va a la
+      primera pista libre
+- [x] Fusiones dentro de un compuesto con fondo transparente: como en el W3C, donde no hay nada
+      debajo la capa se ve tal cual (antes se mezclaba con negro)
 
 ### Limitaciones de OpenFX
 

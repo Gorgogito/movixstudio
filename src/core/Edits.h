@@ -165,7 +165,10 @@ std::vector<Id> pasteClips(Project& p, const Clipboard& clipboard, FramePos at);
 // más baja de la selección o, si solo hay audio, en la de audio; en una pista nueva si su hueco no
 // queda libre). Devuelve el id del compuesto.
 Id createCompound(Project& p, const std::vector<Id>& clipIds, const std::string& name);
-// Devuelve el contenido visible de un compuesto (a velocidad 1) a la línea de tiempo, sobrescribiendo.
+// Devuelve el contenido visible de un compuesto a la línea de tiempo tal como se ve: con su velocidad
+// (también variable) y al revés si lo estaba, aplicadas a cada clip. Las pistas de video siguen
+// juntas y en orden encima de la del compuesto; donde otra pista tiene algo en ese tramo se intercala
+// una nueva (nada se sobrescribe).
 std::vector<Id> breakCompound(Project& p, Id clipId);
 // La secuencia pasa a ser la línea de tiempo activa (la actual se guarda); closeSequence vuelve a
 // la anterior del camino.

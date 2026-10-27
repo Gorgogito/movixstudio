@@ -11,6 +11,7 @@
 #include <QTemporaryDir>
 
 #include <cmath>
+#include <functional>
 
 using namespace movix;
 using namespace movix::core;
@@ -158,6 +159,137 @@ TEST_CASE("Deshacer un clip compuesto devuelve los clips a su sitio", "[core][co
     }
 }
 
+namespace {
+
+// Lo que se ve en cada fotograma: por capa (de abajo arriba, aplanando los compuestos), el medio,
+// su instante y la opacidad.
+struct Seen {
+    Id media;
+    TimeUs time;
+    double opacity;
+};
+std::vector<std::vector<Seen>> seenFrames(const Project& p, FramePos from, FramePos to)
+{
+    std::vector<std::vector<Seen>> frames;
+    std::function<void(const std::vector<VideoLayer>&, double, std::vector<Seen>&)> flatten =
+        [&](const std::vector<VideoLayer>& layers, double opacity, std::vector<Seen>& out) {
+            for (const VideoLayer& l : layers) {
+                if (l.compound)
+                    flatten(l.nested, opacity * l.opacity, out);
+                else
+                    out.push_back({l.mediaId, l.sourceTime, opacity * l.opacity});
+            }
+        };
+    for (FramePos f = from; f < to; ++f) {
+        std::vector<Seen> seen;
+        flatten(videoLayersAt(p, f), 1.0, seen);
+        frames.push_back(std::move(seen));
+    }
+    return frames;
+}
+
+// Deshace el compuesto y comprueba que en cada fotograma se ve lo mismo (el instante del medio, con
+// la tolerancia de un fotograma del compuesto, que redondea al fotograma de su secuencia).
+void checkBreakKeepsLook(Project& p, Id comp, double maxSpeed)
+{
+    const Clip c = *p.findClip(comp);
+    const auto before = seenFrames(p, c.start - 5, c.end() + 5);
+    REQUIRE_FALSE(edit::breakCompound(p, comp).empty());
+    REQUIRE(p.validate());
+    const auto after = seenFrames(p, c.start - 5, c.end() + 5);
+    const double tolerance = double(p.settings.frameDuration()) * std::max(1.0, maxSpeed) * 1.5;
+    int mismatched = 0;
+    for (size_t i = 0; i < before.size(); ++i) {
+        // Un clip puede asomar o no en el fotograma del borde (redondeo): se comparan los comunes.
+        if (before[i].size() != after[i].size()) {
+            ++mismatched;
+            continue;
+        }
+        for (size_t l = 0; l < before[i].size(); ++l) {
+            INFO("fotograma " << c.start - 5 + FramePos(i) << ", capa " << l);
+            CHECK(before[i][l].media == after[i][l].media);
+            CHECK(std::abs(double(before[i][l].time - after[i][l].time)) <= tolerance);
+            CHECK(std::abs(before[i][l].opacity - after[i][l].opacity) < 0.03);
+        }
+    }
+    CHECK(mismatched <= 4);
+}
+
+} // namespace
+
+TEST_CASE("Deshacer un compuesto con otra velocidad o al revés se ve igual", "[core][compound]")
+{
+    for (double speed : {2.0, 0.5, 1.5}) {
+        DYNAMIC_SECTION("velocidad " << speed)
+        {
+            Fixture f;
+            Project& p = f.p;
+            // Dentro: un clip al revés, otro con velocidad variable y una opacidad animada.
+            REQUIRE(edit::setReverse(p, f.a, true));
+            Clip& b = *p.findClip(f.b);
+            b.speedRamp = Animated(1.0);
+            b.speedRamp.setKey(0, 0.5);
+            b.speedRamp.setKey(59, 1.5);
+            b.transform.opacity.setKey(0, 0.2);
+            b.transform.opacity.setKey(40, 1.0, Interpolation::Smooth);
+            REQUIRE(p.validate());
+            const Id comp = edit::createCompound(p, {f.a, f.b, f.c}, "C");
+            REQUIRE(edit::setClipSpeed(p, comp, speed));
+            const Clip c = *p.findClip(comp);
+            checkBreakKeepsLook(p, comp, speed * 1.5);
+            // Ninguno ocupa más que el compuesto.
+            for (const Track& t : p.videoTracks)
+                for (const Clip& x : t.clips)
+                    CHECK((x.start >= c.start && x.end() <= c.end()));
+        }
+    }
+    SECTION("compuesto con velocidad variable y al revés")
+    {
+        Fixture f;
+        Project& p = f.p;
+        const Id comp = edit::createCompound(p, {f.a, f.b, f.c}, "C");
+        Clip& c = *p.findClip(comp);
+        c.speedRamp = Animated(1.0);
+        c.speedRamp.setKey(0, 0.5);
+        c.speedRamp.setKey(c.duration - 1, 1.0);
+        c.reverse = true;
+        REQUIRE(p.validate());
+        checkBreakKeepsLook(p, comp, 1.0);
+        // Al revés, el que estaba al final de la secuencia queda al principio.
+        CHECK(p.videoTracks[1].clips.front().reverse);
+    }
+}
+
+TEST_CASE("Deshacer un compuesto no tapa ni sobrescribe lo que hay encima", "[core][compound]")
+{
+    Fixture f;
+    Project& p = f.p;
+    const Id comp = edit::createCompound(p, {f.a, f.b, f.c}, "C"); // en V1, de 30 a 120
+    const Id d = edit::placeClip(p, p.videoTracks[1].id, f.media, 50, 0, 40);  // V2, encima
+    const Id e = edit::placeClip(p, p.audioTracks[0].id, f.media, 40, 0, 20);  // A1
+    REQUIRE((d && e));
+    const Clip dBefore = *p.findClip(d), eBefore = *p.findClip(e);
+    const auto before = seenFrames(p, 25, 125);
+    REQUIRE(edit::breakCompound(p, comp).size() == 3);
+    REQUIRE(p.validate());
+    // Los dos siguen intactos.
+    CHECK(*p.findClip(d) == dBefore);
+    CHECK(*p.findClip(e) == eBefore);
+    // Se ve lo mismo y en el mismo orden: las capas del compuesto debajo de d.
+    const auto after = seenFrames(p, 25, 125);
+    REQUIRE(before.size() == after.size());
+    for (size_t i = 0; i < before.size(); ++i) {
+        REQUIRE(before[i].size() == after[i].size());
+        for (size_t l = 0; l < before[i].size(); ++l) {
+            CHECK(before[i][l].media == after[i][l].media);
+            CHECK(before[i][l].time == after[i][l].time);
+        }
+    }
+    CHECK(p.videoTracks.size() == 3); // se intercaló una pista para la segunda del compuesto
+    CHECK(p.trackOfClip(d) == &p.videoTracks[2]);
+    CHECK(p.audioTracks[0].clips.size() == 1); // el audio del compuesto fue a otra pista
+}
+
 TEST_CASE("Abrir y editar la secuencia de un compuesto", "[core][compound]")
 {
     Fixture f;
@@ -240,6 +372,57 @@ TEST_CASE("GPU: un compuesto se dibuja como una capa con fondo transparente", "[
     const auto corner = at(10, 10);
     CHECK(corner[0] <= 2); // fuera del rojo: se ve el azul de abajo, sin oscurecer
     CHECK(corner[2] >= 252);
+}
+
+TEST_CASE("GPU: una fusión dentro de un compuesto donde no hay nada debajo", "[render][compound]")
+{
+    constexpr int W = 320, H = 180;
+    for (const bool linear : {false, true}) {
+        render::OffscreenRenderer r;
+        REQUIRE(r.init(W, H));
+        // Dentro: rojo solo en el centro y, encima, gris en modo multiplicar en todo el cuadro.
+        auto nested = std::make_shared<engine::FrameBundle>();
+        nested->canvasWidth = W;
+        nested->canvasHeight = H;
+        nested->linearLight = linear;
+        engine::LayerFrame red;
+        red.frame = rgbaFrame(32, 18, 255, 0, 0);
+        red.transform.scale = 0.5;
+        nested->layers.push_back(red);
+        engine::LayerFrame gray;
+        gray.frame = rgbaFrame(32, 18, 128, 128, 128);
+        gray.blend = BlendMode::Multiply;
+        nested->layers.push_back(gray);
+
+        engine::FrameBundle b;
+        b.canvasWidth = W;
+        b.canvasHeight = H;
+        b.linearLight = linear;
+        engine::LayerFrame blue;
+        blue.frame = rgbaFrame(32, 18, 0, 0, 255);
+        b.layers.push_back(blue);
+        engine::LayerFrame comp;
+        comp.nested = nested;
+        b.layers.push_back(comp);
+
+        std::vector<uint8_t> px;
+        REQUIRE(r.render(b, px));
+        auto at = [&](int x, int y) {
+            const size_t i = (size_t(y) * W + size_t(x)) * 4;
+            return std::array<int, 3>{px[i], px[i + 1], px[i + 2]};
+        };
+        INFO((linear ? "luz lineal" : "señal"));
+        // En el centro, el gris multiplica el rojo.
+        const auto center = at(W / 2, H / 2);
+        CHECK(center[0] >= 60);
+        CHECK(center[0] <= 140);
+        CHECK(center[1] <= 2);
+        // Alrededor no hay nada debajo dentro del compuesto: el gris se ve tal cual (antes, negro).
+        const auto corner = at(10, 10);
+        CHECK(std::abs(corner[0] - 128) <= 3);
+        CHECK(std::abs(corner[1] - 128) <= 3);
+        CHECK(std::abs(corner[2] - 128) <= 3);
+    }
 }
 
 TEST_CASE("Exportar un proyecto con un título dentro de un compuesto", "[export][compound]")
