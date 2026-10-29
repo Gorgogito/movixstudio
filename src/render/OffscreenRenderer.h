@@ -44,9 +44,13 @@ public:
     // otro hilo (copia cero); nullptr si no es D3D11.
     void* d3d11Device() const;
     bool isDeep() const { return m_deep; }
+    int width() const { return m_width; }
+    int height() const { return m_height; }
     QString backendName() const;
     // Salida como la de una pantalla HDR (scRGB, ver Compositor::setHdrDisplay); requiere `deep`.
     void setHdrDisplay(bool hdr, float sdrWhiteNits, float peakNits);
+    // Fondo transparente: render() entrega el alfa de la composición, con el color premultiplicado.
+    void setTransparent(bool transparent);
     int lastPassCount() const; // pasadas de GPU del último fotograma (para pruebas)
 
 private:
@@ -70,6 +74,21 @@ private:
     int m_width = 0;
     int m_height = 0;
     bool m_deep = false;
+    bool m_transparent = false;
+};
+
+// Secuencias anidadas compuestas en memoria (engine::BundleRenderer) con un OffscreenRenderer
+// propio, que se crea en el primer uso (en el hilo que lo usa) y se rehace si cambia el tamaño.
+class QtBundleRenderer : public engine::BundleRenderer {
+public:
+    QtBundleRenderer();
+    ~QtBundleRenderer() override;
+    std::shared_ptr<const media::VideoFrame> render(const engine::FrameBundle& bundle, bool deep) override;
+
+private:
+    std::unique_ptr<OffscreenRenderer> m_renderer;
+    bool m_failed = false; // sin GPU: no se reintenta con el mismo tamaño
+    std::vector<uint8_t> m_pixels;
 };
 
 } // namespace movix::render

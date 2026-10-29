@@ -1,6 +1,7 @@
 #include "render/OffscreenRenderer.h"
 
 #include "render/Compositor.h"
+#include "media/FrameConvert.h"
 #include "media/GpuFrames.h"
 
 #include <QCoreApplication>
@@ -80,7 +81,7 @@ bool OffscreenRenderer::render(const engine::FrameBundle& bundle, std::vector<ui
     QRhiReadbackResult result;
     QRhiResourceUpdateBatch* readback = m_rhi->nextResourceUpdateBatch();
     readback->readBackTexture(QRhiReadbackDescription(m_texture.get()), &result);
-    m_compositor->render(cb, m_target.get(), Qt::black, updates, readback);
+    m_compositor->render(cb, m_target.get(), m_transparent ? QColor(0, 0, 0, 0) : QColor(Qt::black), updates, readback);
     // En un fotograma fuera de pantalla, endOffscreenFrame espera a que la GPU termine.
     if (m_rhi->endOffscreenFrame() != QRhi::FrameOpSuccess)
         return false;
@@ -218,6 +219,13 @@ void* OffscreenRenderer::d3d11Device() const
     return nullptr;
 }
 
+void OffscreenRenderer::setTransparent(bool transparent)
+{
+    m_transparent = transparent;
+    if (m_compositor)
+        m_compositor->setTransparent(transparent);
+}
+
 void OffscreenRenderer::setHdrDisplay(bool hdr, float sdrWhiteNits, float peakNits)
 {
     if (m_compositor)
@@ -233,6 +241,58 @@ QString OffscreenRenderer::backendName() const
 {
     return m_rhi ? QString::fromLatin1(m_rhi->backendName()) + QStringLiteral(" · ") + QString::fromUtf8(m_rhi->driverInfo().deviceName)
                  : QString();
+}
+
+QtBundleRenderer::QtBundleRenderer() = default;
+QtBundleRenderer::~QtBundleRenderer() = default;
+
+std::shared_ptr<const media::VideoFrame> QtBundleRenderer::render(const engine::FrameBundle& bundle, bool deep)
+{
+    const int w = bundle.canvasWidth, h = bundle.canvasHeight;
+    if (w <= 0 || h <= 0)
+        return nullptr;
+    if (!m_renderer || m_renderer->width() != w || m_renderer->height() != h || m_renderer->isDeep() != deep) {
+        m_renderer = std::make_unique<OffscreenRenderer>();
+        m_failed = !m_renderer->init(w, h, nullptr, deep);
+        m_renderer->setTransparent(true);
+    }
+    if (m_failed || !m_renderer->render(bundle, m_pixels))
+        return nullptr;
+
+    // Color premultiplicado → sin premultiplicar, como las demás imágenes con transparencia.
+    auto frame = std::make_shared<media::VideoFrame>();
+    frame->width = w;
+    frame->height = h;
+    frame->fullRange = true;
+    const bool hdr = bundle.colorMode != core::ColorMode::SDR;
+    frame->colorSpace = hdr ? media::ColorSpace::BT2020 : media::ColorSpace::BT709;
+    frame->transfer = bundle.colorMode == core::ColorMode::PQ    ? media::Transfer::PQ
+                      : bundle.colorMode == core::ColorMode::HLG ? media::Transfer::HLG
+                                                                 : media::Transfer::SDR;
+    frame->pts = bundle.time;
+    const size_t pixels = size_t(w) * size_t(h);
+    if (deep) {
+        frame->format = media::PixelFormat::RGBA16F;
+        std::vector<float> values(pixels * 4);
+        const auto* src = reinterpret_cast<const uint16_t*>(m_pixels.data());
+        for (size_t i = 0; i < pixels; ++i) {
+            const float a = src[i * 4 + 3] / 65535.0f;
+            for (size_t c = 0; c < 3; ++c)
+                values[i * 4 + c] = a > 0.0f ? std::min(1.0f, src[i * 4 + c] / 65535.0f / a) : 0.0f;
+            values[i * 4 + 3] = a;
+        }
+        media::floatToHalf(values, frame->rgba);
+    } else {
+        frame->format = media::PixelFormat::RGBA;
+        frame->rgba = std::move(m_pixels);
+        uint8_t* p = frame->rgba.data();
+        for (size_t i = 0; i < pixels; ++i, p += 4)
+            if (const int a = p[3]; a > 0 && a < 255)
+                for (int c = 0; c < 3; ++c)
+                    p[c] = uint8_t(std::min(255, (p[c] * 255 + a / 2) / a));
+        m_pixels = {};
+    }
+    return frame;
 }
 
 } // namespace movix::render

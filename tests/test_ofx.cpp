@@ -264,8 +264,112 @@ TEST_CASE("OpenFX: efectos en un clip, en el archivo y en el motor", "[ofx][engi
     CHECK(plain.layers[0].frame->format != media::PixelFormat::RGBA);
     CHECK(sources.takeOfxError().find("no está instalado") != std::string::npos);
 
-    // Solo en clips con imagen que no son compuestos.
+    // Solo en clips con imagen.
     CHECK(edit::addOfxEffect(p, p.audioTracks[0].id, kGain) == -1);
+}
+
+TEST_CASE("OpenFX en un clip compuesto: el plugin recibe su secuencia compuesta, con su transparencia", "[ofx][engine][compound]")
+{
+    useTestPlugins();
+    Project p = Project::createDefault();
+    p.settings.width = 320;
+    p.settings.height = 180;
+    // Dentro: un video reducido a la mitad y, encima, una imagen con la mitad derecha transparente.
+    auto video = engine::probeMediaItem(test::mediaPath("scenes_720p30.mp4"));
+    auto image = engine::probeMediaItem(test::mediaPath("half_alpha.png"));
+    REQUIRE(video);
+    REQUIRE(image);
+    const Id a = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *video), 0, 0, 30);
+    p.findClip(a)->transform.scale = 0.5;
+    edit::addTrack(p, TrackKind::Video);
+    const Id b = edit::placeClip(p, p.videoTracks[1].id, edit::addMedia(p, *image), 0, 0, 30);
+    const Id comp = edit::createCompound(p, {a, b}, "C");
+    REQUIRE(comp != kNoId);
+
+    engine::VideoSources sources(false);
+    sources.setBundleRenderer(std::make_shared<render::QtBundleRenderer>());
+    render::OffscreenRenderer r;
+    REQUIRE(r.init(320, 180));
+    auto picture = [&]() {
+        std::vector<uint8_t> px;
+        REQUIRE(r.render(sources.build(p, 0), px));
+        return px;
+    };
+    auto at = [](const std::vector<uint8_t>& px, int x, int y) { return &px[(size_t(y) * 320 + size_t(x)) * 4]; };
+    const auto plain = picture();
+    CHECK(at(plain, 200, 90)[0] + at(plain, 200, 90)[1] + at(plain, 200, 90)[2] > 150); // video
+    CHECK(at(plain, 300, 10)[0] + at(plain, 300, 10)[1] + at(plain, 300, 10)[2] == 0);   // nada: fondo negro
+
+    // Efecto neutro: el compuesto se ve igual (la secuencia pasa por memoria y vuelve).
+    REQUIRE(edit::addOfxEffect(p, comp, kGain) == 0);
+    const auto bundle = sources.build(p, 0);
+    REQUIRE(bundle.layers.size() == 1);
+    REQUIRE(bundle.layers[0].frame);
+    CHECK_FALSE(bundle.layers[0].nested);
+    CHECK(bundle.layers[0].frame->format == media::PixelFormat::RGBA);
+    CHECK(int(bundle.layers[0].frame->rgba[(size_t(10) * 320 + 300) * 4 + 3]) == 0); // transparente al plugin
+    CHECK(sources.takeOfxError().empty());
+    const auto neutral = picture();
+    int worst = 0;
+    for (size_t i = 0; i < plain.size(); ++i)
+        worst = std::max(worst, std::abs(int(plain[i]) - int(neutral[i])));
+    std::printf("[ofx] compuesto con un efecto neutro: diferencia máxima %d/255\n", worst);
+    CHECK(worst <= 2);
+
+    // Ganancia 0,5 sobre el compuesto: el video baja a la mitad y lo transparente sigue sin verse.
+    REQUIRE(edit::setOfxParam(p, comp, 0, "gain", {0.5}));
+    const auto half = picture();
+    for (int c = 0; c < 3; ++c)
+        CHECK(std::abs(int(at(half, 200, 90)[c]) - int(at(plain, 200, 90)[c]) / 2) <= 2);
+    // Invertir: lo opaco se invierte; lo transparente, aunque el plugin cambie su color, no aparece.
+    REQUIRE(edit::setOfxParam(p, comp, 0, "gain", {1.0}));
+    REQUIRE(edit::setOfxParam(p, comp, 0, "invert", {1}));
+    const auto inverted = picture();
+    for (int c = 0; c < 3; ++c) {
+        CHECK(std::abs(int(at(inverted, 200, 90)[c]) - (255 - int(at(plain, 200, 90)[c]))) <= 2);
+        CHECK(int(at(inverted, 300, 10)[c]) == 0);
+    }
+
+    // Sin renderizador de secuencias el compuesto se ve sin el efecto (y no se rompe nada).
+    engine::VideoSources bare(false);
+    const auto nested = bare.build(p, 0);
+    REQUIRE(nested.layers.size() == 1);
+    CHECK(nested.layers[0].nested);
+
+    // En un proyecto HDR10 la secuencia pasa en coma flotante y en su señal: un efecto neutro no la cambia.
+    {
+        Project hp = Project::createDefault();
+        hp.settings.width = 320;
+        hp.settings.height = 180;
+        hp.settings.colorMode = ColorMode::PQ;
+        auto hdr = engine::probeMediaItem(test::mediaPath("hdr_pq.mkv"));
+        REQUIRE(hdr);
+        const Id h = edit::placeClip(hp, hp.videoTracks[0].id, edit::addMedia(hp, *hdr), 0, 0, 30);
+        const Id hc = edit::createCompound(hp, {h}, "HDR");
+        REQUIRE(hc != kNoId);
+        render::OffscreenRenderer deep;
+        REQUIRE(deep.init(320, 180, nullptr, true));
+        auto centerPq = [&]() {
+            std::vector<uint8_t> px;
+            REQUIRE(deep.render(sources.build(hp, 0), px));
+            const size_t o = (size_t(90) * 320 + 160) * 4 * 2;
+            return (px[o] | (px[o + 1] << 8)) / 65535.0;
+        };
+        const double before = centerPq();
+        REQUIRE(edit::addOfxEffect(hp, hc, kGain) == 0);
+        const auto hb = sources.build(hp, 0);
+        REQUIRE(hb.layers.size() == 1);
+        REQUIRE(hb.layers[0].frame);
+        CHECK(hb.layers[0].frame->format == media::PixelFormat::RGBA16F);
+        const double after = centerPq();
+        std::printf("[ofx] compuesto HDR10 sin y con el efecto: %.4f / %.4f\n", before, after);
+        CHECK(std::abs(before - after) < 0.002);
+    }
+
+    // El efecto del compuesto viaja en el archivo.
+    const auto loaded = deserializeProject(serializeProject(p, "C:/x/p.mxproj"), "C:/x/p.mxproj");
+    REQUIRE(loaded.project);
+    CHECK(loaded.project->findClip(comp)->ofx == p.findClip(comp)->ofx);
 }
 
 TEST_CASE("OpenFX: keyframes en el clip, en el archivo y en el motor", "[ofx][engine]")

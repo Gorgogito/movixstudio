@@ -111,6 +111,7 @@ bool Exporter::run(const core::Project& input, const ExportSettings& s, const st
         sources.setGpuDevice(gpuDevice);
         sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
         sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
+        sources.setBundleRenderer(std::make_shared<render::QtBundleRenderer>());
         for (int64_t j = 0; j < total && !stop.load(); ++j) {
             const auto a = Clock::now();
             engine::FrameBundle bundle = sources.build(project, project.settings.timeToFrame(t0 + out.frameToTime(j)));

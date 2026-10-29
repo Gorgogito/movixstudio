@@ -109,7 +109,7 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
     }
     if (c.matte.active() && !c.isCompound() && !c.title)
         l.matte = &c.matte;
-    if (!c.ofx.empty() && !c.isCompound())
+    if (!c.ofx.empty())
         l.ofx = &c.ofx;
     l.clipFrame = rel;
     l.blend = c.blend;

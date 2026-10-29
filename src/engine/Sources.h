@@ -79,6 +79,16 @@ public:
                                                             int visibleChars = -1) = 0;
 };
 
+// Compone una secuencia anidada en una imagen en memoria del tamaño de su lienzo, sobre fondo
+// transparente y con el alfa sin premultiplicar: RGBA de 8 bits o, con `deep`, RGBA16F en la señal
+// del proyecto. La implementa la biblioteca de render (en la GPU); la usan los compuestos con
+// efectos OpenFX, que necesitan sus píxeles. Se crea y se usa en el mismo hilo.
+class BundleRenderer {
+public:
+    virtual ~BundleRenderer() = default;
+    virtual std::shared_ptr<const media::VideoFrame> render(const FrameBundle& bundle, bool deep) = 0;
+};
+
 // Lectores de video abiertos, uno por clip (para que cada clip decodifique en orden), con un
 // máximo de decodificadores abiertos: se cierra el que lleva más tiempo sin usarse. Las imágenes
 // fijas se decodifican una vez y se comparten; los títulos se generan y se guardan en caché.
@@ -88,8 +98,11 @@ public:
 
     void setTitleRenderer(std::shared_ptr<TitleRenderer> renderer) { m_titles = std::move(renderer); }
     void setMaskRenderer(std::shared_ptr<MaskRenderer> renderer) { m_maskRenderer = std::move(renderer); }
+    // Sin él, los efectos OpenFX de los clips compuestos no se aplican.
+    void setBundleRenderer(std::shared_ptr<BundleRenderer> renderer) { m_bundleRenderer = std::move(renderer); }
     // Copia cero: los clips se decodifican en este dispositivo (ID3D11Device* del compositor) y sus
-    // fotogramas no bajan a memoria. Los que necesitan la imagen en la CPU (efectos OpenFX) no.
+    // fotogramas no bajan a memoria. Los que necesitan la imagen en la CPU (efectos OpenFX, también
+    // los clips dentro de un compuesto con efectos) no.
     void setGpuDevice(void* device) { m_gpuDevice = device; }
     // Archivo que se lee para cada medio (p. ej. su proxy en la vista previa); sin ella, el original.
     void setPathMapper(std::function<std::string(const core::MediaItem&)> mapper) { m_pathMapper = std::move(mapper); }
@@ -108,6 +121,8 @@ private:
     // Opacidad del mate de IA de la capa (multiplicada por sus máscaras), o nullptr si no se puede leer.
     std::shared_ptr<const MaskImage> matteImage(const core::VideoLayer& layer, const std::vector<core::LayerMask>& masks);
     void buildLayers(const std::vector<core::VideoLayer>& layers, FrameBundle& bundle);
+    // Compuesto con efectos OpenFX: su secuencia compuesta en memoria (nullptr si no se puede).
+    std::shared_ptr<const media::VideoFrame> flattenCompound(const FrameBundle& nested);
     // Aplica los efectos OpenFX de la capa; si ninguno se puede aplicar, devuelve el fotograma igual.
     std::shared_ptr<const media::VideoFrame> applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f);
 
@@ -138,6 +153,8 @@ private:
     std::vector<CachedLut> m_lutCache; // por corrección (pocas distintas a la vez)
     std::unordered_map<std::string, std::shared_ptr<const color::CubeLut>> m_cubeFiles;
     std::shared_ptr<MaskRenderer> m_maskRenderer;
+    std::shared_ptr<BundleRenderer> m_bundleRenderer;
+    int m_inMemory = 0; // > 0: dentro de un compuesto con efectos (sin copia cero)
     core::ColorMode m_colorMode = core::ColorMode::SDR; // las LUT con OCIO dependen de él
     struct CachedMask {
         std::vector<core::LayerMask> masks;

@@ -1849,7 +1849,7 @@ namespace {
 Clip* ofxClip(Project& p, Id clipId)
 {
     auto loc = p.locateClip(clipId);
-    if (!loc.track || loc.track->locked || loc.track->kind != TrackKind::Video || loc.clip()->isCompound())
+    if (!loc.track || loc.track->locked || loc.track->kind != TrackKind::Video)
         return nullptr;
     return loc.clip();
 }

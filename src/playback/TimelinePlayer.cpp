@@ -1,6 +1,7 @@
 #include "playback/TimelinePlayer.h"
 
 #include "render/MaskRenderer.h"
+#include "render/OffscreenRenderer.h"
 #include "render/TitleRenderer.h"
 
 #include <QLoggingCategory>
@@ -142,6 +143,7 @@ void TimelinePlayer::videoLoop()
     uint64_t mapperVersion = 0;
     sources.setTitleRenderer(std::make_shared<render::QtTitleRenderer>());
     sources.setMaskRenderer(std::make_shared<render::QtMaskRenderer>());
+    sources.setBundleRenderer(std::make_shared<render::QtBundleRenderer>());
     for (;;) {
         std::unique_lock lock(m_videoMutex);
         m_videoCv.wait(lock, [this] {

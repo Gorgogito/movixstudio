@@ -387,11 +387,16 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       decodificador evalúa las hipótesis en un mismo lote y se elige la de mayor log-probabilidad
       media. En frases de prueba, 4 de 6 traducciones más probables que con la voraz y ninguna
       peor («Hace un frío que pela»: «It's cold and cold» → «It's freezing»), casi sin más tiempo
+- [x] OpenFX en clips compuestos: la secuencia se compone en la GPU (fuera de pantalla, sobre fondo
+      transparente) y el plugin la recibe como imagen con su transparencia, en coma flotante y en la
+      señal del proyecto si es HDR. Con un efecto neutro se ve igual que sin él (≤ 1/255; HDR10,
+      idéntico). Lo que no se ve dentro del compuesto sigue sin verse aunque el plugin cambie su
+      color. Al deshacer el compuesto sus efectos se pierden, como su color y sus máscaras
 
 ### Limitaciones de OpenFX
 
 - Sin interfaces propias de los plugins (overlays) y sin contextos que no sean filtros
-  (generadores, transiciones). No se aplican a clips compuestos.
+  (generadores, transiciones).
 - Se renderiza en la CPU: los clips con efectos no usan la copia cero.
 
 ### Pendiente de comprobar

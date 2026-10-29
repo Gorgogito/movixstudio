@@ -177,7 +177,7 @@ std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLa
     Entry& e = m_readers[layer.instance];
     e.lastUse = ++m_tick;
     // Los efectos OpenFX trabajan con la imagen en memoria: esos clips no usan la copia cero.
-    void* device = layer.ofx ? nullptr : m_gpuDevice;
+    void* device = layer.ofx || m_inMemory > 0 ? nullptr : m_gpuDevice;
     const std::string path = m_pathMapper ? m_pathMapper(*layer.media) : layer.media->path;
     if (!e.reader || e.path != path || e.device != device) {
         e.reader = std::make_unique<VideoReader>();
@@ -219,6 +219,7 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
         std::shared_ptr<const media::VideoFrame> f;
         std::shared_ptr<FrameBundle> nested;
         int layerW = bundle.canvasWidth, layerH = bundle.canvasHeight;
+        bool flattened = false;
         if (layer.compound) {
             nested = std::make_shared<FrameBundle>();
             nested->frame = bundle.frame;
@@ -227,7 +228,18 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
             nested->canvasHeight = bundle.canvasHeight;
             nested->colorMode = bundle.colorMode;
             nested->linearLight = bundle.linearLight;
+            // Con efectos OpenFX, la secuencia se compone en memoria y el plugin la recibe como imagen.
+            const bool effects = layer.ofx && m_bundleRenderer
+                                 && std::any_of(layer.ofx->begin(), layer.ofx->end(), [](const core::OfxEffect& e) { return e.enabled; });
+            m_inMemory += effects;
             buildLayers(layer.nested, *nested);
+            m_inMemory -= effects;
+            if (effects)
+                if (auto flat = flattenCompound(*nested)) {
+                    f = applyOfx(layer, std::move(flat));
+                    nested.reset();
+                    flattened = true;
+                }
         } else {
             f = this->frame(layer, bundle.canvasWidth, bundle.canvasHeight);
             if (!f)
@@ -239,8 +251,9 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
         }
         LayerFrame out{layer.clipId, layer.trackIndex, std::move(f), layer.transform, layer.opacity, layer.crop};
         out.nested = std::move(nested);
+        out.rawSignal = flattened; // ya en la señal del proyecto, como una secuencia anidada
         if (layer.grade) {
-            out.rawSignal = !layer.grade->inputSpace.empty() || (layer.gradeTo && !layer.gradeTo->inputSpace.empty());
+            out.rawSignal = out.rawSignal || !layer.grade->inputSpace.empty() || (layer.gradeTo && !layer.gradeTo->inputSpace.empty());
             out.lut = lut(*layer.grade);
             if (layer.gradeTo && out.lut) // entre dos keyframes de color: mezcla de sus LUT
                 if (const auto to = lut(*layer.gradeTo))
@@ -257,6 +270,16 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
     }
 }
 
+std::shared_ptr<const media::VideoFrame> VideoSources::flattenCompound(const FrameBundle& nested)
+{
+    // En proyectos HDR, en coma flotante (la señal PQ/HLG no cabe en 8 bits sin bandas).
+    const bool deep = nested.colorMode != core::ColorMode::SDR;
+    auto frame = m_bundleRenderer->render(nested, deep);
+    if (!frame || frame->width <= 0 || frame->height <= 0)
+        return nullptr;
+    return frame;
+}
+
 std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f)
 {
     const bool any = std::any_of(layer.ofx->begin(), layer.ofx->end(), [](const core::OfxEffect& e) { return e.enabled; });
@@ -265,7 +288,7 @@ std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::Vide
     const int w = f->width, h = f->height;
     // El video de más de 8 bits (y todo el HDR) pasa en coma flotante, sin perder precisión, y sale
     // como RGBA16F con su señal; el resto, en 8 bits como RGBA.
-    const bool deep = f->format == media::PixelFormat::P016 || f->transfer != media::Transfer::SDR;
+    const bool deep = f->format == media::PixelFormat::P016 || f->format == media::PixelFormat::RGBA16F || f->transfer != media::Transfer::SDR;
     std::vector<uint8_t> rgba;
     std::vector<float> rgbaF;
     if (deep ? !media::frameToRgbaF(*f, rgbaF) : f->format == media::PixelFormat::RGBA ? (rgba = f->rgba, false)

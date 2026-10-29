@@ -395,7 +395,6 @@ ColumnLayout {
 
     // ---- Efectos OpenFX (plugins de terceros) ----
     OfxEffects {
-        visible: panel.info.isCompound !== true
         project: panel.project
         info: panel.info
     }

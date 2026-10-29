@@ -61,6 +61,8 @@ public:
     // Destino SDR (el visor): en proyectos HDR, la copia final convierte la señal a SDR para
     // mostrarla. La exportación no lo activa y conserva la señal HDR.
     void setSdrDisplay(bool sdr) { m_sdrDisplay = sdr; }
+    // Fondo transparente y alfa conservado (color premultiplicado), como una secuencia anidada.
+    void setTransparent(bool transparent) { m_transparent = transparent; }
     // Destino HDR en scRGB (coma flotante, luz lineal con primarias Rec.709 y 1,0 = 80 nits): la
     // copia final da nits absolutos. Los proyectos SDR se ven con el blanco SDR de la pantalla
     // (`sdrWhiteNits`) y los HDR se comprimen por encima de su pico (`peakNits`). Tiene prioridad
