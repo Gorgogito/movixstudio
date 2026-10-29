@@ -291,6 +291,17 @@ Item {
             onReleased: overlay.project.endInteraction()
         }
 
+        // Interfaz del efecto OpenFX elegido (la dibuja el plugin): encima de mover, debajo de las
+        // esquinas. Lo que el plugin no usa pasa a mover el clip.
+        OfxOverlayItem {
+            anchors.fill: parent
+            readonly property var target: overlay.project.ofxOverlay
+            visible: overlay.mode === "transform" && target.clipId !== undefined && target.clipId === overlay.clipId
+            project: overlay.project
+            clipId: visible ? target.clipId : 0
+            index: target.index ?? 0
+        }
+
         // Escalar desde las esquinas (proporcional a la distancia al centro).
         Repeater {
             model: [Qt.point(0, 0), Qt.point(1, 0), Qt.point(0, 1), Qt.point(1, 1)]

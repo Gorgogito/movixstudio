@@ -2225,6 +2225,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Generador OpenFX</source>
         <translation>OpenFX generator</translation>
     </message>
+    <message>
+        <source>Controles del efecto en el visor</source>
+        <translation>Effect controls in the viewer</translation>
+    </message>
 </context>
 <context>
     <name>Otio</name>

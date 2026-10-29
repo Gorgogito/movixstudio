@@ -12,7 +12,8 @@
 // Se buscan en las carpetas estándar, se describen una vez en cada papel que admiten (filtro,
 // generador o transición) y cada uso tiene su propia instancia. Se renderiza en la CPU, el
 // fotograma completo, en 8 bits o en coma flotante según lo que admita el plugin; los parámetros
-// pueden tener keyframes (el plugin los lee en cualquier instante). Sin interfaces propias (overlays).
+// pueden tener keyframes (el plugin los lee en cualquier instante). La interfaz propia del plugin
+// sobre el visor (overlay) la dibuja el plugin con OpenGL en una imagen aparte (ver Overlay).
 namespace movix::ofx {
 
 // Papel de un plugin: filtro de un clip (contexto Filter o General), generador de imagen
@@ -45,6 +46,7 @@ struct PluginInfo {
     Role role = Role::Filter;
     std::string context; // contexto OFX: "Filter", "General", "Generator" o "Transition"
     bool floatImages = false; // si no, 8 bits
+    bool hasOverlay = false;  // tiene interfaz sobre el visor
     // En el orden en que los define el plugin (pueden cambiar con el papel). El de progreso de las
     // transiciones lo pone el anfitrión: va como `secret`.
     std::vector<ParamDef> params;
@@ -98,13 +100,46 @@ public:
                     std::string* error = nullptr);
     int width() const;
     int height() const;
+    // Valores actuales de los parámetros de la instancia (los que dejó el último render o los que
+    // cambió el plugin desde su interfaz).
+    ParamValues values() const;
 
     struct Impl;
 
 private:
+    friend class Overlay;
     // `inputs`: una imagen por clip de entrada del papel (ninguna, Source o SourceFrom y SourceTo).
     bool renderImpl(const ParamValues& values, double time, std::vector<const void*> inputs, void* out, bool floatIO, std::string* error);
     explicit Effect(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> d;
+};
+
+// Interfaz del plugin sobre el visor (interact de OFX) para una instancia. El plugin dibuja con
+// OpenGL: se le da un contexto propio fuera de pantalla y se lee la imagen. Las coordenadas que
+// recibe son las de la imagen del efecto (píxeles desde abajo a la izquierda). Se usa desde un solo
+// hilo. Por ahora solo en Windows (WGL).
+class Overlay {
+public:
+    // nullptr si el plugin no tiene interfaz o no se pudo crear. `effect` debe sobrevivirla.
+    static std::unique_ptr<Overlay> create(Effect& effect, std::string* error = nullptr);
+    ~Overlay();
+    Overlay(const Overlay&) = delete;
+    Overlay& operator=(const Overlay&) = delete;
+
+    // Dibuja la interfaz con `values` en el instante `time` sobre una vista de viewWidth × viewHeight
+    // que cubre la imagen del efecto entera. `rgba`: RGBA premultiplicado, filas de arriba abajo.
+    bool draw(const ParamValues& values, double time, int viewWidth, int viewHeight, std::vector<uint8_t>& rgba);
+    enum class Pen { Down, Motion, Up };
+    // Evento del ratón en (x, y), píxeles de la vista con origen arriba a la izquierda. Devuelve si el
+    // plugin lo usó; `values` recibe los valores de los parámetros después (los que cambió, incluidos).
+    bool pen(Pen kind, double x, double y, double time, int viewWidth, int viewHeight, ParamValues& values);
+    // El plugin pidió redibujar desde la última vez que se preguntó.
+    bool takeRedraw();
+
+    struct Impl;
+
+private:
+    explicit Overlay(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> d;
 };
 

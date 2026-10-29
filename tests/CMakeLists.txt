@@ -44,6 +44,7 @@ add_executable(movix_tests
     # Controladores reales para las pruebas de integración de la IA (sin interfaz).
     ${PROJECT_SOURCE_DIR}/src/app/ProjectController.h ${PROJECT_SOURCE_DIR}/src/app/ProjectController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerColor.cpp ${PROJECT_SOURCE_DIR}/src/app/ProjectControllerOfx.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/OfxOverlayItem.h ${PROJECT_SOURCE_DIR}/src/app/OfxOverlayItem.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ExportController.h ${PROJECT_SOURCE_DIR}/src/app/ExportController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/AiController.h ${PROJECT_SOURCE_DIR}/src/app/AiController.cpp
     ${PROJECT_SOURCE_DIR}/src/app/UpdateController.h ${PROJECT_SOURCE_DIR}/src/app/UpdateController.cpp
@@ -73,7 +74,7 @@ add_dependencies(movix_tests movix-ai-worker)
 # Plugin OpenFX de prueba, empaquetado como los de terceros (Nombre.ofx.bundle/Contents/Win64/Nombre.ofx).
 find_package(unofficial-openfx CONFIG REQUIRED)
 add_library(MovixTestGain MODULE ofx/MovixTestGain.cpp)
-target_link_libraries(MovixTestGain PRIVATE unofficial::openfx::OfxSupport)
+target_link_libraries(MovixTestGain PRIVATE unofficial::openfx::OfxSupport opengl32) # la interfaz sobre el visor dibuja con OpenGL
 target_compile_definitions(MovixTestGain PRIVATE _HAS_AUTO_PTR_ETC=1) # la biblioteca de apoyo de OFX usa std::auto_ptr
 set_target_properties(MovixTestGain PROPERTIES PREFIX "" SUFFIX ".ofx"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ofx/MovixTestGain.ofx.bundle/Contents/Win64")

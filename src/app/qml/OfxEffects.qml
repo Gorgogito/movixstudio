@@ -127,6 +127,16 @@ ColumnLayout {
                         elide: Text.ElideRight
                     }
                     ToolButton {
+                        // Interfaz del plugin sobre el visor (si la tiene).
+                        visible: card.fx.hasOverlay === true
+                        text: "◎"
+                        highlighted: section.project.ofxOverlay.clipId === section.clipId && section.project.ofxOverlay.index === card.fxIndex
+                        focusPolicy: Qt.NoFocus
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Controles del efecto en el visor")
+                        onClicked: section.project.toggleOfxOverlay(section.clipId, card.fxIndex)
+                    }
+                    ToolButton {
                         visible: section.list
                         text: "↑"
                         focusPolicy: Qt.NoFocus

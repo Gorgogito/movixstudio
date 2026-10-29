@@ -2,6 +2,8 @@
 
 #include <ofxCore.h>
 #include <ofxImageEffect.h>
+#include <ofxInteract.h>
+#include <ofxOld.h> // kOfxInteractPropViewportSize: retirada en 1.4, la leen plugins anteriores
 #include <ofxMemory.h>
 #include <ofxMessage.h>
 #include <ofxMultiThread.h>
@@ -12,6 +14,11 @@
 #include <QDirIterator>
 #include <QLibrary>
 #include <QString>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <GL/gl.h>
 
 #include <algorithm>
 #include <atomic>
@@ -110,6 +117,11 @@ struct PropertySet {
         if (p->type == 'i' && index < int(p->i.size()))
             return double(p->i[size_t(index)]);
         return fallback;
+    }
+    void* ptr(const char* name) const
+    {
+        const Prop* p = find(name);
+        return p && p->type == 'p' && !p->p.empty() ? p->p[0] : nullptr;
     }
     std::vector<double> nums(const char* name) const
     {
@@ -1103,6 +1115,32 @@ OfxStatus clearPersistentMessage(void* handle)
 const OfxMessageSuiteV1 kMessageSuiteV1 = {message};
 const OfxMessageSuiteV2 kMessageSuiteV2 = {message, setPersistentMessage, clearPersistentMessage};
 
+// --------------------------------------------------------------------- Suite de interacción
+
+struct InteractObj : PropertySet {
+    bool redraw = false; // el plugin pidió redibujar
+};
+
+OfxStatus interactSwapBuffers(OfxInteractHandle h)
+{
+    return h ? kOfxStatOK : kOfxStatErrBadHandle;
+}
+OfxStatus interactRedraw(OfxInteractHandle h)
+{
+    if (!h)
+        return kOfxStatErrBadHandle;
+    reinterpret_cast<InteractObj*>(h)->redraw = true;
+    return kOfxStatOK;
+}
+OfxStatus interactGetPropertySet(OfxInteractHandle h, OfxPropertySetHandle* props)
+{
+    if (!h || !props)
+        return kOfxStatErrBadHandle;
+    *props = asHandle(reinterpret_cast<InteractObj*>(h));
+    return kOfxStatOK;
+}
+const OfxInteractSuiteV1 kInteractSuite = {interactSwapBuffers, interactRedraw, interactGetPropertySet};
+
 // --------------------------------------------------------------------- Anfitrión
 
 const void* fetchSuite(OfxPropertySetHandle, const char* name, int version)
@@ -1120,11 +1158,13 @@ const void* fetchSuite(OfxPropertySetHandle, const char* name, int version)
         return &kMemorySuite;
     if (n == kOfxMultiThreadSuite && version == 1)
         return &kMultiThreadSuite;
+    if (n == kOfxInteractSuite && version == 1)
+        return &kInteractSuite;
     if (n == kOfxMessageSuite && version == 1)
         return &kMessageSuiteV1;
     if (n == kOfxMessageSuite && version == 2)
         return &kMessageSuiteV2;
-    return nullptr; // interact, timeline, parametric, OpenGL...: no disponibles
+    return nullptr; // timeline, parametric, OpenGL...: no disponibles
 }
 
 PropertySet& hostProps()
@@ -1138,7 +1178,7 @@ PropertySet& hostProps()
         h.setI(kOfxPropVersion, {MOVIX_VERSION_MAJOR, MOVIX_VERSION_MINOR, MOVIX_VERSION_PATCH});
         h.setS(kOfxPropVersionLabel, {MOVIX_VERSION});
         h.setI(kOfxImageEffectHostPropIsBackground, {0});
-        h.setI(kOfxImageEffectPropSupportsOverlays, {0});
+        h.setI(kOfxImageEffectPropSupportsOverlays, {1});
         h.setI(kOfxImageEffectPropSupportsMultiResolution, {0});
         h.setI(kOfxImageEffectPropSupportsTiles, {0});
         h.setI(kOfxImageEffectPropTemporalClipAccess, {0});
@@ -1343,6 +1383,7 @@ bool describeRole(OfxPlugin* api, const std::shared_ptr<EffectObj>& descriptor, 
             def.secret = true; // el progreso lo pone el anfitrión
         info->params.push_back(std::move(def));
     }
+    info->hasOverlay = c.ptr(kOfxImageEffectPluginPropOverlayInteractV1) != nullptr;
     p->unsafe = c.str(kOfxImageEffectPluginRenderThreadSafety) == kOfxImageEffectRenderUnsafe;
     p->info = std::move(info);
 
@@ -1539,6 +1580,20 @@ ParamValues withDefaults(const PluginInfo& plugin, const ParamValues& values)
     return out;
 }
 
+// Pone en la instancia los valores de los parámetros (los que no vienen se quedan como estaban).
+void applyValues(EffectObj& e, const ParamValues& values)
+{
+    for (auto& p : e.params.list) {
+        auto it = values.find(p->name);
+        if (it != values.end() && !isStringType(p->type)) {
+            p->curve = it->second;
+            p->curve.resize(size_t(dimensionOf(p->type)));
+        }
+        if (!isStringType(p->type))
+            p->setI(kOfxParamPropIsAnimating, {!keyTimes(*p).empty() ? 1 : 0});
+    }
+}
+
 struct Effect::Impl {
     LoadedPlugin* plugin = nullptr;
     std::unique_ptr<EffectObj> obj;
@@ -1572,6 +1627,15 @@ int Effect::width() const
 int Effect::height() const
 {
     return d->obj->height;
+}
+
+ParamValues Effect::values() const
+{
+    ParamValues out;
+    for (const auto& p : d->obj->params.list)
+        if (!isStringType(p->type) && !p->curve.empty())
+            out[p->name] = p->curve;
+    return out;
 }
 
 std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, int height, double frameRate, std::string* error, Role role)
@@ -1710,15 +1774,7 @@ bool Effect::renderImpl(const ParamValues& values, double time, std::vector<cons
     }
     const int w = e.width, h = e.height;
     e.time = time;
-    for (auto& p : e.params.list) {
-        auto it = values.find(p->name);
-        if (it != values.end() && !isStringType(p->type)) {
-            p->curve = it->second;
-            p->curve.resize(size_t(dimensionOf(p->type)));
-        }
-        if (!isStringType(p->type))
-            p->setI(kOfxParamPropIsAnimating, {!keyTimes(*p).empty() ? 1 : 0});
-    }
+    applyValues(e, values);
 
     // Imágenes de abajo arriba (como espera OFX): el puntero a la fila de abajo y un paso negativo.
     // Si la profundidad del plugin no es la de las imágenes, se convierte a la suya.
@@ -1801,6 +1857,300 @@ bool Effect::renderImpl(const ParamValues& values, double time, std::vector<cons
     else
         std::copy(d->outB.begin(), d->outB.end(), static_cast<uint8_t*>(out));
     return true;
+}
+
+} // namespace movix::ofx
+
+// ===================================================================== Interfaz sobre el visor
+
+namespace movix::ofx {
+
+// Contexto OpenGL propio (WGL, compatible con las llamadas clásicas que usan los plugins) sobre una
+// ventana oculta, con un framebuffer del tamaño de la vista. No depende de la plataforma de Qt.
+class GlCanvas {
+public:
+    bool create()
+    {
+#ifdef _WIN32
+        static const ATOM windowClass = [] {
+            WNDCLASSW wc{};
+            wc.style = CS_OWNDC;
+            wc.lpfnWndProc = DefWindowProcW;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = L"MovixOfxOverlay";
+            return RegisterClassW(&wc);
+        }();
+        if (!windowClass)
+            return false;
+        m_window = CreateWindowExW(0, L"MovixOfxOverlay", L"", WS_POPUP, 0, 0, 16, 16, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        m_dc = m_window ? GetDC(m_window) : nullptr;
+        if (!m_dc)
+            return false;
+        PIXELFORMATDESCRIPTOR pfd{};
+        pfd.nSize = sizeof pfd;
+        pfd.nVersion = 1;
+        pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+        pfd.iPixelType = PFD_TYPE_RGBA;
+        pfd.cColorBits = 32;
+        pfd.cAlphaBits = 8;
+        const int format = ChoosePixelFormat(m_dc, &pfd);
+        if (!format || !SetPixelFormat(m_dc, format, &pfd))
+            return false;
+        m_context = wglCreateContext(m_dc);
+        if (!m_context || !makeCurrent())
+            return false;
+        auto load = [](const char* name) { return reinterpret_cast<void*>(wglGetProcAddress(name)); };
+        genFramebuffers = reinterpret_cast<decltype(genFramebuffers)>(load("glGenFramebuffers"));
+        deleteFramebuffers = reinterpret_cast<decltype(deleteFramebuffers)>(load("glDeleteFramebuffers"));
+        bindFramebuffer = reinterpret_cast<decltype(bindFramebuffer)>(load("glBindFramebuffer"));
+        framebufferTexture2D = reinterpret_cast<decltype(framebufferTexture2D)>(load("glFramebufferTexture2D"));
+        checkFramebufferStatus = reinterpret_cast<decltype(checkFramebufferStatus)>(load("glCheckFramebufferStatus"));
+        const bool ok = genFramebuffers && deleteFramebuffers && bindFramebuffer && framebufferTexture2D && checkFramebufferStatus;
+        doneCurrent();
+        return ok; // sin framebuffers (OpenGL 1.1 por software): sin interfaz
+#else
+        return false;
+#endif
+    }
+
+    ~GlCanvas()
+    {
+#ifdef _WIN32
+        if (m_context && makeCurrent()) {
+            if (m_fbo)
+                deleteFramebuffers(1, &m_fbo);
+            if (m_texture)
+                glDeleteTextures(1, &m_texture);
+            doneCurrent();
+        }
+        if (m_context)
+            wglDeleteContext(m_context);
+        if (m_dc)
+            ReleaseDC(m_window, m_dc);
+        if (m_window)
+            DestroyWindow(m_window);
+#endif
+    }
+
+    bool makeCurrent()
+    {
+#ifdef _WIN32
+        return m_context && wglMakeCurrent(m_dc, m_context);
+#else
+        return false;
+#endif
+    }
+
+    void doneCurrent()
+    {
+#ifdef _WIN32
+        wglMakeCurrent(nullptr, nullptr);
+#endif
+    }
+
+    // Activa el contexto con un framebuffer de w × h; el de la ventana deja de usarse.
+    bool bind(int w, int h)
+    {
+        if (!makeCurrent())
+            return false;
+        constexpr GLenum kFramebuffer = 0x8D40, kColorAttachment0 = 0x8CE0, kComplete = 0x8CD5;
+        if (!m_fbo || m_width != w || m_height != h) {
+            if (!m_texture)
+                glGenTextures(1, &m_texture);
+            glBindTexture(GL_TEXTURE_2D, m_texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            if (!m_fbo)
+                genFramebuffers(1, &m_fbo);
+            bindFramebuffer(kFramebuffer, m_fbo);
+            framebufferTexture2D(kFramebuffer, kColorAttachment0, GL_TEXTURE_2D, m_texture, 0);
+            if (checkFramebufferStatus(kFramebuffer) != kComplete)
+                return false;
+            m_width = w;
+            m_height = h;
+        }
+        bindFramebuffer(kFramebuffer, m_fbo);
+        return true;
+    }
+
+    void release()
+    {
+        bindFramebuffer(0x8D40, 0);
+        doneCurrent();
+    }
+
+private:
+#ifdef _WIN32
+    HWND m_window = nullptr;
+    HDC m_dc = nullptr;
+    HGLRC m_context = nullptr;
+#endif
+    GLuint m_fbo = 0, m_texture = 0;
+    int m_width = 0, m_height = 0;
+    void(APIENTRY* genFramebuffers)(GLsizei, GLuint*) = nullptr;
+    void(APIENTRY* deleteFramebuffers)(GLsizei, const GLuint*) = nullptr;
+    void(APIENTRY* bindFramebuffer)(GLenum, GLuint) = nullptr;
+    void(APIENTRY* framebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint) = nullptr;
+    GLenum(APIENTRY* checkFramebufferStatus)(GLenum) = nullptr;
+};
+
+struct Overlay::Impl {
+    Effect* effect = nullptr;
+    OfxPluginEntryPoint* entry = nullptr;
+    InteractObj descriptor;
+    InteractObj instance;
+    bool created = false;
+    GlCanvas gl;
+
+    OfxStatus call(const char* action, InteractObj* handle, PropertySet* in = nullptr)
+    {
+        return guardedEntry(entry, action, handle, asHandle(in), nullptr);
+    }
+
+    // Argumentos comunes de las acciones de dibujo y del ratón.
+    PropertySet args(double time, int viewWidth, int viewHeight)
+    {
+        EffectObj& e = *effect->d->obj;
+        PropertySet a;
+        a.setP(kOfxPropEffectInstance, &e);
+        a.setD(kOfxPropTime, {time});
+        a.setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
+        a.setD(kOfxInteractPropBackgroundColour, {0.0, 0.0, 0.0});
+        a.setI(kOfxInteractPropViewportSize, {viewWidth, viewHeight});
+        a.setD(kOfxInteractPropPixelScale, {double(e.width) / std::max(1, viewWidth), double(e.height) / std::max(1, viewHeight)});
+        instance.setI(kOfxInteractPropViewportSize, {viewWidth, viewHeight});
+        instance.setD(kOfxInteractPropPixelScale, a.nums(kOfxInteractPropPixelScale));
+        return a;
+    }
+
+    // Framebuffer de la vista, proyección en coordenadas de la imagen y todo transparente.
+    bool begin(int viewWidth, int viewHeight)
+    {
+        if (!gl.bind(viewWidth, viewHeight))
+            return false;
+        const EffectObj& e = *effect->d->obj;
+        glViewport(0, 0, viewWidth, viewHeight);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho(0.0, double(e.width), 0.0, double(e.height), -1.0, 1.0);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_LINE_SMOOTH);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        return true;
+    }
+
+    ~Impl()
+    {
+        if (created) {
+            gl.makeCurrent();
+            call(kOfxActionDestroyInstance, &instance);
+            gl.doneCurrent();
+        }
+    }
+};
+
+Overlay::Overlay(std::unique_ptr<Impl> impl) : d(std::move(impl)) {}
+
+Overlay::~Overlay() = default;
+
+std::unique_ptr<Overlay> Overlay::create(Effect& effect, std::string* error)
+{
+    LoadedPlugin& plugin = *effect.d->plugin;
+    auto* entry = reinterpret_cast<OfxPluginEntryPoint*>(plugin.contextDescriptor->ptr(kOfxImageEffectPluginPropOverlayInteractV1));
+    if (!entry)
+        return nullptr;
+    auto impl = std::make_unique<Impl>();
+    impl->effect = &effect;
+    impl->entry = entry;
+    if (!impl->gl.create()) {
+        if (error)
+            *error = "No se pudo crear el contexto OpenGL para la interfaz de " + plugin.info->label + ".";
+        return nullptr;
+    }
+    for (InteractObj* o : {&impl->descriptor, &impl->instance}) {
+        o->setI(kOfxInteractPropHasAlpha, {1});
+        o->setI(kOfxInteractPropBitDepth, {8});
+    }
+    if (!ok(impl->call(kOfxActionDescribe, &impl->descriptor))) {
+        if (error)
+            *error = "La interfaz de " + plugin.info->label + " no se pudo describir.";
+        return nullptr;
+    }
+    InteractObj& i = impl->instance;
+    static_cast<PropertySet&>(i) = static_cast<const PropertySet&>(impl->descriptor);
+    i.setP(kOfxPropEffectInstance, effect.d->obj.get());
+    i.setP(kOfxPropInstanceData, nullptr);
+    i.setD(kOfxInteractPropPixelScale, {1.0, 1.0});
+    i.setD(kOfxInteractPropBackgroundColour, {0.0, 0.0, 0.0});
+    i.setD(kOfxInteractPropSuggestedColour, {1.0, 1.0, 1.0});
+    i.setI(kOfxInteractPropViewportSize, {effect.width(), effect.height()});
+    i.setS(kOfxInteractPropSlaveToParam, {});
+    // Algunos plugins consultan OpenGL al crearse: con el contexto ya activo.
+    impl->gl.makeCurrent();
+    const bool created = ok(impl->call(kOfxActionCreateInstance, &i));
+    impl->gl.doneCurrent();
+    if (!created) {
+        if (error)
+            *error = "La interfaz de " + plugin.info->label + " no se pudo iniciar.";
+        return nullptr;
+    }
+    impl->created = true;
+    return std::unique_ptr<Overlay>(new Overlay(std::move(impl)));
+}
+
+bool Overlay::draw(const ParamValues& values, double time, int viewWidth, int viewHeight, std::vector<uint8_t>& rgba)
+{
+    if (viewWidth <= 0 || viewHeight <= 0)
+        return false;
+    EffectObj& e = *d->effect->d->obj;
+    e.time = time;
+    applyValues(e, values);
+    if (!d->begin(viewWidth, viewHeight)) {
+        d->gl.doneCurrent();
+        return false;
+    }
+    PropertySet a = d->args(time, viewWidth, viewHeight);
+    d->call(kOfxInteractActionDraw, &d->instance, &a);
+    // El plugin puede haber dejado estados cambiados: se lee con los de lectura por defecto.
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    std::vector<uint8_t> bottomUp(size_t(viewWidth) * size_t(viewHeight) * 4);
+    glReadPixels(0, 0, viewWidth, viewHeight, GL_RGBA, GL_UNSIGNED_BYTE, bottomUp.data());
+    d->gl.release();
+    const size_t row = size_t(viewWidth) * 4;
+    rgba.resize(bottomUp.size());
+    for (int y = 0; y < viewHeight; ++y)
+        std::memcpy(rgba.data() + size_t(y) * row, bottomUp.data() + size_t(viewHeight - 1 - y) * row, row);
+    return true;
+}
+
+bool Overlay::pen(Pen kind, double x, double y, double time, int viewWidth, int viewHeight, ParamValues& values)
+{
+    EffectObj& e = *d->effect->d->obj;
+    e.time = time;
+    applyValues(e, values);
+    PropertySet a = d->args(time, viewWidth, viewHeight);
+    const double sx = double(e.width) / std::max(1, viewWidth), sy = double(e.height) / std::max(1, viewHeight);
+    a.setD(kOfxInteractPropPenPosition, {x * sx, (viewHeight - y) * sy});
+    a.setI(kOfxInteractPropPenViewportPosition, {int(std::lround(x)), int(std::lround(viewHeight - y))});
+    a.setD(kOfxInteractPropPenPressure, {kind == Pen::Up ? 0.0 : 1.0});
+    const char* action = kind == Pen::Down ? kOfxInteractActionPenDown : kind == Pen::Up ? kOfxInteractActionPenUp : kOfxInteractActionPenMotion;
+    d->gl.makeCurrent();
+    const OfxStatus st = d->call(action, &d->instance, &a);
+    d->gl.doneCurrent();
+    values = d->effect->values();
+    return st == kOfxStatOK;
+}
+
+bool Overlay::takeRedraw()
+{
+    return std::exchange(d->instance.redraw, false);
 }
 
 } // namespace movix::ofx

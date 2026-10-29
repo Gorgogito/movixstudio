@@ -404,11 +404,18 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       se describe en cada papel que admite (filtro, generador o transición), con sus parámetros de
       ese contexto. Verificado con plugins propios y con los ejemplos oficiales Noise, Rectangle
       (generadores) y Cross Fade (transición)
+- [x] Interfaz de los plugins OpenFX sobre el visor (overlays): el botón ◎ del efecto (o del
+      generador) la muestra sobre su capa. El plugin dibuja con OpenGL en un contexto propio fuera de
+      pantalla (WGL, sin depender del visor Direct3D) y recibe el ratón en las coordenadas de su
+      imagen; los parámetros que cambia pasan al proyecto como una edición (un paso de deshacer por
+      arrastre, con keyframe si el parámetro está animado), y lo que no usa pasa a mover el clip.
+      Verificado con un plugin propio y con el ejemplo oficial Overlay
 
 ### Limitaciones de OpenFX
 
-- Sin interfaces propias de los plugins (overlays) ni los contextos de retoque, cambio de velocidad,
-  lectura o escritura. Los parámetros de las transiciones no se animan.
+- Sin los contextos de retoque, cambio de velocidad, lectura o escritura. Los parámetros de las
+  transiciones no se animan. La interfaz sobre el visor no recibe el teclado y solo funciona en
+  Windows (OpenGL por WGL).
 - Se renderiza en la CPU: los clips con efectos no usan la copia cero.
 
 ### Pendiente de comprobar

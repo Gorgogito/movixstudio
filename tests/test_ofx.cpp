@@ -1,3 +1,4 @@
+#include "OfxOverlayItem.h"
 #include "ProjectController.h"
 #include "TestMedia.h"
 #include "core/Edits.h"
@@ -10,6 +11,7 @@
 #include "playback/TimelinePlayer.h"
 #include "render/OffscreenRenderer.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <QString>
@@ -335,6 +337,60 @@ TEST_CASE("OpenFX: clips generadores y transiciones en la línea de tiempo", "[o
     CHECK(clip != kNoId);
 }
 
+TEST_CASE("OpenFX: interfaz del plugin sobre el visor", "[ofx][overlay]")
+{
+    useTestPlugins();
+    const auto info = ofx::Registry::instance().find(kRect, ofx::Role::Filter);
+    REQUIRE(info);
+    CHECK(info->hasOverlay);
+    CHECK_FALSE(ofx::Registry::instance().find(kGain)->hasOverlay);
+    std::string error;
+    auto gain = ofx::Effect::create(kGain, 64, 32, 25.0, &error);
+    REQUIRE(gain);
+    CHECK_FALSE(ofx::Overlay::create(*gain));
+
+    // Imagen del efecto de 64×32 vista a 128×64: rectángulo de la mitad, centrado.
+    auto effect = ofx::Effect::create(kRect, 64, 32, 25.0, &error);
+    REQUIRE(effect);
+    auto overlay = ofx::Overlay::create(*effect, &error);
+    INFO(error);
+    REQUIRE(overlay);
+    constexpr int VW = 128, VH = 64;
+    ofx::ParamValues values = ofx::withDefaults(*info, {});
+    std::vector<uint8_t> rgba;
+    auto alpha = [&](int x, int y) { return int(rgba[(size_t(y) * VW + size_t(x)) * 4 + 3]); };
+    REQUIRE(overlay->draw(values, 0, VW, VH, rgba));
+    REQUIRE(rgba.size() == size_t(VW) * VH * 4);
+    CHECK(alpha(32, 24) > 100); // borde izquierdo del rectángulo
+    CHECK(alpha(95, 40) > 100); // borde derecho
+    CHECK(alpha(64, 32) > 100); // cruz del centro
+    CHECK(alpha(45, 40) == 0);  // dentro, sin nada
+    CHECK(alpha(5, 5) == 0);
+    CHECK(int(rgba[(size_t(24) * VW + 32) * 4]) > 200); // blanco
+
+    // Arrastrar el centro: el plugin cambia su parámetro (fracciones de la imagen, y hacia arriba).
+    CHECK_FALSE(overlay->pen(ofx::Overlay::Pen::Down, 5, 5, 0, VW, VH, values)); // lejos: no lo usa
+    REQUIRE(overlay->pen(ofx::Overlay::Pen::Down, 64, 32, 0, VW, VH, values));
+    REQUIRE(overlay->pen(ofx::Overlay::Pen::Motion, 84, 22, 0, VW, VH, values));
+    REQUIRE(values.at("center").size() == 2);
+    CHECK(values.at("center")[0].at(0) == Catch::Approx(84.0 / VW));
+    CHECK(values.at("center")[1].at(0) == Catch::Approx(1.0 - 22.0 / VH));
+    CHECK(overlay->pen(ofx::Overlay::Pen::Up, 84, 22, 0, VW, VH, values));
+    CHECK_FALSE(overlay->pen(ofx::Overlay::Pen::Motion, 100, 10, 0, VW, VH, values)); // ya no arrastra
+    // Se dibuja en el sitio nuevo, y con keyframes el cambio va al instante del ratón.
+    REQUIRE(overlay->draw(values, 0, VW, VH, rgba));
+    CHECK(alpha(84, 22) > 100);
+    CHECK(alpha(64, 32) == 0);
+    values["center"] = {Animated(0.5), Animated(0.5)};
+    values["center"][0].setKey(0, 0.5);
+    values["center"][1].setKey(0, 0.5);
+    REQUIRE(overlay->pen(ofx::Overlay::Pen::Down, 64, 32, 10, VW, VH, values));
+    REQUIRE(overlay->pen(ofx::Overlay::Pen::Motion, 32, 32, 10, VW, VH, values));
+    CHECK(values.at("center")[0].keys.size() == 2);
+    CHECK(values.at("center")[0].at(10) == Catch::Approx(0.25));
+    CHECK(values.at("center")[0].at(0) == Catch::Approx(0.5));
+}
+
 TEST_CASE("OpenFX: parámetros con keyframes", "[ofx]")
 {
     useTestPlugins();
@@ -422,6 +478,19 @@ TEST_CASE("OpenFX: plugins de terceros de una carpeta", "[ofx][externos]")
             size_t changed = 0;
             for (size_t i = 0; i < out.size(); ++i)
                 changed += out[i] != in[i] ? 1 : 0;
+            if (p.hasOverlay) { // su interfaz sobre el visor, a doble tamaño
+                auto overlay = ofx::Overlay::create(*effect, &error);
+                REQUIRE(overlay);
+                std::vector<uint8_t> view;
+                REQUIRE(overlay->draw(values, 0, W * 2, H * 2, view));
+                size_t drawn = 0;
+                for (size_t i = 3; i < view.size(); i += 4)
+                    drawn += view[i] > 0 ? 1 : 0;
+                ofx::ParamValues after = values;
+                overlay->pen(ofx::Overlay::Pen::Down, W, H, 0, W * 2, H * 2, after);
+                overlay->pen(ofx::Overlay::Pen::Up, W, H, 0, W * 2, H * 2, after);
+                WARN(p.label << ": interfaz sobre el visor con " << drawn << " píxeles dibujados");
+            }
             WARN(p.label << " (" << p.id << ", " << p.context << ", " << p.params.size() << " parámetros, "
                          << (p.floatImages ? "float" : "8 bits") << "): " << changed << " valores distintos de la entrada; píxel (0,0) = "
                          << int(out[0]) << "," << int(out[1]) << "," << int(out[2]) << "," << int(out[3]));
@@ -829,6 +898,36 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         project.endInteraction();
         CHECK(genParam("color")["value"].toList() == QVariantList{0.0, 1.0, 0.0, 1.0});
 
+        // Su interfaz sobre el visor: arrastrar el centro cambia el parámetro, en un paso de deshacer.
+        CHECK(generator[0].toMap()["hasOverlay"].toBool());
+        CHECK(project.ofxOverlay().isEmpty());
+        project.toggleOfxOverlay(gen, edit::kOfxGenerator);
+        CHECK(project.ofxOverlay()["index"].toInt() == edit::kOfxGenerator);
+        {
+            OfxOverlayItem item;
+            item.setSize(QSizeF(192, 108));
+            item.setProject(&project);
+            item.setIndex(edit::kOfxGenerator);
+            item.setClipId(gen);
+            REQUIRE(item.available());
+            CHECK_FALSE(item.image().isNull());
+            const QImage overlayImage = item.image();
+            CHECK(qAlpha(overlayImage.pixel(96, 54)) > 100); // la cruz del centro
+            CHECK_FALSE(item.pen(ofx::Overlay::Pen::Down, QPointF(10, 10)));
+            REQUIRE(item.pen(ofx::Overlay::Pen::Down, QPointF(96, 54)));
+            item.pen(ofx::Overlay::Pen::Motion, QPointF(110, 54));
+            item.pen(ofx::Overlay::Pen::Motion, QPointF(120, 54));
+            item.pen(ofx::Overlay::Pen::Up, QPointF(120, 54));
+            const QVariantList center = genParam("center")["value"].toList();
+            REQUIRE(center.size() == 2);
+            CHECK(center[0].toDouble() == Catch::Approx(120.0 / 192));
+            CHECK(center[1].toDouble() == Catch::Approx(0.5));
+            project.undo();
+            CHECK(genParam("center")["value"].toList()[0].toDouble() == Catch::Approx(0.5));
+        }
+        project.toggleOfxOverlay(gen, edit::kOfxGenerator);
+        CHECK(project.ofxOverlay().isEmpty());
+
         // Transición OpenFX en el corte entre dos generadores.
         REQUIRE(project.addGenerator(QString::fromStdString(kRect), qint64(project.project().trackOfClip(Id(gen))->id),
                                      project.project().findClip(Id(gen))->end()));
@@ -847,6 +946,17 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         project.setOfxParam(second, edit::kOfxTransition, "mix", {1});
         project.endInteraction();
         CHECK(project.ofxEffects(second, "transition")[0].toMap()["params"].toList()[0].toMap()["value"].toList() == QVariantList{1.0});
+        // Lo que hace la línea de tiempo al soltar: un generador en una pista y un fotograma, y una
+        // transición OpenFX en el corte más cercano.
+        const qint64 track = qint64(project.project().trackOfClip(Id(gen))->id);
+        const FramePos after = project.project().findClip(Id(second))->end();
+        REQUIRE(project.addGenerator(QString::fromStdString(kRect), track, after));
+        const qint64 third = project.selection()[0].toLongLong();
+        CHECK(project.project().findClip(Id(third))->start == after);
+        CHECK(project.project().trackOfClip(Id(third))->id == Id(track));
+        REQUIRE(project.dropTransition("ofx:" + QString::fromStdString(kWipe), track, after + 3));
+        CHECK(project.selection()[0].toLongLong() == third);
+        CHECK(project.clipInfo(third)["transitionPlugin"].toString() == QString::fromStdString(kWipe));
         // Cambiar la duración desde el inspector («ofx» a secas) conserva el plugin.
         REQUIRE(project.setTransition(second, "ofx", 1.0));
         CHECK(project.clipInfo(second)["transitionPlugin"].toString() == QString::fromStdString(kWipe));

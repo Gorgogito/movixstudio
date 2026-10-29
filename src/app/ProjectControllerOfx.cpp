@@ -228,6 +228,7 @@ QVariantList ProjectController::ofxEffects(qint64 clipId, const QString& kind) c
                                {"label", info ? QString::fromStdString(info->label) : QString::fromStdString(e.pluginId)},
                                {"enabled", e.enabled},
                                {"installed", info != nullptr},
+                               {"hasOverlay", info && info->hasOverlay},
                                {"params", params}});
     }
     return out;
@@ -305,4 +306,45 @@ void ProjectController::setOfxKeyInterpolation(qint64 clipId, int index, const Q
     const FramePos rel = clipRel(*c, m_player->positionFrame());
     apply(tr("Interpolación del keyframe"),
           [&](Project& p) { return edit::setOfxKeyInterpolation(p, Id(clipId), index, name.toStdString(), rel, mode); });
+}
+
+QVariantMap ProjectController::ofxOverlay() const
+{
+    if (!m_overlayClip)
+        return {};
+    return {{"clipId", m_overlayClip}, {"index", m_overlayIndex}};
+}
+
+void ProjectController::toggleOfxOverlay(qint64 clipId, int index)
+{
+    const bool same = m_overlayClip == clipId && m_overlayIndex == index;
+    m_overlayClip = same ? 0 : clipId;
+    m_overlayIndex = index;
+    emit ofxOverlayChanged();
+}
+
+const OfxEffect* ProjectController::ofxEffectAt(qint64 clipId, int index, ofx::Role* role) const
+{
+    const Clip* c = project().findClip(Id(clipId));
+    ofx::Role r = ofx::Role::Filter;
+    const OfxEffect* e = c ? effectAt(*c, index, r) : nullptr;
+    if (role)
+        *role = r;
+    return e;
+}
+
+QSize ProjectController::ofxImageSize(qint64 clipId) const
+{
+    // La del medio en los clips de video; la del lienzo en los generados y los compuestos.
+    const Clip* c = project().findClip(Id(clipId));
+    const MediaItem* m = c && !c->isGenerated() ? project().findMedia(c->mediaId) : nullptr;
+    if (m && m->width > 0 && m->height > 0)
+        return {m->width, m->height};
+    return {project().settings.width, project().settings.height};
+}
+
+FramePos ProjectController::ofxFrame(qint64 clipId) const
+{
+    const Clip* c = project().findClip(Id(clipId));
+    return c ? clipRel(*c, m_player->positionFrame()) : 0;
 }

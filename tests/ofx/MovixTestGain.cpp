@@ -2,10 +2,18 @@
 // terceros, para comprobar el anfitrión de MovixStudio:
 // - Ganancia (filtro): multiplica el color por una ganancia y un tinte, opcionalmente solo en un
 //   canal, y puede invertirlo.
-// - Rectángulo (generador y filtro): un rectángulo de color centrado; como generador, sobre fondo
-//   transparente; como filtro, encima del clip.
+// - Rectángulo (generador y filtro): un rectángulo de color; como generador, sobre fondo
+//   transparente; como filtro, encima del clip. Tiene interfaz sobre el visor (OpenGL): dibuja su
+//   contorno y se mueve arrastrando su centro.
 // - Barrido (transición): la imagen de destino entra desde la izquierda, o por mezcla.
 #include "ofxsImageEffect.h"
+#include "ofxsInteract.h"
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <GL/gl.h>
 
 #include <algorithm>
 #include <cmath>
@@ -51,6 +59,7 @@ public:
             src_ = fetchClip(kOfxImageEffectSimpleSourceClipName);
         color_ = fetchRGBAParam("color");
         size_ = fetchDoubleParam("size");
+        center_ = fetchDouble2DParam("center");
     }
 
     void render(const OFX::RenderArguments& args) override
@@ -62,11 +71,13 @@ public:
         double color[4];
         color_->getValueAtTime(args.time, color[0], color[1], color[2], color[3]);
         const double size = size_->getValueAtTime(args.time);
+        double cx = 0.5, cy = 0.5; // centro en fracciones de la imagen (y hacia arriba, como OFX)
+        center_->getValueAtTime(args.time, cx, cy);
         const bool isFloat = dst->getPixelDepth() == OFX::eBitDepthFloat;
         const OfxRectI b = dst->getBounds();
         const double w = b.x2 - b.x1, h = b.y2 - b.y1;
-        const double x0 = b.x1 + w * (1 - size) / 2, x1 = b.x1 + w * (1 + size) / 2;
-        const double y0 = b.y1 + h * (1 - size) / 2, y1 = b.y1 + h * (1 + size) / 2;
+        const double x0 = b.x1 + w * (cx - size / 2), x1 = b.x1 + w * (cx + size / 2);
+        const double y0 = b.y1 + h * (cy - size / 2), y1 = b.y1 + h * (cy + size / 2);
         const OfxRectI win = args.renderWindow;
         for (int y = win.y1; y < win.y2; ++y)
             for (int x = win.x1; x < win.x2; ++x) {
@@ -85,7 +96,81 @@ private:
     OFX::Clip* src_ = nullptr;
     OFX::RGBAParam* color_ = nullptr;
     OFX::DoubleParam* size_ = nullptr;
+    OFX::Double2DParam* center_ = nullptr;
 };
+
+// Interfaz sobre el visor: contorno del rectángulo (blanco; amarillo mientras se arrastra) y una cruz
+// en el centro, que se arrastra para moverlo. Coordenadas canónicas: píxeles de la imagen desde abajo.
+class RectOverlay : public OFX::OverlayInteract {
+public:
+    RectOverlay(OfxInteractHandle handle, OFX::ImageEffect* effect) : OFX::OverlayInteract(handle)
+    {
+        _effect = effect;
+        center_ = effect->fetchDouble2DParam("center");
+        size_ = effect->fetchDoubleParam("size");
+    }
+
+    bool draw(const OFX::DrawArgs& args) override
+    {
+        const OfxPointD project = _effect->getProjectSize();
+        double cx = 0.5, cy = 0.5;
+        center_->getValueAtTime(args.time, cx, cy);
+        const double size = size_->getValueAtTime(args.time);
+        const double x = cx * project.x, y = cy * project.y, hw = size * project.x / 2, hh = size * project.y / 2;
+        const double arm = 10 * args.pixelScale.x; // 10 píxeles de pantalla
+        if (dragging_)
+            glColor3f(1.0f, 1.0f, 0.0f);
+        else
+            glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(2.0f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2d(x - hw, y - hh);
+        glVertex2d(x + hw, y - hh);
+        glVertex2d(x + hw, y + hh);
+        glVertex2d(x - hw, y + hh);
+        glEnd();
+        glBegin(GL_LINES);
+        glVertex2d(x - arm, y);
+        glVertex2d(x + arm, y);
+        glVertex2d(x, y - arm);
+        glVertex2d(x, y + arm);
+        glEnd();
+        return true;
+    }
+
+    bool penDown(const OFX::PenArgs& args) override
+    {
+        const OfxPointD project = _effect->getProjectSize();
+        double cx = 0.5, cy = 0.5;
+        center_->getValueAtTime(args.time, cx, cy);
+        const double grab = 12 * args.pixelScale.x;
+        dragging_ = std::abs(args.penPosition.x - cx * project.x) <= grab && std::abs(args.penPosition.y - cy * project.y) <= grab;
+        return dragging_;
+    }
+
+    bool penMotion(const OFX::PenArgs& args) override
+    {
+        if (!dragging_)
+            return false;
+        const OfxPointD project = _effect->getProjectSize();
+        center_->setValue(args.penPosition.x / project.x, args.penPosition.y / project.y);
+        return true;
+    }
+
+    bool penUp(const OFX::PenArgs&) override
+    {
+        const bool was = dragging_;
+        dragging_ = false;
+        return was;
+    }
+
+private:
+    OFX::Double2DParam* center_ = nullptr;
+    OFX::DoubleParam* size_ = nullptr;
+    bool dragging_ = false;
+};
+
+class RectOverlayDescriptor : public OFX::DefaultEffectOverlayDescriptor<RectOverlayDescriptor, RectOverlay> {};
 
 class RectFactory : public OFX::PluginFactoryHelper<RectFactory> {
 public:
@@ -98,6 +183,7 @@ public:
         desc.addSupportedContext(OFX::eContextGenerator);
         desc.addSupportedContext(OFX::eContextFilter);
         describeCommon(desc);
+        desc.setOverlayInteractDescriptor(new RectOverlayDescriptor);
     }
 
     void describeInContext(OFX::ImageEffectDescriptor& desc, OFX::ContextEnum context) override
@@ -113,6 +199,11 @@ public:
         size->setDefault(0.5);
         size->setRange(0.0, 1.0);
         size->setDisplayRange(0.0, 1.0);
+        OFX::Double2DParamDescriptor* center = desc.defineDouble2DParam("center");
+        center->setLabels("Centro", "Centro", "Centro");
+        center->setDoubleType(OFX::eDoubleTypePlain);
+        center->setDefault(0.5, 0.5);
+        center->setDisplayRange(0.0, 0.0, 1.0, 1.0);
         // Solo como generador: un parámetro más (cada contexto describe los suyos).
         if (context == OFX::eContextGenerator) {
             OFX::BooleanParamDescriptor* unused = desc.defineBooleanParam("generatorOnly");

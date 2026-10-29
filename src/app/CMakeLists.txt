@@ -12,6 +12,7 @@ qt_add_executable(MovixStudio WIN32
     Waveform.h Waveform.cpp
     TimelineModels.h TimelineModels.cpp
     ProjectController.h ProjectController.cpp ProjectControllerColor.cpp ProjectControllerOfx.cpp
+    OfxOverlayItem.h OfxOverlayItem.cpp
     ExportController.h ExportController.cpp
     AiController.h AiController.cpp
     UpdateController.h UpdateController.cpp

@@ -14,11 +14,17 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
+#include <QSize>
+
 #include <memory>
 #include <atomic>
 #include <map>
 #include <mutex>
 #include <optional>
+
+namespace movix::ofx {
+enum class Role;
+}
 
 // Controlador del proyecto abierto: une la interfaz con el núcleo (historial, ediciones, archivo),
 // mantiene sincronizados los modelos y el reproductor, y se ocupa del autoguardado.
@@ -315,6 +321,16 @@ public:
     // Keyframe del parámetro en el cabezal (añadir o quitar) y cómo se llega al siguiente.
     Q_INVOKABLE void toggleOfxKeyframe(qint64 clipId, int index, const QString& name);
     Q_INVOKABLE void setOfxKeyInterpolation(qint64 clipId, int index, const QString& name, const QString& interp);
+    // Interfaz del plugin sobre el visor: la del efecto `index` del clip ({clipId, index}; vacío si
+    // no se muestra ninguna). Mostrar la de otro efecto oculta la anterior; la misma, la quita.
+    Q_PROPERTY(QVariantMap ofxOverlay READ ofxOverlay NOTIFY ofxOverlayChanged)
+    QVariantMap ofxOverlay() const;
+    Q_INVOKABLE void toggleOfxOverlay(qint64 clipId, int index);
+    // Para la interfaz sobre el visor: el efecto (con su papel), el tamaño de la imagen que recibe
+    // y el fotograma del clip en el cabezal.
+    const movix::core::OfxEffect* ofxEffectAt(qint64 clipId, int index, movix::ofx::Role* role) const;
+    QSize ofxImageSize(qint64 clipId) const;
+    movix::core::FramePos ofxFrame(qint64 clipId) const;
 
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);
@@ -353,6 +369,7 @@ signals:
     void templatesChanged();
     void scriptsChanged();
     void ofxPluginsChanged();
+    void ofxOverlayChanged();
     void proxiesChanged();
 
 private:
@@ -402,4 +419,6 @@ private:
     movix::core::edit::Clipboard m_clipboard;
     std::optional<movix::core::AnimatedGrade> m_colorClipboard;
     bool m_insertMode = false;
+    qint64 m_overlayClip = 0; // 0: ninguna interfaz OpenFX sobre el visor
+    int m_overlayIndex = 0;
 };

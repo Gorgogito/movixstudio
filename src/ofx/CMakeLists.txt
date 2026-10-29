@@ -7,6 +7,7 @@ add_library(movix_ofx STATIC
 )
 
 target_include_directories(movix_ofx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(movix_ofx PUBLIC Qt6::Core movix_core PRIVATE unofficial::openfx::OpenFx)
+# OpenGL: la interfaz de los plugins sobre el visor la dibujan ellos con OpenGL.
+target_link_libraries(movix_ofx PUBLIC Qt6::Core movix_core PRIVATE unofficial::openfx::OpenFx opengl32)
 target_compile_definitions(movix_ofx PRIVATE MOVIX_VERSION="${PROJECT_VERSION}" MOVIX_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
     MOVIX_VERSION_MINOR=${PROJECT_VERSION_MINOR} MOVIX_VERSION_PATCH=${PROJECT_VERSION_PATCH})
