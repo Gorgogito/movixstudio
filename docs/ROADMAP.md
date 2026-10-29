@@ -178,7 +178,9 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
 ### Limitaciones conocidas
 
 - La IA se ejecuta en la CPU. La GPU (DirectML o CUDA) queda pendiente de decidir: el paquete de
-  DirectML incluye un redistribuible propietario de Microsoft.
+  DirectML incluye un redistribuible propietario de Microsoft. *(Resuelto en F5 sin componentes propietarios:
+  Whisper con Vulkan y los modelos ONNX con WebGPU. Kokoro y Opus-MT siguen en la CPU porque en la
+  GPU van más lentos; ver F6.)*
 - El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
   menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*). *(Búsqueda
   en haz: resuelto en F6.)*
@@ -410,6 +412,15 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       imagen; los parámetros que cambia pasan al proyecto como una edición (un paso de deshacer por
       arrastre, con keyframe si el parámetro está animado), y lo que no usa pasa a mover el clip.
       Verificado con un plugin propio y con el ejemplo oficial Overlay
+- [x] IA en la GPU para el resto de modelos: medido y descartado. Whisper ya usa Vulkan y los
+      modelos de imagen y HTDemucs, WebGPU; Silero VAD es diminuto. Kokoro y Opus-MT son modelos
+      pequeños en los que el coste de cada llamada a la GPU pesa más que el cálculo: sus versiones
+      de 8 bits usan operadores enteros que WebGPU no tiene (576 y 476 nodos a la CPU) y van más
+      lentas que en la CPU (traducir 6 frases: 3,4 s en la CPU, 5,6 s en la GPU; Kokoro: ~0,5 s por
+      frase en la CPU, 0,6–1 s en la GPU). En fp32, Kokoro acierta en la GPU pero tarda el doble que
+      en la CPU; en fp16 da NaN. Opus-MT en q4f16 (`MatMulNBits`) empata en la GPU con la CPU
+      (en haz, 2,4 s; la voraz, 2,9 s en la GPU y 2,2 s en la CPU), y en la CPU es un 35 % más
+      rápido que el de 8 bits: queda como posible mejora de la CPU, no de la GPU
 
 ### Limitaciones de OpenFX
 
