@@ -379,7 +379,7 @@ Rectangle {
                     id: drop
                     width: view.contentWidth
                     height: view.contentHeight
-                    keys: ["application/x-movix-media", "application/x-movix-title", "application/x-movix-transition"]
+                    keys: ["application/x-movix-media", "application/x-movix-title", "application/x-movix-generator", "application/x-movix-transition"]
                     property real frame: -1
                     property int row: -1
                     onPositionChanged: (d) => {
@@ -402,6 +402,9 @@ Rectangle {
                         else if (d.formats.indexOf("application/x-movix-title") >= 0)
                             timeline.project.addTitle(Number(d.getDataAsString("application/x-movix-title")),
                                                       row < timeline.project.videoTrackCount ? trackId : -1, frame)
+                        else if (d.formats.indexOf("application/x-movix-generator") >= 0)
+                            timeline.project.addGenerator(d.getDataAsString("application/x-movix-generator"),
+                                                          row < timeline.project.videoTrackCount ? trackId : -1, frame)
                         else if (trackId >= 0)
                             timeline.project.placeMedia(Number(d.getDataAsString("application/x-movix-media")), trackId, frame)
                         timeline.activated()

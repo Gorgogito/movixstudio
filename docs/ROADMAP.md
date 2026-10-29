@@ -392,11 +392,23 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       señal del proyecto si es HDR. Con un efecto neutro se ve igual que sin él (≤ 1/255; HDR10,
       idéntico). Lo que no se ve dentro del compuesto sigue sin verse aunque el plugin cambie su
       color. Al deshacer el compuesto sus efectos se pierden, como su color y sus máscaras
+- [x] Generadores OpenFX: un plugin con contexto de generador crea un clip propio, como un título
+      (pestaña Títulos → Generadores OpenFX: se arrastra a la línea de tiempo o con doble clic en el
+      cabezal). Sus parámetros, con keyframes, van en las propiedades del clip, y admite efectos,
+      color, máscaras y transformación como cualquier clip. En SDR Rec.709, en coma flotante si el
+      plugin la admite; en el archivo (`.mxproj` v10) y en OTIO (`GeneratorReference`)
+- [x] Transiciones OpenFX: los plugins con contexto de transición aparecen junto a las propias
+      (pestaña Transiciones y propiedades del clip, con sus parámetros fijos). Cada lado del corte
+      se compone en memoria con todo lo suyo y el plugin recibe las dos imágenes y el progreso; si
+      falta el plugin queda una disolvencia. En OTIO viaja el plugin con sus parámetros. Cada plugin
+      se describe en cada papel que admite (filtro, generador o transición), con sus parámetros de
+      ese contexto. Verificado con plugins propios y con los ejemplos oficiales Noise, Rectangle
+      (generadores) y Cross Fade (transición)
 
 ### Limitaciones de OpenFX
 
-- Sin interfaces propias de los plugins (overlays) y sin contextos que no sean filtros
-  (generadores, transiciones).
+- Sin interfaces propias de los plugins (overlays) ni los contextos de retoque, cambio de velocidad,
+  lectura o escritura. Los parámetros de las transiciones no se animan.
 - Se renderiza en la CPU: los clips con efectos no usan la copia cero.
 
 ### Pendiente de comprobar

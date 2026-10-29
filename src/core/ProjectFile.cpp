@@ -18,7 +18,7 @@ namespace {
 const QString kFormatName = QStringLiteral("movixstudio-project");
 
 // Nombres estables de los enumerados en el archivo (no dependen del orden en el código).
-const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
+const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft", "ofx"};
 const char* const kInterpolationNames[] = {"linear", "hold", "smooth"};
 const char* const kBlendNames[] = {"normal",    "multiply",  "screen",    "overlay",    "darken",    "lighten", "colorDodge",
                                    "colorBurn", "hardLight", "softLight", "difference", "exclusion", "add",     "subtract"};
@@ -117,6 +117,34 @@ TitleStyle titleFromJson(const QJsonObject& o)
     s.animOut = enumFromName(o["animOut"].toString(), kTextAnimationNames, TextAnimation::None);
     s.animSeconds = std::clamp(o["animSeconds"].toDouble(s.animSeconds), 0.05, 10.0);
     return s;
+}
+
+QJsonObject ofxEffectToJson(const OfxEffect& e)
+{
+    QJsonObject params;
+    for (const auto& [name, components] : e.params) {
+        QJsonArray v; // cada componente, un número o (animado) sus keyframes
+        for (const Animated& a : components)
+            v.append(animatedToJson(a));
+        params[QString::fromStdString(name)] = v;
+    }
+    return QJsonObject{{"plugin", QString::fromStdString(e.pluginId)}, {"enabled", e.enabled}, {"params", params}};
+}
+
+OfxEffect ofxEffectFromJson(const QJsonObject& o)
+{
+    OfxEffect e;
+    e.pluginId = o["plugin"].toString().toStdString();
+    e.enabled = o["enabled"].toBool(true);
+    const QJsonObject params = o["params"].toObject();
+    for (auto it = params.begin(); it != params.end(); ++it) {
+        std::vector<Animated> components;
+        for (const QJsonValue& x : it.value().toArray())
+            components.push_back(animatedFromJson(x, 0.0));
+        if (!components.empty())
+            e.params[it.key().toStdString()] = std::move(components);
+    }
+    return e;
 }
 
 namespace {
@@ -358,23 +386,20 @@ QJsonObject trackToJson(const Track& t, const QDir& projectDir)
             o["multicam"] = QJsonObject{{"angle", c.angle}, {"audioAngle", c.audioAngle}};
         if (c.title)
             o["title"] = titleToJson(*c.title);
-        if (c.transitionIn.active())
-            o["transitionIn"] = QJsonObject{{"type", QLatin1String(kTransitionNames[int(c.transitionIn.type)])},
-                                            {"duration", qint64(c.transitionIn.duration)}};
+        if (c.generator)
+            o["generator"] = ofxEffectToJson(*c.generator);
+        if (c.transitionIn.active()) {
+            QJsonObject ti{{"type", QLatin1String(kTransitionNames[int(c.transitionIn.type)])}, {"duration", qint64(c.transitionIn.duration)}};
+            if (c.transitionIn.type == TransitionType::Ofx)
+                ti["ofx"] = ofxEffectToJson(c.transitionIn.ofx);
+            o["transitionIn"] = ti;
+        }
         if (!c.color.isIdentity())
             o["color"] = animatedGradeToJson(c.color, projectDir);
         if (!c.ofx.empty()) {
             QJsonArray effects;
-            for (const OfxEffect& e : c.ofx) {
-                QJsonObject params;
-                for (const auto& [name, components] : e.params) {
-                    QJsonArray v; // cada componente, un número o (animado) sus keyframes
-                    for (const Animated& a : components)
-                        v.append(animatedToJson(a));
-                    params[QString::fromStdString(name)] = v;
-                }
-                effects.append(QJsonObject{{"plugin", QString::fromStdString(e.pluginId)}, {"enabled", e.enabled}, {"params", params}});
-            }
+            for (const OfxEffect& e : c.ofx)
+                effects.append(ofxEffectToJson(e));
             o["ofx"] = effects;
         }
         if (c.matte.active()) {
@@ -462,26 +487,21 @@ Track trackFromJson(const QJsonObject& o, TrackKind kind, const QDir& projectDir
         clip.denoise = std::clamp(c["denoise"].toDouble(0.0), 0.0, 1.0);
         if (c.contains("title"))
             clip.title = titleFromJson(c["title"].toObject());
+        else if (c.contains("generator"))
+            clip.generator = ofxEffectFromJson(c["generator"].toObject());
         if (c.contains("transitionIn")) {
             const QJsonObject ti = c["transitionIn"].toObject();
             clip.transitionIn.type = enumFromName(ti["type"].toString(), kTransitionNames, TransitionType::None);
             clip.transitionIn.duration = ti["duration"].toInteger();
+            if (clip.transitionIn.type == TransitionType::Ofx)
+                clip.transitionIn.ofx = ofxEffectFromJson(ti["ofx"].toObject());
+            if (clip.transitionIn.type == TransitionType::Ofx && clip.transitionIn.ofx.pluginId.empty())
+                clip.transitionIn = {};
         }
         if (c.contains("color"))
             clip.color = animatedGradeFromJson(c["color"].toObject(), projectDir, missing);
         for (const QJsonValue& ev : c["ofx"].toArray()) {
-            const QJsonObject eo = ev.toObject();
-            OfxEffect e;
-            e.pluginId = eo["plugin"].toString().toStdString();
-            e.enabled = eo["enabled"].toBool(true);
-            const QJsonObject params = eo["params"].toObject();
-            for (auto it = params.begin(); it != params.end(); ++it) {
-                std::vector<Animated> components;
-                for (const QJsonValue& x : it.value().toArray())
-                    components.push_back(animatedFromJson(x, 0.0));
-                if (!components.empty())
-                    e.params[it.key().toStdString()] = std::move(components);
-            }
+            OfxEffect e = ofxEffectFromJson(ev.toObject());
             if (!e.pluginId.empty() && clip.ofx.size() < kMaxOfxEffects)
                 clip.ofx.push_back(std::move(e));
         }

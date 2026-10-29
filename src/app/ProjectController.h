@@ -288,16 +288,25 @@ public:
     QString proxyFolder() const;
 
     // --- Efectos OpenFX (ProjectControllerOfx.cpp) ---
-    // Plugins instalados: {id, label, group, description}.
+    // Plugins instalados de cada papel (filtros, generadores, transiciones): {id, label, group, description}.
     Q_PROPERTY(QVariantList ofxPlugins READ ofxPlugins NOTIFY ofxPluginsChanged)
+    Q_PROPERTY(QVariantList ofxGenerators READ ofxGenerators NOTIFY ofxPluginsChanged)
+    Q_PROPERTY(QVariantList ofxTransitions READ ofxTransitions NOTIFY ofxPluginsChanged)
     QVariantList ofxPlugins() const;
+    QVariantList ofxGenerators() const;
+    QVariantList ofxTransitions() const;
+    // Clip generado por un plugin (5 s) en la pista y el fotograma dados, o en el cabezal encima de
+    // todo (como addTitle). Queda seleccionado.
+    Q_INVOKABLE bool addGenerator(const QString& pluginId, qint64 trackId = -1, qint64 frame = -1);
     Q_INVOKABLE void rescanOfx();
     Q_INVOKABLE void openOfxFolder();
     QString ofxFolder() const;
     // Efectos del clip con la definición de sus parámetros y su valor en el cabezal: {index, pluginId,
     // label, enabled, installed, params: [{name, label, hint, type, value, defaults, min, max, options,
-    // animates, animated, keyHere, interp, hasPrev, hasNext}]}.
-    Q_INVOKABLE QVariantList ofxEffects(qint64 clipId) const;
+    // animates, animated, keyHere, interp, hasPrev, hasNext}]}. `kind`: "effects" (los del clip),
+    // "generator" (el del clip generador, index −1) o "transition" (la de entrada, index −2; sus
+    // parámetros no se animan). Los demás métodos reciben ese mismo `index`.
+    Q_INVOKABLE QVariantList ofxEffects(qint64 clipId, const QString& kind = QStringLiteral("effects")) const;
     Q_INVOKABLE void addOfxEffect(qint64 clipId, const QString& pluginId);
     Q_INVOKABLE void removeOfxEffect(qint64 clipId, int index);
     Q_INVOKABLE void setOfxEnabled(qint64 clipId, int index, bool enabled);

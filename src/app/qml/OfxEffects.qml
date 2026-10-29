@@ -5,12 +5,15 @@ import MovixStudio
 
 // Efectos OpenFX del clip: añadir un plugin instalado, activarlo, reordenarlo, quitarlo y ajustar
 // sus parámetros (los controles se generan a partir de lo que declara el plugin). Los valores son
-// los del cabezal; los parámetros animables admiten keyframes.
+// los del cabezal; los parámetros animables admiten keyframes. Con `kind` "generator" o
+// "transition" muestra solo los parámetros del generador del clip o de su transición de entrada.
 ColumnLayout {
     id: section
 
     required property ProjectController project
     required property var info
+    property string kind: "effects"
+    readonly property bool list: kind === "effects"
     readonly property var clipId: info.clipId
     readonly property var plugins: project.ofxPlugins
     property var effects: []
@@ -18,7 +21,9 @@ ColumnLayout {
     // Los repetidores dependen solo del número de efectos y de parámetros: al cambiar un valor no se
     // rehacen los controles (eso cortaría el arrastre de un deslizador).
     function refresh() {
-        effects = clipId !== undefined ? project.ofxEffects(clipId) : []
+        // info.clipId y no clipId: al llegar onInfoChanged, el enlace de clipId puede no haberse
+        // recalculado todavía.
+        effects = info.clipId !== undefined ? project.ofxEffects(info.clipId, kind) : []
     }
     onInfoChanged: refresh()
     Component.onCompleted: refresh()
@@ -42,7 +47,8 @@ ColumnLayout {
 
     Text {
         Layout.topMargin: 10
-        text: qsTr("Efectos OpenFX")
+        visible: section.list || section.kind === "generator"
+        text: section.list ? qsTr("Efectos OpenFX") : qsTr("Generador OpenFX")
         color: Theme.accentHover
         font.pixelSize: Theme.fontSmall
         font.bold: true
@@ -52,7 +58,7 @@ ColumnLayout {
     Text {
         Layout.fillWidth: true
         Layout.preferredWidth: 1
-        visible: section.plugins.length === 0
+        visible: section.list && section.plugins.length === 0
         wrapMode: Text.WordWrap
         color: Theme.textMuted
         font.pixelSize: Theme.fontSmall
@@ -60,7 +66,7 @@ ColumnLayout {
     }
     ComboBox {
         Layout.fillWidth: true
-        visible: section.plugins.length > 0
+        visible: section.list && section.plugins.length > 0
         focusPolicy: Qt.NoFocus
         displayText: qsTr("Añadir efecto…")
         model: section.plugins.map(p => (p.group ? p.group + " › " : "") + p.label)
@@ -71,6 +77,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
+        visible: section.list
         Button {
             text: qsTr("Carpeta de plugins")
             focusPolicy: Qt.NoFocus
@@ -106,6 +113,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
                     Switch {
+                        visible: section.list
                         focusPolicy: Qt.NoFocus
                         checked: card.fx.enabled === true
                         onToggled: section.project.setOfxEnabled(section.clipId, card.fxIndex, checked)
@@ -119,18 +127,21 @@ ColumnLayout {
                         elide: Text.ElideRight
                     }
                     ToolButton {
+                        visible: section.list
                         text: "↑"
                         focusPolicy: Qt.NoFocus
                         enabled: card.fxIndex > 0
                         onClicked: section.project.moveOfxEffect(section.clipId, card.fxIndex, card.fxIndex - 1)
                     }
                     ToolButton {
+                        visible: section.list
                         text: "↓"
                         focusPolicy: Qt.NoFocus
                         enabled: card.fxIndex < section.effects.length - 1
                         onClicked: section.project.moveOfxEffect(section.clipId, card.fxIndex, card.fxIndex + 1)
                     }
                     ToolButton {
+                        visible: section.list
                         text: "✕"
                         focusPolicy: Qt.NoFocus
                         ToolTip.visible: hovered

@@ -111,7 +111,7 @@ class ClipListModel : public SyncingListModel {
 public:
     enum Role { IdRole = Qt::UserRole + 1, TrackIdRole, TrackRowRole, StartRole, DurationRole, MediaIdRole, NameRole, PathRole,
                 SourceInRole, MediaDurationRole, KindRole, HasAudioRole, HasVideoRole, EnabledRole, GainRole, SelectedRole,
-                IsTitleRole, IsStillRole, SpeedRole, TransitionRole, FadeInRole, FadeOutRole, IsCompoundRole };
+                IsTitleRole, IsStillRole, SpeedRole, TransitionRole, FadeInRole, FadeOutRole, IsCompoundRole, IsGeneratorRole };
     using SyncingListModel::SyncingListModel;
 
     int rowCount(const QModelIndex& = {}) const override { return int(m_items.size()); }

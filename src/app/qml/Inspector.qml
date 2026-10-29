@@ -154,7 +154,7 @@ Rectangle {
 
                 SectionTitle { text: inspector.info.isTitle ? qsTr("Título") : qsTr("Clip") }
                 InfoRow {
-                    label: inspector.info.isCompound ? qsTr("Secuencia") : qsTr("Medio")
+                    label: inspector.info.isGenerator ? qsTr("Generador") : inspector.info.isCompound ? qsTr("Secuencia") : qsTr("Medio")
                     value: inspector.info.name ?? ""
                     visible: !inspector.info.isTitle
                 }
@@ -199,6 +199,14 @@ Rectangle {
                         checked: inspector.info.enabled ?? true
                         onToggled: inspector.project.setClipEnabled(inspector.info.clipId, checked)
                     }
+                }
+
+                // ---- Parámetros del generador OpenFX ----
+                OfxEffects {
+                    kind: "generator"
+                    visible: inspector.info.isGenerator === true
+                    project: inspector.project
+                    info: inspector.info
                 }
 
                 // ---- Texto del título ----
@@ -420,7 +428,7 @@ Rectangle {
                 // ---- Velocidad ----
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: !inspector.info.isTitle && !inspector.info.isStill
+                    visible: !inspector.info.isTitle && !inspector.info.isGenerator && !inspector.info.isStill
                     SectionTitle { text: qsTr("Velocidad") }
                     RowLayout {
                         SmallLabel { text: qsTr("Velocidad"); Layout.fillWidth: true }
@@ -473,10 +481,18 @@ Rectangle {
                     ComboBox {
                         id: transitionCombo
                         Layout.fillWidth: true
+                        // Las propias y, detrás, las de los plugins OpenFX («ofx:<plugin>»).
+                        readonly property var plugins: inspector.project.ofxTransitions
                         readonly property var types: ["none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"]
+                                                     .concat(plugins.map(p => "ofx:" + p.id))
                         model: [qsTr("Ninguna"), qsTr("Disolver"), qsTr("Fundido a negro"), qsTr("Barrido a la izquierda"),
                                 qsTr("Barrido a la derecha"), qsTr("Empujar a la izquierda"), qsTr("Empujar a la derecha"), qsTr("Deslizar")]
-                        currentIndex: Math.max(0, types.indexOf(inspector.info.transition ?? "none"))
+                               .concat(plugins.map(p => "OpenFX › " + p.label))
+                        readonly property string current: inspector.info.transition === "ofx" ? "ofx:" + inspector.info.transitionPlugin
+                                                                                              : inspector.info.transition ?? "none"
+                        currentIndex: Math.max(0, types.indexOf(current))
+                        displayText: current.startsWith("ofx:") && types.indexOf(current) < 0
+                                     ? qsTr("%1 (no instalada)").arg(inspector.info.transitionLabel) : currentText
                         onActivated: (i) => inspector.project.setTransition(inspector.info.clipId, types[i], inspector.info.transitionSeconds > 0 ? inspector.info.transitionSeconds : 1.0)
                     }
                     RowLayout {
@@ -486,6 +502,12 @@ Rectangle {
                             seconds: inspector.info.transitionSeconds ?? 0
                             onEdited: (v) => inspector.project.setTransition(inspector.info.clipId, inspector.info.transition, v)
                         }
+                    }
+                    OfxEffects {
+                        kind: "transition"
+                        visible: inspector.info.transition === "ofx"
+                        project: inspector.project
+                        info: inspector.info
                     }
                 }
 

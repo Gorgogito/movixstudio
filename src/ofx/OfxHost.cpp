@@ -397,11 +397,10 @@ struct EffectObj : PropertySet {
     LoadedPlugin* plugin = nullptr;
     ParamSetObj params;
     std::vector<std::unique_ptr<ClipObj>> clips;
-    // Estado del render en curso.
+    // Estado del render en curso: la imagen de cada clip conectado (por su nombre).
     int width = 0, height = 0;
     bool floatImages = false;
-    void* inData = nullptr;
-    void* outData = nullptr;
+    std::vector<std::pair<std::string, void*>> images;
     int rowBytes = 0;
     double time = 0; // instante del render (el de paramGetValue)
     std::string lastMessage;
@@ -420,15 +419,27 @@ EffectObj* asEffect(OfxImageEffectHandle h)
     return reinterpret_cast<EffectObj*>(h);
 }
 
+// Un plugin en uno de sus papeles (cada papel se describe en su contexto).
 struct LoadedPlugin {
     OfxPlugin* api = nullptr;
     std::shared_ptr<PluginInfo> info;
-    std::unique_ptr<EffectObj> descriptor;
+    std::shared_ptr<EffectObj> descriptor; // compartido entre los papeles del plugin
     std::unique_ptr<EffectObj> contextDescriptor;
-    std::string context; // kOfxImageEffectContextFilter o General
-    bool unsafe = false;   // el plugin pide un único render a la vez
-    std::mutex renderMutex;
+    std::string context; // kOfxImageEffectContext...
+    bool unsafe = false;   // el plugin pide un único render a la vez (en todos sus papeles)
+    std::shared_ptr<std::mutex> renderMutex = std::make_shared<std::mutex>();
 };
+
+// Clips de entrada de cada papel, en el orden en que Effect::renderImpl recibe sus imágenes.
+std::vector<const char*> inputClips(Role role)
+{
+    switch (role) {
+    case Role::Filter: return {kOfxImageEffectSimpleSourceClipName};
+    case Role::Generator: return {};
+    case Role::Transition: return {kOfxImageEffectTransitionSourceFromClipName, kOfxImageEffectTransitionSourceToClipName};
+    }
+    return {};
+}
 
 // --------------------------------------------------------------------- Suite de efectos
 
@@ -503,9 +514,10 @@ OfxStatus clipGetImage(OfxImageClipHandle clip, OfxTime time, const OfxRectD*, O
         return kOfxStatErrBadHandle;
     ClipObj* c = reinterpret_cast<ClipObj*>(clip);
     EffectObj* e = c->owner;
-    const bool output = c->name == kOfxImageEffectOutputClipName;
-    const bool source = c->name == kOfxImageEffectSimpleSourceClipName;
-    void* data = output ? e->outData : source ? e->inData : nullptr;
+    void* data = nullptr;
+    for (const auto& [name, pixels] : e->images)
+        if (name == c->name)
+            data = pixels;
     if (!data)
         return kOfxStatFailed; // clips sin conectar (máscaras opcionales...)
     auto* img = new ImageObj;
@@ -1131,7 +1143,8 @@ PropertySet& hostProps()
         h.setI(kOfxImageEffectPropSupportsTiles, {0});
         h.setI(kOfxImageEffectPropTemporalClipAccess, {0});
         h.setS(kOfxImageEffectPropSupportedComponents, {kOfxImageComponentRGBA});
-        h.setS(kOfxImageEffectPropSupportedContexts, {kOfxImageEffectContextFilter, kOfxImageEffectContextGeneral});
+        h.setS(kOfxImageEffectPropSupportedContexts, {kOfxImageEffectContextFilter, kOfxImageEffectContextGeneral,
+                                                      kOfxImageEffectContextGenerator, kOfxImageEffectContextTransition});
         h.setS(kOfxImageEffectPropSupportedPixelDepths, {kOfxBitDepthByte, kOfxBitDepthFloat});
         h.setI(kOfxImageEffectPropSupportsMultipleClipDepths, {0});
         h.setI(kOfxImageEffectPropSupportsMultipleClipPARs, {0});
@@ -1270,19 +1283,95 @@ std::vector<QString> pluginDirs(const std::vector<std::string>& extra)
     return dirs;
 }
 
-void describePlugin(OfxPlugin* api, const QString& binaryPath, RegistryState& s)
+// Describe el plugin en el contexto de un papel y lo registra (o sustituye a una versión anterior).
+// Si no sirve en ese papel, devuelve false con el motivo en `why`.
+bool describeRole(OfxPlugin* api, const std::shared_ptr<EffectObj>& descriptor, const std::shared_ptr<std::mutex>& renderMutex,
+                  Role role, const char* context, const QString& binaryPath, RegistryState& s, std::string& why)
 {
+    const std::string id = api->pluginIdentifier ? api->pluginIdentifier : "";
+    const char* roleName = role == Role::Filter ? "filtro" : role == Role::Generator ? "generador" : "transición";
+    auto fail = [&](const std::string& reason) {
+        why = id + " (" + roleName + "): " + reason;
+        return false;
+    };
     auto p = std::make_unique<LoadedPlugin>();
     p->api = api;
+    p->descriptor = descriptor;
+    p->renderMutex = renderMutex;
+    p->context = context;
+    p->contextDescriptor = std::make_unique<EffectObj>();
+    EffectObj& c = *p->contextDescriptor;
+    static_cast<PropertySet&>(c) = static_cast<const PropertySet&>(*descriptor);
+    c.plugin = p.get();
+    c.params.owner = &c;
+    c.setS(kOfxImageEffectPropContext, {p->context});
+    PropertySet inArgs;
+    inArgs.setS(kOfxImageEffectPropContext, {p->context});
+    if (!ok(callAction(*p, kOfxImageEffectActionDescribeInContext, &c, &inArgs)))
+        return fail("no se pudo describir");
+    auto rgba = [](const ClipObj* clip) {
+        const auto comps = clip->strs(kOfxImageEffectPropSupportedComponents);
+        return comps.empty() || std::find(comps.begin(), comps.end(), kOfxImageComponentRGBA) != comps.end();
+    };
+    std::vector<const char*> needed = inputClips(role);
+    needed.push_back(kOfxImageEffectOutputClipName);
+    for (const char* name : needed) {
+        const ClipObj* clip = c.clip(name);
+        if (!clip)
+            return fail(std::string("le falta el clip ") + name);
+        if (!rgba(clip))
+            return fail("no admite imágenes RGBA");
+    }
+
+    auto info = std::make_shared<PluginInfo>();
+    info->id = id;
+    info->versionMajor = int(api->pluginVersionMajor);
+    info->versionMinor = int(api->pluginVersionMinor);
+    info->label = c.str(kOfxPropLabel, 0, id);
+    info->group = c.str(kOfxImageEffectPluginPropGrouping);
+    info->description = c.str(kOfxPropPluginDescription);
+    info->binary = binaryPath.toStdString();
+    info->role = role;
+    info->context = std::string(context).substr(std::strlen("OfxImageEffectContext"));
+    const auto depths = c.strs(kOfxImageEffectPropSupportedPixelDepths);
+    info->floatImages = std::find(depths.begin(), depths.end(), kOfxBitDepthFloat) != depths.end();
+    if (!info->floatImages && std::find(depths.begin(), depths.end(), kOfxBitDepthByte) == depths.end() && !depths.empty())
+        return fail("no admite imágenes de 8 bits ni en coma flotante");
+    for (const auto& param : c.params.list) {
+        ParamDef def = describeParam(*param);
+        if (role == Role::Transition && def.name == kOfxImageEffectTransitionParamName)
+            def.secret = true; // el progreso lo pone el anfitrión
+        info->params.push_back(std::move(def));
+    }
+    p->unsafe = c.str(kOfxImageEffectPluginRenderThreadSafety) == kOfxImageEffectRenderUnsafe;
+    p->info = std::move(info);
+
+    // Otra versión del mismo plugin en el mismo papel: se queda la más reciente.
+    auto same = std::find_if(s.plugins.begin(), s.plugins.end(), [&](const auto& x) { return x->info->id == id && x->info->role == role; });
+    if (same != s.plugins.end()) {
+        const auto& old = *(*same)->info;
+        if (std::tie(old.versionMajor, old.versionMinor) >= std::tie(p->info->versionMajor, p->info->versionMinor))
+            return true;
+        *same = std::move(p);
+        return true;
+    }
+    s.plugins.push_back(std::move(p));
+    return true;
+}
+
+void describePlugin(OfxPlugin* api, const QString& binaryPath, RegistryState& s)
+{
+    LoadedPlugin base;
+    base.api = api;
     const std::string id = api->pluginIdentifier ? api->pluginIdentifier : "";
     auto fail = [&](const char* why) { s.errors.push_back(id + ": " + why); };
     api->setHost(&host());
-    if (!ok(callAction(*p, kOfxActionLoad, nullptr)))
+    if (!ok(callAction(base, kOfxActionLoad, nullptr)))
         return fail("no se pudo cargar");
 
-    p->descriptor = std::make_unique<EffectObj>();
-    EffectObj& d = *p->descriptor;
-    d.plugin = p.get();
+    auto descriptor = std::make_shared<EffectObj>();
+    EffectObj& d = *descriptor;
+    d.plugin = &base;
     d.params.owner = &d;
     d.setS(kOfxPropType, {kOfxTypeImageEffect});
     d.setS(kOfxPropLabel, {id});
@@ -1300,66 +1389,29 @@ void describePlugin(OfxPlugin* api, const QString& binaryPath, RegistryState& s)
     d.setI(kOfxImageEffectPluginPropFieldRenderTwiceAlways, {1});
     d.setS(kOfxPropPluginDescription, {""});
     d.setP(kOfxImageEffectPluginPropOverlayInteractV1, nullptr);
-    if (!ok(callAction(*p, kOfxActionDescribe, &d)))
+    if (!ok(callAction(base, kOfxActionDescribe, &d)))
         return fail("no se pudo describir");
 
     const auto contexts = d.strs(kOfxImageEffectPropSupportedContexts);
     auto has = [&](const char* c) { return std::find(contexts.begin(), contexts.end(), c) != contexts.end(); };
-    p->context = has(kOfxImageEffectContextFilter) ? kOfxImageEffectContextFilter
-               : has(kOfxImageEffectContextGeneral) ? kOfxImageEffectContextGeneral
-                                                    : std::string();
-    if (p->context.empty())
-        return fail("no es un filtro (contextos admitidos: generadores, transiciones...)");
-
-    p->contextDescriptor = std::make_unique<EffectObj>();
-    EffectObj& c = *p->contextDescriptor;
-    static_cast<PropertySet&>(c) = static_cast<const PropertySet&>(d);
-    c.plugin = p.get();
-    c.params.owner = &c;
-    c.setS(kOfxImageEffectPropContext, {p->context});
-    PropertySet inArgs;
-    inArgs.setS(kOfxImageEffectPropContext, {p->context});
-    if (!ok(callAction(*p, kOfxImageEffectActionDescribeInContext, &c, &inArgs)))
-        return fail("no se pudo describir como filtro");
-    ClipObj* output = c.clip(kOfxImageEffectOutputClipName);
-    ClipObj* source = c.clip(kOfxImageEffectSimpleSourceClipName);
-    auto rgba = [](const ClipObj* clip) {
-        const auto comps = clip->strs(kOfxImageEffectPropSupportedComponents);
-        return comps.empty() || std::find(comps.begin(), comps.end(), kOfxImageComponentRGBA) != comps.end();
-    };
-    if (!output || !source)
-        return fail("le faltan los clips Source u Output");
-    if (!rgba(output) || !rgba(source))
-        return fail("no admite imágenes RGBA");
-
-    auto info = std::make_shared<PluginInfo>();
-    info->id = id;
-    info->versionMajor = int(api->pluginVersionMajor);
-    info->versionMinor = int(api->pluginVersionMinor);
-    info->label = c.str(kOfxPropLabel, 0, id);
-    info->group = c.str(kOfxImageEffectPluginPropGrouping);
-    info->description = c.str(kOfxPropPluginDescription);
-    info->binary = binaryPath.toStdString();
-    info->context = p->context == kOfxImageEffectContextFilter ? "Filter" : "General";
-    const auto depths = c.strs(kOfxImageEffectPropSupportedPixelDepths);
-    info->floatImages = std::find(depths.begin(), depths.end(), kOfxBitDepthFloat) != depths.end();
-    if (!info->floatImages && std::find(depths.begin(), depths.end(), kOfxBitDepthByte) == depths.end() && !depths.empty())
-        return fail("no admite imágenes de 8 bits ni en coma flotante");
-    for (const auto& param : c.params.list)
-        info->params.push_back(describeParam(*param));
-    p->unsafe = c.str(kOfxImageEffectPluginRenderThreadSafety) == kOfxImageEffectRenderUnsafe;
-    p->info = std::move(info);
-
-    // Otra versión del mismo plugin: se queda la más reciente.
-    auto same = std::find_if(s.plugins.begin(), s.plugins.end(), [&](const auto& x) { return x->info->id == id; });
-    if (same != s.plugins.end()) {
-        const auto& old = *(*same)->info;
-        if (std::tie(old.versionMajor, old.versionMinor) >= std::tie(p->info->versionMajor, p->info->versionMinor))
-            return;
-        *same = std::move(p);
-        return;
-    }
-    s.plugins.push_back(std::move(p));
+    std::vector<std::pair<Role, const char*>> roles;
+    if (has(kOfxImageEffectContextFilter) || has(kOfxImageEffectContextGeneral))
+        roles.emplace_back(Role::Filter, has(kOfxImageEffectContextFilter) ? kOfxImageEffectContextFilter : kOfxImageEffectContextGeneral);
+    if (has(kOfxImageEffectContextGenerator))
+        roles.emplace_back(Role::Generator, kOfxImageEffectContextGenerator);
+    if (has(kOfxImageEffectContextTransition))
+        roles.emplace_back(Role::Transition, kOfxImageEffectContextTransition);
+    if (roles.empty())
+        return fail("no es un filtro, un generador ni una transición");
+    // Un papel que no encaja (p. ej. un contexto General sin clip Source) solo es un error si el
+    // plugin no sirve para ningún otro.
+    const auto renderMutex = std::make_shared<std::mutex>();
+    std::vector<std::string> why(roles.size());
+    bool any = false;
+    for (size_t i = 0; i < roles.size(); ++i)
+        any = describeRole(api, descriptor, renderMutex, roles[i].first, roles[i].second, binaryPath, s, why[i]) || any;
+    if (!any)
+        s.errors.insert(s.errors.end(), why.begin(), why.end());
 }
 
 void scanLocked(RegistryState& s)
@@ -1434,27 +1486,28 @@ void Registry::rescan()
     scanLocked(s);
 }
 
-std::vector<PluginInfo> Registry::plugins()
+std::vector<PluginInfo> Registry::plugins(Role role)
 {
     ensureScanned();
     RegistryState& s = state();
     std::lock_guard lock(s.mutex);
     std::vector<PluginInfo> out;
     for (const auto& p : s.plugins)
-        out.push_back(*p->info);
+        if (p->info->role == role)
+            out.push_back(*p->info);
     std::sort(out.begin(), out.end(), [](const PluginInfo& a, const PluginInfo& b) {
         return std::tie(a.group, a.label) < std::tie(b.group, b.label);
     });
     return out;
 }
 
-std::shared_ptr<const PluginInfo> Registry::find(const std::string& id)
+std::shared_ptr<const PluginInfo> Registry::find(const std::string& id, Role role)
 {
     ensureScanned();
     RegistryState& s = state();
     std::lock_guard lock(s.mutex);
     for (const auto& p : s.plugins)
-        if (p->info->id == id)
+        if (p->info->id == id && p->info->role == role)
             return p->info;
     return nullptr;
 }
@@ -1489,7 +1542,9 @@ ParamValues withDefaults(const PluginInfo& plugin, const ParamValues& values)
 struct Effect::Impl {
     LoadedPlugin* plugin = nullptr;
     std::unique_ptr<EffectObj> obj;
-    std::vector<float> inF, outF;
+    std::vector<std::vector<float>> inF; // copias de las entradas, por clip
+    std::vector<std::vector<uint8_t>> inB;
+    std::vector<float> outF;
     std::vector<uint8_t> outB;
     bool created = false;
 
@@ -1519,7 +1574,7 @@ int Effect::height() const
     return d->obj->height;
 }
 
-std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, int height, double frameRate, std::string* error)
+std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, int height, double frameRate, std::string* error, Role role)
 {
     Registry::instance().ensureScanned();
     RegistryState& s = state();
@@ -1527,7 +1582,7 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
     {
         std::lock_guard lock(s.mutex);
         for (const auto& p : s.plugins)
-            if (p->info->id == pluginId)
+            if (p->info->id == pluginId && p->info->role == role)
                 plugin = p.get();
     }
     if (!plugin) {
@@ -1572,7 +1627,9 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
     for (const auto& dc : desc.clips) {
         auto c = std::make_unique<ClipObj>(*dc);
         c->owner = &e;
-        const bool connected = c->name == kOfxImageEffectOutputClipName || c->name == kOfxImageEffectSimpleSourceClipName;
+        const auto inputs = inputClips(role);
+        const bool connected = c->name == kOfxImageEffectOutputClipName
+                               || std::any_of(inputs.begin(), inputs.end(), [&](const char* n) { return c->name == n; });
         c->setS(kOfxImageEffectPropPixelDepth, {depth});
         c->setS(kOfxImageEffectPropComponents, {kOfxImageComponentRGBA});
         c->setS(kOfxImageClipPropUnmappedPixelDepth, {depth});
@@ -1588,7 +1645,7 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
         c->setI(kOfxImageClipPropContinuousSamples, {0});
         e.clips.push_back(std::move(c));
     }
-    std::unique_lock renderLock(plugin->renderMutex, std::defer_lock);
+    std::unique_lock renderLock(*plugin->renderMutex, std::defer_lock);
     if (plugin->unsafe)
         renderLock.lock();
     if (!ok(callAction(*plugin, kOfxActionCreateInstance, &e))) {
@@ -1602,18 +1659,55 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
 
 bool Effect::render(const ParamValues& values, double time, const uint8_t* in, uint8_t* out, std::string* error)
 {
-    return renderImpl(values, time, in, out, false, error);
+    return renderImpl(values, time, {in}, out, false, error);
 }
 
 bool Effect::render(const ParamValues& values, double time, const float* in, float* out, std::string* error)
 {
-    return renderImpl(values, time, in, out, true, error);
+    return renderImpl(values, time, {in}, out, true, error);
 }
 
-bool Effect::renderImpl(const ParamValues& values, double time, const void* in, void* out, bool floatIO, std::string* error)
+bool Effect::generate(const ParamValues& values, double time, uint8_t* out, std::string* error)
+{
+    return renderImpl(values, time, {}, out, false, error);
+}
+
+bool Effect::generate(const ParamValues& values, double time, float* out, std::string* error)
+{
+    return renderImpl(values, time, {}, out, true, error);
+}
+
+namespace {
+ParamValues withProgress(const ParamValues& values, double progress)
+{
+    ParamValues v = values;
+    v[kOfxImageEffectTransitionParamName] = {core::Animated(std::clamp(progress, 0.0, 1.0))};
+    return v;
+}
+} // namespace
+
+bool Effect::transition(const ParamValues& values, double time, double progress, const uint8_t* from, const uint8_t* to, uint8_t* out,
+                        std::string* error)
+{
+    return renderImpl(withProgress(values, progress), time, {from, to}, out, false, error);
+}
+
+bool Effect::transition(const ParamValues& values, double time, double progress, const float* from, const float* to, float* out,
+                        std::string* error)
+{
+    return renderImpl(withProgress(values, progress), time, {from, to}, out, true, error);
+}
+
+bool Effect::renderImpl(const ParamValues& values, double time, std::vector<const void*> inputs, void* out, bool floatIO, std::string* error)
 {
     EffectObj& e = *d->obj;
     LoadedPlugin& plugin = *d->plugin;
+    const auto names = inputClips(plugin.info->role);
+    if (inputs.size() != names.size()) {
+        if (error)
+            *error = "El efecto " + plugin.info->label + " no recibió sus imágenes.";
+        return false;
+    }
     const int w = e.width, h = e.height;
     e.time = time;
     for (auto& p : e.params.list) {
@@ -1630,38 +1724,45 @@ bool Effect::renderImpl(const ParamValues& values, double time, const void* in, 
     // Si la profundidad del plugin no es la de las imágenes, se convierte a la suya.
     const size_t pixels = size_t(w) * size_t(h);
     const size_t values4 = pixels * 4;
-    const auto* in8 = static_cast<const uint8_t*>(in);
-    const auto* inF = static_cast<const float*>(in);
-    std::vector<uint8_t> inCopy;
+    // El plugin no debería escribir las entradas, pero por si acaso trabaja sobre copias.
+    e.images.clear();
+    d->inF.resize(inputs.size());
+    d->inB.resize(inputs.size());
     if (e.floatImages) {
-        d->inF.resize(values4);
-        d->outF.assign(values4, 0.0f);
-        if (floatIO)
-            std::copy(inF, inF + values4, d->inF.begin());
-        else
-            for (size_t i = 0; i < values4; ++i)
-                d->inF[i] = float(in8[i]) / 255.0f;
         const int stride = w * 4 * int(sizeof(float));
+        for (size_t k = 0; k < inputs.size(); ++k) {
+            std::vector<float>& copy = d->inF[k];
+            copy.resize(values4);
+            if (floatIO)
+                std::copy_n(static_cast<const float*>(inputs[k]), values4, copy.begin());
+            else
+                for (size_t i = 0; i < values4; ++i)
+                    copy[i] = float(static_cast<const uint8_t*>(inputs[k])[i]) / 255.0f;
+            e.images.emplace_back(names[k], reinterpret_cast<uint8_t*>(copy.data()) + ptrdiff_t(h - 1) * stride);
+        }
+        d->outF.assign(values4, 0.0f);
         e.rowBytes = -stride;
-        e.inData = reinterpret_cast<uint8_t*>(d->inF.data()) + ptrdiff_t(h - 1) * stride;
-        e.outData = reinterpret_cast<uint8_t*>(d->outF.data()) + ptrdiff_t(h - 1) * stride;
+        e.images.emplace_back(kOfxImageEffectOutputClipName, reinterpret_cast<uint8_t*>(d->outF.data()) + ptrdiff_t(h - 1) * stride);
     } else {
-        // El plugin no debería escribir la entrada, pero por si acaso trabaja sobre una copia.
-        if (floatIO) {
-            inCopy.resize(values4);
-            for (size_t i = 0; i < values4; ++i)
-                inCopy[i] = uint8_t(std::clamp(std::lround(inF[i] * 255.0f), 0L, 255L));
-        } else {
-            inCopy.assign(in8, in8 + values4);
+        const int stride = w * 4;
+        for (size_t k = 0; k < inputs.size(); ++k) {
+            std::vector<uint8_t>& copy = d->inB[k];
+            if (floatIO) {
+                copy.resize(values4);
+                for (size_t i = 0; i < values4; ++i)
+                    copy[i] = uint8_t(std::clamp(std::lround(static_cast<const float*>(inputs[k])[i] * 255.0f), 0L, 255L));
+            } else {
+                const auto* in8 = static_cast<const uint8_t*>(inputs[k]);
+                copy.assign(in8, in8 + values4);
+            }
+            e.images.emplace_back(names[k], copy.data() + ptrdiff_t(h - 1) * stride);
         }
         d->outB.assign(values4, 0);
-        const int stride = w * 4;
         e.rowBytes = -stride;
-        e.inData = inCopy.data() + ptrdiff_t(h - 1) * stride;
-        e.outData = d->outB.data() + ptrdiff_t(h - 1) * stride;
+        e.images.emplace_back(kOfxImageEffectOutputClipName, d->outB.data() + ptrdiff_t(h - 1) * stride);
     }
 
-    std::unique_lock renderLock(plugin.renderMutex, std::defer_lock);
+    std::unique_lock renderLock(*plugin.renderMutex, std::defer_lock);
     if (plugin.unsafe)
         renderLock.lock();
     PropertySet seq;
@@ -1682,7 +1783,7 @@ bool Effect::renderImpl(const ParamValues& values, double time, const void* in, 
     args.setI(kOfxImageEffectPropRenderQualityDraft, {0});
     const OfxStatus st = callAction(plugin, kOfxImageEffectActionRender, &e, &args);
     callAction(plugin, kOfxImageEffectActionEndSequenceRender, &e, &seq);
-    e.inData = e.outData = nullptr;
+    e.images.clear();
     if (!ok(st)) {
         if (error)
             *error = st == kOfxStatErrFatal ? "El efecto " + plugin.info->label + " falló al renderizar."

@@ -24,6 +24,7 @@ Item {
     required property bool selected
     required property bool isTitle
     required property bool isCompound
+    required property bool isGenerator
     required property bool isStill
     required property real speed
     required property var transitionFrames
@@ -40,8 +41,8 @@ Item {
     readonly property real visualStart: trimming ? trimStart : start + (movingWithDrag ? owner.dragDelta : 0)
     readonly property real visualEnd: trimming ? trimEnd : start + duration + (movingWithDrag ? owner.dragDelta : 0)
     readonly property int visualRow: trackRow + (movingWithDrag ? owner.dragRowOffset : 0)
-    // Límites del medio disponibles para recortar (imágenes y títulos no tienen límite).
-    readonly property bool unlimited: isTitle || isStill
+    // Límites del medio disponibles para recortar (imágenes, títulos y generadores no tienen límite).
+    readonly property bool unlimited: isTitle || isGenerator || isStill
     readonly property real minStart: unlimited ? 0 : Math.max(0, start - Math.floor(sourceIn * fps / speed + 1e-6))
     readonly property real maxEnd: unlimited ? 1e9 : start + Math.floor((mediaDuration - sourceIn) * fps / speed + 0.001)
     readonly property real visibleSourceIn: sourceIn + (trimming ? (trimStart - start) / fps * speed : 0)
@@ -68,7 +69,7 @@ Item {
         anchors.fill: parent
         radius: 4
         clip: true
-        color: clipItem.isCompound ? Theme.clipCompound : clipItem.isTitle ? Theme.clipTitle
+        color: clipItem.isCompound ? Theme.clipCompound : clipItem.isTitle || clipItem.isGenerator ? Theme.clipTitle
                                    : clipItem.kind === "video" ? Theme.clipVideoDark : Theme.clipAudioDark
         opacity: clipItem.clipEnabled ? 1 : 0.45
         border.width: clipItem.selected ? 2 : 1
@@ -77,7 +78,7 @@ Item {
         // Tira de miniaturas (clips de video).
         Item {
             id: filmstrip
-            visible: clipItem.kind === "video" && clipItem.hasVideo && !clipItem.isTitle && !clipItem.isCompound
+            visible: clipItem.kind === "video" && clipItem.hasVideo && !clipItem.isTitle && !clipItem.isGenerator && !clipItem.isCompound
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
@@ -170,7 +171,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 x: 4
                 width: parent.width - 8
-                text: (clipItem.isTitle ? "T  " : clipItem.isCompound ? "▣  " : "") + clipItem.name
+                text: (clipItem.isTitle ? "T  " : clipItem.isGenerator ? "✦  " : clipItem.isCompound ? "▣  " : "") + clipItem.name
                       + (clipItem.speed !== 1 ? "  ·  " + clipItem.speed.toLocaleString(Qt.locale(), "f", 2).replace(/,?0+$/, "") + "×" : "")
                       + (clipItem.gain >= 0 && clipItem.gain !== 1 ? "  ·  " + Math.round(clipItem.gain * 100) + " %" : "")
                 color: "white"

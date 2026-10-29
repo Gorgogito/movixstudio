@@ -76,6 +76,28 @@ FramePos clipRel(const Clip& c, FramePos playhead)
     return std::clamp<FramePos>(playhead - c.start, 0, std::max<FramePos>(0, c.duration - 1));
 }
 
+// Efecto al que se refiere `index` (uno del clip, el generador o la transición) y su papel.
+const OfxEffect* effectAt(const Clip& c, int index, ofx::Role& role)
+{
+    role = index == edit::kOfxGenerator ? ofx::Role::Generator : index == edit::kOfxTransition ? ofx::Role::Transition : ofx::Role::Filter;
+    if (index == edit::kOfxGenerator)
+        return c.generator ? &*c.generator : nullptr;
+    if (index == edit::kOfxTransition)
+        return c.transitionIn.type == TransitionType::Ofx ? &c.transitionIn.ofx : nullptr;
+    return index >= 0 && index < int(c.ofx.size()) ? &c.ofx[size_t(index)] : nullptr;
+}
+
+QVariantList pluginList(ofx::Role role)
+{
+    QVariantList out;
+    for (const ofx::PluginInfo& p : ofx::Registry::instance().plugins(role))
+        out.append(QVariantMap{{"id", QString::fromStdString(p.id)},
+                               {"label", QString::fromStdString(p.label)},
+                               {"group", QString::fromStdString(p.group)},
+                               {"description", QString::fromStdString(p.description)}});
+    return out;
+}
+
 } // namespace
 
 QString ProjectController::ofxFolder() const
@@ -86,13 +108,45 @@ QString ProjectController::ofxFolder() const
 
 QVariantList ProjectController::ofxPlugins() const
 {
-    QVariantList out;
-    for (const ofx::PluginInfo& p : ofx::Registry::instance().plugins())
-        out.append(QVariantMap{{"id", QString::fromStdString(p.id)},
-                               {"label", QString::fromStdString(p.label)},
-                               {"group", QString::fromStdString(p.group)},
-                               {"description", QString::fromStdString(p.description)}});
-    return out;
+    return pluginList(ofx::Role::Filter);
+}
+
+QVariantList ProjectController::ofxGenerators() const
+{
+    return pluginList(ofx::Role::Generator);
+}
+
+QVariantList ProjectController::ofxTransitions() const
+{
+    return pluginList(ofx::Role::Transition);
+}
+
+bool ProjectController::addGenerator(const QString& pluginId, qint64 trackId, qint64 frame)
+{
+    const auto info = ofx::Registry::instance().find(pluginId.toStdString(), ofx::Role::Generator);
+    if (!info)
+        return false;
+    const FramePos duration = project().settings.framesIn(5 * kUsPerSecond);
+    const FramePos at = frame >= 0 ? frame : m_player->positionFrame();
+    // Pista: la indicada o la superior si está libre en ese tramo; si no, una nueva encima de todo.
+    Id target = trackId > 0 ? Id(trackId) : kNoId;
+    Id clip = kNoId;
+    const bool ok = apply(tr("Añadir «%1»").arg(QString::fromStdString(info->label)), [&](Project& p) {
+        if (target == kNoId) {
+            const Track& top = p.videoTracks.back();
+            const bool free = std::none_of(top.clips.begin(), top.clips.end(),
+                                           [&](const Clip& c) { return c.start < at + duration && c.end() > at; });
+            target = free && !top.locked ? top.id : edit::addTrack(p, TrackKind::Video);
+        }
+        clip = edit::placeGenerator(p, target, at, duration, info->id, m_insertMode ? edit::PlaceMode::Insert : edit::PlaceMode::Overwrite);
+        return clip != kNoId;
+    });
+    if (ok) {
+        m_selection = {clip};
+        m_clips.sync(project(), m_selection);
+        emit selectionChanged();
+    }
+    return ok;
 }
 
 void ProjectController::rescanOfx()
@@ -108,16 +162,30 @@ void ProjectController::openOfxFolder()
     QDesktopServices::openUrl(QUrl::fromLocalFile(ofxFolder()));
 }
 
-QVariantList ProjectController::ofxEffects(qint64 clipId) const
+QVariantList ProjectController::ofxEffects(qint64 clipId, const QString& kind) const
 {
     const Clip* c = project().findClip(Id(clipId));
     if (!c)
         return {};
-    const FramePos rel = clipRel(*c, m_player->positionFrame());
+    std::vector<int> indices;
+    if (kind == QLatin1String("generator"))
+        indices = {edit::kOfxGenerator};
+    else if (kind == QLatin1String("transition"))
+        indices = {edit::kOfxTransition};
+    else
+        for (size_t i = 0; i < c->ofx.size(); ++i)
+            indices.push_back(int(i));
     QVariantList out;
-    for (size_t i = 0; i < c->ofx.size(); ++i) {
-        const OfxEffect& e = c->ofx[i];
-        const auto info = ofx::Registry::instance().find(e.pluginId);
+    for (const int i : indices) {
+        ofx::Role role = ofx::Role::Filter;
+        const OfxEffect* found = effectAt(*c, i, role);
+        if (!found)
+            continue;
+        const OfxEffect& e = *found;
+        // Los parámetros de la transición son fijos (el progreso lo pone el anfitrión).
+        const bool fixed = role == ofx::Role::Transition;
+        const FramePos rel = fixed ? 0 : clipRel(*c, m_player->positionFrame());
+        const auto info = ofx::Registry::instance().find(e.pluginId, role);
         QVariantList params;
         if (info) {
             const auto values = ofx::withDefaults(*info, e.params);
@@ -147,7 +215,7 @@ QVariantList ProjectController::ofxEffects(qint64 clipId) const
                                           {"min", lo},
                                           {"max", hi},
                                           {"options", options},
-                                          {"animates", d.animates},
+                                          {"animates", d.animates && !fixed},
                                           {"animated", first.isAnimated()},
                                           {"keyHere", here != nullptr},
                                           {"interp", here ? interpolationName(here->interp) : QString()},
@@ -155,7 +223,7 @@ QVariantList ProjectController::ofxEffects(qint64 clipId) const
                                           {"hasNext", next}});
             }
         }
-        out.append(QVariantMap{{"index", int(i)},
+        out.append(QVariantMap{{"index", i},
                                {"pluginId", QString::fromStdString(e.pluginId)},
                                {"label", info ? QString::fromStdString(info->label) : QString::fromStdString(e.pluginId)},
                                {"enabled", e.enabled},
@@ -196,7 +264,7 @@ void ProjectController::setOfxParam(qint64 clipId, int index, const QString& nam
     std::vector<double> v;
     for (const QVariant& x : value)
         v.push_back(x.toDouble());
-    const FramePos rel = clipRel(*c, m_player->positionFrame());
+    const FramePos rel = index == edit::kOfxTransition ? 0 : clipRel(*c, m_player->positionFrame());
     // Arrastrar un deslizador es un solo paso de deshacer.
     apply(tr("Ajustar efecto"), [&](Project& p) { return edit::setOfxParam(p, Id(clipId), index, name.toStdString(), v, rel); },
           QStringLiteral("ofx:%1:%2:%3").arg(clipId).arg(index).arg(name));
@@ -205,14 +273,15 @@ void ProjectController::setOfxParam(qint64 clipId, int index, const QString& nam
 void ProjectController::toggleOfxKeyframe(qint64 clipId, int index, const QString& name)
 {
     const Clip* c = project().findClip(Id(clipId));
-    if (!c || index < 0 || index >= int(c->ofx.size()))
+    ofx::Role role = ofx::Role::Filter;
+    const OfxEffect* e = c ? effectAt(*c, index, role) : nullptr;
+    if (!e || role == ofx::Role::Transition)
         return;
-    const OfxEffect& e = c->ofx[size_t(index)];
-    const auto info = ofx::Registry::instance().find(e.pluginId);
+    const auto info = ofx::Registry::instance().find(e->pluginId, role);
     if (!info)
         return;
     const auto def = std::find_if(info->params.begin(), info->params.end(), [&](const ofx::ParamDef& d) { return d.name == name.toStdString(); });
-    const auto values = ofx::withDefaults(*info, e.params);
+    const auto values = ofx::withDefaults(*info, e->params);
     const auto it = values.find(name.toStdString());
     if (def == info->params.end() || it == values.end())
         return;

@@ -1,6 +1,7 @@
 #include "TimelineModels.h"
 
 #include "ThumbnailProvider.h"
+#include "ofx/OfxHost.h"
 
 #include <QHash>
 
@@ -141,6 +142,7 @@ QVariant ClipListModel::data(const QModelIndex& index, int role) const
     case SelectedRole: return i.selected;
     case IsTitleRole: return i.clip.title.has_value();
     case IsCompoundRole: return i.clip.isCompound();
+    case IsGeneratorRole: return i.clip.generator.has_value();
     case IsStillRole: return i.isStill;
     case SpeedRole: return i.clip.speed;
     case TransitionRole: return i.clip.transitionIn.active() ? qint64(i.clip.transitionIn.duration) : qint64(0);
@@ -156,7 +158,7 @@ QHash<int, QByteArray> ClipListModel::roleNames() const
             {DurationRole, "duration"}, {MediaIdRole, "mediaId"}, {NameRole, "name"}, {PathRole, "path"},
             {SourceInRole, "sourceIn"}, {MediaDurationRole, "mediaDuration"}, {KindRole, "kind"},
             {HasAudioRole, "hasAudio"}, {HasVideoRole, "hasVideo"}, {EnabledRole, "clipEnabled"}, {GainRole, "gain"},
-            {SelectedRole, "selected"}, {IsTitleRole, "isTitle"}, {IsCompoundRole, "isCompound"}, {IsStillRole, "isStill"}, {SpeedRole, "speed"},
+            {SelectedRole, "selected"}, {IsTitleRole, "isTitle"}, {IsCompoundRole, "isCompound"}, {IsGeneratorRole, "isGenerator"}, {IsStillRole, "isStill"}, {SpeedRole, "speed"},
             {TransitionRole, "transitionFrames"}, {FadeInRole, "fadeIn"}, {FadeOutRole, "fadeOut"}};
 }
 
@@ -174,8 +176,11 @@ void ClipListModel::sync(const Project& project, const QSet<Id>& selection)
             const Track& t = tracks[size_t(ti)];
             for (const Clip& c : t.clips) {
                 const MediaItem* m = c.isGenerated() ? nullptr : project.findMedia(c.mediaId);
-                // Los títulos se identifican por su texto (primera línea); los compuestos, por su secuencia.
+                // Los títulos se identifican por su texto (primera línea); los generadores, por su plugin;
+                // los compuestos, por su secuencia.
+                const auto generator = c.generator ? ofx::Registry::instance().find(c.generator->pluginId, ofx::Role::Generator) : nullptr;
                 const QString name = c.title          ? QString::fromStdString(c.title->text).section(QLatin1Char('\n'), 0, 0)
+                                     : c.generator    ? QString::fromStdString(generator ? generator->label : c.generator->pluginId)
                                      : c.isMulticam() ? multicamName(project, c)
                                      : c.isCompound() ? QString::fromStdString(project.sequenceName(c.sequenceId))
                                      : m              ? QString::fromStdString(m->name)

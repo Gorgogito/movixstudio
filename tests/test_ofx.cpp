@@ -1,6 +1,7 @@
 #include "ProjectController.h"
 #include "TestMedia.h"
 #include "core/Edits.h"
+#include "core/Otio.h"
 #include "core/ProjectFile.h"
 #include "engine/MediaImport.h"
 #include "engine/Sources.h"
@@ -15,6 +16,7 @@
 #include <QTemporaryDir>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 using namespace movix;
@@ -23,6 +25,8 @@ using namespace movix::core;
 namespace {
 
 const std::string kGain = "io.github.gorgogito.movixstudio.test.Gain";
+const std::string kRect = "io.github.gorgogito.movixstudio.test.Rectangle";
+const std::string kWipe = "io.github.gorgogito.movixstudio.test.Wipe";
 
 void useTestPlugins()
 {
@@ -130,6 +134,207 @@ TEST_CASE("OpenFX: una instancia renderiza con sus parámetros", "[ofx]")
     CHECK(int(px(W - 1, 0)[2]) == 100);
 }
 
+TEST_CASE("OpenFX: generadores y transiciones", "[ofx]")
+{
+    useTestPlugins();
+    auto& registry = ofx::Registry::instance();
+    // Cada papel con lo que describe el plugin en su contexto.
+    const auto rectGenerator = registry.find(kRect, ofx::Role::Generator);
+    const auto rectFilter = registry.find(kRect, ofx::Role::Filter);
+    REQUIRE(rectGenerator);
+    REQUIRE(rectFilter);
+    CHECK(rectGenerator->context == "Generator");
+    CHECK(rectFilter->context == "Filter");
+    auto hasParam = [](const ofx::PluginInfo& p, const char* name) {
+        return std::any_of(p.params.begin(), p.params.end(), [&](const ofx::ParamDef& d) { return d.name == name; });
+    };
+    CHECK(hasParam(*rectGenerator, "generatorOnly"));
+    CHECK_FALSE(hasParam(*rectFilter, "generatorOnly"));
+    CHECK_FALSE(registry.find(kWipe, ofx::Role::Filter));
+    CHECK_FALSE(registry.find(kGain, ofx::Role::Generator));
+    const auto wipe = registry.find(kWipe, ofx::Role::Transition);
+    REQUIRE(wipe);
+    const auto progress = std::find_if(wipe->params.begin(), wipe->params.end(), [](const ofx::ParamDef& d) { return d.name == "Transition"; });
+    REQUIRE(progress != wipe->params.end());
+    CHECK(progress->secret); // lo pone el anfitrión
+    auto ids = [&](ofx::Role role) {
+        std::vector<std::string> out;
+        for (const auto& p : registry.plugins(role))
+            out.push_back(p.id);
+        return out;
+    };
+    CHECK(ids(ofx::Role::Transition) == std::vector<std::string>{kWipe});
+    CHECK(std::ranges::count(ids(ofx::Role::Filter), kRect) == 1);
+
+    constexpr int W = 64, H = 32;
+    auto at = [&](const std::vector<uint8_t>& img, int x, int y) { return &img[(size_t(y) * W + size_t(x)) * 4]; };
+    std::string error;
+
+    // Generador: rectángulo rojo de la mitad del tamaño, centrado, sobre transparente.
+    auto gen = ofx::Effect::create(kRect, W, H, 25.0, &error, ofx::Role::Generator);
+    INFO(error);
+    REQUIRE(gen);
+    std::vector<uint8_t> out(size_t(W) * H * 4, 7);
+    REQUIRE(gen->generate(ofx::withDefaults(*rectGenerator, {}), 0, out.data(), &error));
+    CHECK(int(at(out, W / 2, H / 2)[0]) == 255);
+    CHECK(int(at(out, W / 2, H / 2)[3]) == 255);
+    CHECK(int(at(out, 2, 2)[3]) == 0);
+    CHECK(int(at(out, W / 4, H / 4)[3]) == 255); // esquina del rectángulo
+    CHECK(int(at(out, W / 4 - 1, H / 4)[3]) == 0);
+    // En coma flotante, con el color de un parámetro.
+    std::vector<float> outF(size_t(W) * H * 4);
+    REQUIRE(gen->generate(ofx::withDefaults(*rectGenerator, {{"color", {0.25, 0.5, 0.75, 1.0}}}), 0, outF.data(), &error));
+    CHECK(outF[(size_t(H / 2) * W + W / 2) * 4 + 2] == 0.75f);
+    // Un generador no se puede usar como filtro (ni al revés).
+    CHECK_FALSE(gen->render({}, 0, out.data(), out.data(), &error));
+
+    // El mismo plugin como filtro: el rectángulo encima del clip.
+    auto filter = ofx::Effect::create(kRect, W, H, 25.0, &error, ofx::Role::Filter);
+    REQUIRE(filter);
+    const auto in = testImage(W, H);
+    REQUIRE(filter->render(ofx::withDefaults(*rectFilter, {}), 0, in.data(), out.data(), &error));
+    CHECK(int(at(out, W / 2, H / 2)[0]) == 255);
+    CHECK(std::equal(at(out, 0, 0), at(out, 0, 0) + 4, at(in, 0, 0)));
+
+    // Transición: el destino (azul) entra desde la izquierda; el anfitrión pone el progreso.
+    auto tr = ofx::Effect::create(kWipe, W, H, 25.0, &error, ofx::Role::Transition);
+    REQUIRE(tr);
+    std::vector<uint8_t> blue(in.size());
+    for (size_t i = 0; i < blue.size(); i += 4)
+        blue[i] = 0, blue[i + 1] = 0, blue[i + 2] = 255, blue[i + 3] = 255;
+    const auto values = ofx::withDefaults(*wipe, {});
+    REQUIRE(tr->transition(values, 3, 0.25, in.data(), blue.data(), out.data(), &error));
+    CHECK(std::equal(at(out, W / 4 - 1, 5), at(out, W / 4 - 1, 5) + 4, at(blue, 0, 0)));
+    CHECK(std::equal(at(out, W / 4, 5), at(out, W / 4, 5) + 4, at(in, W / 4, 5)));
+    REQUIRE(tr->transition(ofx::withDefaults(*wipe, {{"mix", {1}}}), 3, 0.5, in.data(), blue.data(), out.data(), &error));
+    CHECK(std::abs(int(at(out, 40, 5)[2]) - (200 + 255) / 2) <= 1);
+    CHECK(std::abs(int(at(out, 40, 5)[0]) - int(at(in, 40, 5)[0]) / 2) <= 1);
+}
+
+TEST_CASE("OpenFX: clips generadores y transiciones en la línea de tiempo", "[ofx][engine]")
+{
+    useTestPlugins();
+    Project p = Project::createDefault();
+    p.settings.width = 320;
+    p.settings.height = 180;
+    auto video = engine::probeMediaItem(test::mediaPath("scenes_720p30.mp4"));
+    REQUIRE(video);
+    const Id clip = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *video), 0, 0, 60);
+    edit::addTrack(p, TrackKind::Video);
+    // Generador encima del video: rectángulo rojo de la mitad del tamaño, fuera transparente.
+    const Id gen = edit::placeGenerator(p, p.videoTracks[1].id, 0, 30, kRect);
+    REQUIRE(gen != kNoId);
+    CHECK(p.findClip(gen)->isGenerated());
+    CHECK(p.validate());
+    CHECK(edit::placeGenerator(p, p.audioTracks[0].id, 0, 30, kRect) == kNoId);
+
+    engine::VideoSources sources(false);
+    sources.setBundleRenderer(std::make_shared<render::QtBundleRenderer>());
+    render::OffscreenRenderer r;
+    REQUIRE(r.init(320, 180));
+    auto picture = [&](FramePos frame) {
+        std::vector<uint8_t> px;
+        REQUIRE(r.render(sources.build(p, frame), px));
+        return px;
+    };
+    auto at = [](const std::vector<uint8_t>& px, int x, int y) {
+        const uint8_t* q = &px[(size_t(y) * 320 + size_t(x)) * 4];
+        return std::array<int, 3>{q[0], q[1], q[2]};
+    };
+    const auto bundle = sources.build(p, 0);
+    REQUIRE(bundle.layers.size() == 2);
+    REQUIRE(bundle.layers[1].frame);
+    CHECK(bundle.layers[1].frame->width == 320);
+    CHECK(sources.takeOfxError().empty());
+    auto img = picture(0);
+    CHECK(at(img, 160, 90) == std::array<int, 3>{255, 0, 0});
+    const auto behind = at(img, 10, 10); // fuera del rectángulo se ve el video
+    CHECK(behind != std::array<int, 3>{255, 0, 0});
+    CHECK(behind[0] + behind[1] + behind[2] > 0);
+    // Parámetros del generador, con keyframes en fotogramas del clip.
+    REQUIRE(edit::toggleOfxKey(p, gen, edit::kOfxGenerator, "size", 0, {0.5}));
+    REQUIRE(edit::toggleOfxKey(p, gen, edit::kOfxGenerator, "size", 20, {1.0}));
+    CHECK(at(picture(0), 10, 10) == behind);
+    CHECK(at(picture(20), 10, 10) == std::array<int, 3>{255, 0, 0});
+    REQUIRE(edit::setOfxParam(p, gen, edit::kOfxGenerator, "color", {0.0, 1.0, 0.0, 1.0}));
+    CHECK(at(picture(0), 160, 90) == std::array<int, 3>{0, 255, 0});
+    // Los efectos del clip se aplican sobre lo generado.
+    REQUIRE(edit::addOfxEffect(p, gen, kGain) == 0);
+    REQUIRE(edit::setOfxParam(p, gen, 0, "gain", {0.5}));
+    CHECK(std::abs(at(picture(0), 160, 90)[1] - 128) <= 1);
+    CHECK(edit::removeOfxEffect(p, gen, 0));
+    // Recortar el principio conserva los keyframes en su instante.
+    REQUIRE(edit::trimClip(p, gen, edit::Edge::Start, 10));
+    CHECK(at(picture(20), 10, 10) == std::array<int, 3>{0, 255, 0});
+
+    // En el archivo y en OTIO.
+    const auto loaded = deserializeProject(serializeProject(p, "C:/x/p.mxproj"), "C:/x/p.mxproj");
+    REQUIRE(loaded.project);
+    CHECK(loaded.project->findClip(gen)->generator == p.findClip(gen)->generator);
+    const auto otio = otio::importTimeline(otio::exportTimeline(p, "x"), "C:/x/x.otio", [](const std::string&) { return std::nullopt; });
+    REQUIRE(otio.project);
+    int generators = 0;
+    for (const Track& t : otio.project->videoTracks)
+        for (const Clip& c : t.clips)
+            if (c.generator) {
+                ++generators;
+                CHECK(*c.generator == *p.findClip(gen)->generator);
+            }
+    CHECK(generators == 1);
+
+    // Transición OpenFX entre dos generadores de color liso (rojo → azul) en otra pista.
+    edit::addTrack(p, TrackKind::Video);
+    const Id red = edit::placeGenerator(p, p.videoTracks[2].id, 100, 30, kRect);
+    const Id blue = edit::placeGenerator(p, p.videoTracks[2].id, 130, 30, kRect);
+    REQUIRE(edit::setOfxParam(p, red, edit::kOfxGenerator, "size", {1.0}));
+    REQUIRE(edit::setOfxParam(p, blue, edit::kOfxGenerator, "size", {1.0}));
+    REQUIRE(edit::setOfxParam(p, blue, edit::kOfxGenerator, "color", {0.0, 0.0, 1.0, 1.0}));
+    CHECK_FALSE(edit::setTransition(p, blue, TransitionType::Ofx, 10)); // falta el plugin
+    REQUIRE(edit::setTransition(p, blue, TransitionType::Ofx, 10, kWipe));
+    CHECK(p.validate());
+    // Fotograma 130: el 5 de los 10 de la transición, progreso 0,55; el azul ha entrado hasta x ≈ 176.
+    img = picture(130);
+    CHECK(sources.takeOfxError().empty());
+    CHECK(at(img, 170, 90) == std::array<int, 3>{0, 0, 255});
+    CHECK(at(img, 182, 90) == std::array<int, 3>{255, 0, 0});
+    CHECK(sources.build(p, 130).layers.back().frame);
+    // Sus parámetros (fijos): mezcla en vez de barrido.
+    REQUIRE(edit::setOfxParam(p, blue, edit::kOfxTransition, "mix", {1}));
+    CHECK_FALSE(edit::toggleOfxKey(p, blue, edit::kOfxTransition, "mix", 3, {1}));
+    const auto mixed = at(picture(130), 60, 90);
+    CHECK(std::abs(mixed[0] - 115) <= 2);
+    CHECK(std::abs(mixed[2] - 140) <= 2);
+    // Cambiar la duración conserva el plugin y sus parámetros.
+    REQUIRE(edit::setTransition(p, blue, TransitionType::Ofx, 8, kWipe));
+    CHECK(p.findClip(blue)->transitionIn.ofx.params.contains("mix"));
+
+    // En el archivo y en OTIO.
+    const auto withTransition = deserializeProject(serializeProject(p, "C:/x/p.mxproj"), "C:/x/p.mxproj");
+    REQUIRE(withTransition.project);
+    CHECK(withTransition.project->findClip(blue)->transitionIn == p.findClip(blue)->transitionIn);
+    const auto otio2 = otio::importTimeline(otio::exportTimeline(p, "x"), "C:/x/x.otio", [](const std::string&) { return std::nullopt; });
+    REQUIRE(otio2.project);
+    bool found = false;
+    for (const Track& t : otio2.project->videoTracks)
+        for (const Clip& c : t.clips)
+            if (c.transitionIn.type == TransitionType::Ofx) {
+                found = true;
+                CHECK(c.transitionIn.ofx == p.findClip(blue)->transitionIn.ofx);
+            }
+    CHECK(found);
+
+    // Sin el plugin (o sin renderizador de secuencias), una disolvencia.
+    p.findClip(blue)->transitionIn.ofx.pluginId = "org.inexistente.Transicion";
+    const auto dissolve = sources.build(p, 130);
+    CHECK(sources.takeOfxError().find("no está instalado") != std::string::npos);
+    REQUIRE(dissolve.layers.size() >= 2);
+    CHECK(dissolve.layers.back().opacity < 1.0);
+    const auto dissolved = at(picture(130), 60, 90);
+    CHECK(dissolved[0] > 60);
+    CHECK(dissolved[2] > 60);
+    CHECK(clip != kNoId);
+}
+
 TEST_CASE("OpenFX: parámetros con keyframes", "[ofx]")
 {
     useTestPlugins();
@@ -194,23 +399,34 @@ TEST_CASE("OpenFX: plugins de terceros de una carpeta", "[ofx][externos]")
         WARN("No se cargó: " << e);
     constexpr int W = 64, H = 32;
     const auto in = testImage(W, H);
+    std::vector<uint8_t> other(in.size());
+    for (size_t i = 0; i < other.size(); ++i)
+        other[i] = i % 4 == 3 ? 255 : uint8_t(255 - in[i]);
     int rendered = 0;
-    for (const auto& p : ofx::Registry::instance().plugins()) {
-        if (p.binary.find(dir.substr(dir.find_last_of("/\\") + 1)) == std::string::npos)
-            continue; // solo los de esa carpeta
-        std::string error;
-        auto effect = ofx::Effect::create(p.id, W, H, 25.0, &error);
-        INFO(p.id << ": " << error);
-        REQUIRE(effect);
-        std::vector<uint8_t> out(in.size(), 0);
-        REQUIRE(effect->render(ofx::withDefaults(p, {}), 0, in.data(), out.data(), &error));
-        size_t changed = 0;
-        for (size_t i = 0; i < out.size(); ++i)
-            changed += out[i] != in[i] ? 1 : 0;
-        WARN(p.label << " (" << p.id << ", " << p.params.size() << " parámetros, " << (p.floatImages ? "float" : "8 bits")
-                     << "): " << changed << " valores distintos de la entrada; píxel (0,0) = " << int(out[0]) << "," << int(out[1]) << ","
-                     << int(out[2]) << "," << int(out[3]));
-        ++rendered;
+    for (const ofx::Role role : {ofx::Role::Filter, ofx::Role::Generator, ofx::Role::Transition}) {
+        for (const auto& p : ofx::Registry::instance().plugins(role)) {
+            if (p.binary.find(dir.substr(dir.find_last_of("/\\") + 1)) == std::string::npos)
+                continue; // solo los de esa carpeta
+            std::string error;
+            auto effect = ofx::Effect::create(p.id, W, H, 25.0, &error, role);
+            INFO(p.id << " (" << p.context << "): " << error);
+            REQUIRE(effect);
+            std::vector<uint8_t> out(in.size(), 0);
+            const auto values = ofx::withDefaults(p, {});
+            if (role == ofx::Role::Filter)
+                REQUIRE(effect->render(values, 0, in.data(), out.data(), &error));
+            else if (role == ofx::Role::Generator)
+                REQUIRE(effect->generate(values, 0, out.data(), &error));
+            else
+                REQUIRE(effect->transition(values, 0, 0.5, in.data(), other.data(), out.data(), &error));
+            size_t changed = 0;
+            for (size_t i = 0; i < out.size(); ++i)
+                changed += out[i] != in[i] ? 1 : 0;
+            WARN(p.label << " (" << p.id << ", " << p.context << ", " << p.params.size() << " parámetros, "
+                         << (p.floatImages ? "float" : "8 bits") << "): " << changed << " valores distintos de la entrada; píxel (0,0) = "
+                         << int(out[0]) << "," << int(out[1]) << "," << int(out[2]) << "," << int(out[3]));
+            ++rendered;
+        }
     }
     CHECK(rendered > 0);
 }
@@ -578,6 +794,63 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         CHECK_FALSE(project.ofxEffects(clip)[0].toMap()["enabled"].toBool());
         project.removeOfxEffect(clip, 0);
         CHECK(project.ofxEffects(clip).isEmpty());
+
+        // Generadores y transiciones: cada lista con los de su papel.
+        auto ids = [](const QVariantList& list) {
+            QStringList out;
+            for (const QVariant& v : list)
+                out.append(v.toMap()["id"].toString());
+            return out;
+        };
+        CHECK(ids(project.ofxGenerators()) == QStringList{QString::fromStdString(kRect)});
+        CHECK(ids(project.ofxTransitions()) == QStringList{QString::fromStdString(kWipe)});
+        CHECK_FALSE(ids(project.ofxPlugins()).contains(QString::fromStdString(kWipe)));
+        CHECK_FALSE(project.addGenerator(QString::fromStdString(kGain))); // no es un generador
+        REQUIRE(project.addGenerator(QString::fromStdString(kRect), -1, 0));
+        const qint64 gen = project.selection()[0].toLongLong();
+        QVariantMap info = project.clipInfo(gen);
+        CHECK(info["isGenerator"].toBool());
+        CHECK(info["name"].toString() == "Rectángulo de prueba");
+        CHECK(project.ofxEffects(gen).isEmpty()); // sus efectos, aparte
+        const QVariantList generator = project.ofxEffects(gen, "generator");
+        REQUIRE(generator.size() == 1);
+        CHECK(generator[0].toMap()["index"].toInt() == edit::kOfxGenerator);
+        auto genParam = [&](const QString& name) {
+            for (const QVariant& v : project.ofxEffects(gen, "generator")[0].toMap()["params"].toList())
+                if (v.toMap()["name"].toString() == name)
+                    return v.toMap();
+            return QVariantMap{};
+        };
+        CHECK(genParam("generatorOnly")["type"].toString() == "bool");
+        project.player()->seekFrame(0);
+        project.toggleOfxKeyframe(gen, edit::kOfxGenerator, "size");
+        CHECK(genParam("size")["keyHere"].toBool());
+        project.setOfxParam(gen, edit::kOfxGenerator, "color", {0.0, 1.0, 0.0, 1.0});
+        project.endInteraction();
+        CHECK(genParam("color")["value"].toList() == QVariantList{0.0, 1.0, 0.0, 1.0});
+
+        // Transición OpenFX en el corte entre dos generadores.
+        REQUIRE(project.addGenerator(QString::fromStdString(kRect), qint64(project.project().trackOfClip(Id(gen))->id),
+                                     project.project().findClip(Id(gen))->end()));
+        const qint64 second = project.selection()[0].toLongLong();
+        REQUIRE(project.setTransition(second, "ofx:" + QString::fromStdString(kWipe), 0.5));
+        info = project.clipInfo(second);
+        CHECK(info["transition"].toString() == "ofx");
+        CHECK(info["transitionPlugin"].toString() == QString::fromStdString(kWipe));
+        CHECK(info["transitionLabel"].toString() == "Barrido de prueba");
+        const QVariantList transition = project.ofxEffects(second, "transition");
+        REQUIRE(transition.size() == 1);
+        const QVariantList tparams = transition[0].toMap()["params"].toList();
+        REQUIRE(tparams.size() == 1); // el progreso no se muestra
+        CHECK(tparams[0].toMap()["name"].toString() == "mix");
+        CHECK_FALSE(tparams[0].toMap()["animates"].toBool());
+        project.setOfxParam(second, edit::kOfxTransition, "mix", {1});
+        project.endInteraction();
+        CHECK(project.ofxEffects(second, "transition")[0].toMap()["params"].toList()[0].toMap()["value"].toList() == QVariantList{1.0});
+        // Cambiar la duración desde el inspector («ofx» a secas) conserva el plugin.
+        REQUIRE(project.setTransition(second, "ofx", 1.0));
+        CHECK(project.clipInfo(second)["transitionPlugin"].toString() == QString::fromStdString(kWipe));
+        CHECK(project.project().findClip(Id(second))->transitionIn.ofx.params.contains("mix"));
     }
     qunsetenv("MOVIX_OFX_DIR");
 }

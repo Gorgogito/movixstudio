@@ -28,7 +28,7 @@ namespace {
 const QString kMeta = QStringLiteral("movixstudio");
 const QString kDefaultMedia = QStringLiteral("DEFAULT_MEDIA");
 
-const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
+const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft", "ofx"};
 
 // Colores de marcador de OTIO y el ARGB con el que se muestran aquí.
 struct MarkerColor {
@@ -187,7 +187,7 @@ private:
 
     bool hasLinkedAudio(const Clip& c) const
     {
-        if (c.title || c.isCompound() || c.audioDetached)
+        if (c.isGenerated() || c.audioDetached)
             return false;
         const MediaItem* m = m_p.findMedia(c.mediaId);
         return m && m->hasAudio;
@@ -204,10 +204,13 @@ private:
             } else if (prev && c.transitionIn.active()) {
                 const TransitionSpan span = transitionSpan(c.transitionIn);
                 const QString type = QLatin1String(kTransitionNames[int(c.transitionIn.type)]);
+                QJsonObject meta{{"type", type}};
+                if (c.transitionIn.type == TransitionType::Ofx)
+                    meta["ofx"] = ofxEffectToJson(c.transitionIn.ofx);
                 children.append(QJsonObject{
                     {"OTIO_SCHEMA", "Transition.1"},
                     {"name", type},
-                    {"metadata", QJsonObject{{kMeta, QJsonObject{{"type", type}}}}},
+                    {"metadata", QJsonObject{{kMeta, meta}}},
                     {"in_offset", rationalTime(double(span.before), m_rate)},
                     {"out_offset", rationalTime(double(span.after), m_rate)},
                     {"transition_type", c.transitionIn.type == TransitionType::Dissolve || linkedAudio
@@ -304,6 +307,17 @@ private:
                 {"available_image_bounds", QJsonValue()},
                 {"generator_kind", QLatin1String(kTitleGeneratorKind)},
                 {"parameters", titleToJson(*c.title)},
+            };
+        } else if (c.generator) {
+            name = QString::fromStdString(c.generator->pluginId);
+            reference = QJsonObject{
+                {"OTIO_SCHEMA", "GeneratorReference.1"},
+                {"name", name},
+                {"metadata", QJsonObject{}},
+                {"available_range", QJsonValue()},
+                {"available_image_bounds", QJsonValue()},
+                {"generator_kind", QLatin1String(kOfxGeneratorKind)},
+                {"parameters", ofxEffectToJson(*c.generator)},
             };
         } else if (const MediaItem* m = m_p.findMedia(c.mediaId)) {
             name = QString::fromStdString(m->name);
@@ -644,6 +658,11 @@ private:
         for (size_t i = 1; i < std::size(kTransitionNames); ++i)
             if (name == QLatin1String(kTransitionNames[i]))
                 result.type = TransitionType(i);
+        if (result.type == TransitionType::Ofx) { // sin el plugin, una disolvencia
+            result.ofx = ofxEffectFromJson(movixMeta(o)["ofx"].toObject());
+            if (result.ofx.pluginId.empty())
+                result = {TransitionType::Dissolve};
+        }
         result.duration = std::clamp<FramePos>(toFrame(seconds(o["in_offset"]) + seconds(o["out_offset"])), 2, longest);
         return result;
     }
@@ -710,11 +729,19 @@ private:
         const QJsonObject ref = activeReference(o);
         const QString refSchema = schemaName(ref);
         if (refSchema == QLatin1String("GeneratorReference")) {
-            if (ref["generator_kind"].toString() != QLatin1String(kTitleGeneratorKind) || kind != TrackKind::Video) {
-                warn(QCoreApplication::translate("Otio", "Se omitieron clips generados de tipo «%1».").arg(ref["generator_kind"].toString()));
+            const QString generatorKind = ref["generator_kind"].toString();
+            const bool title = generatorKind == QLatin1String(kTitleGeneratorKind);
+            OfxEffect generator;
+            if (generatorKind == QLatin1String(kOfxGeneratorKind))
+                generator = ofxEffectFromJson(ref["parameters"].toObject());
+            if ((!title && generator.pluginId.empty()) || kind != TrackKind::Video) {
+                warn(QCoreApplication::translate("Otio", "Se omitieron clips generados de tipo «%1».").arg(generatorKind));
                 return std::nullopt;
             }
-            c.title = titleFromJson(ref["parameters"].toObject());
+            if (title)
+                c.title = titleFromJson(ref["parameters"].toObject());
+            else
+                c.generator = std::move(generator);
             c.speed = 1.0;
             c.speedRamp = Animated(1.0);
             c.reverse = false;
@@ -851,7 +878,7 @@ private:
         std::set<Id> touched;
         for (Track& v : video) {
             for (Clip& c : v.clips) {
-                if (c.title || c.isCompound())
+                if (c.isGenerated())
                     continue;
                 const MediaItem* m = m_p.findMedia(c.mediaId);
                 if (!m || !m->hasAudio)

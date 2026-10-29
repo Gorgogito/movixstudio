@@ -123,6 +123,14 @@ private:
     void buildLayers(const std::vector<core::VideoLayer>& layers, FrameBundle& bundle);
     // Compuesto con efectos OpenFX: su secuencia compuesta en memoria (nullptr si no se puede).
     std::shared_ptr<const media::VideoFrame> flattenCompound(const FrameBundle& nested);
+    // Imagen de un generador OpenFX del tamaño del lienzo (nullptr si el plugin falta o falla).
+    std::shared_ptr<const media::VideoFrame> generated(const core::VideoLayer& layer, int width, int height);
+    // Transición OpenFX: compone cada lado en memoria y el plugin los mezcla. Si no se puede (sin
+    // renderizador de secuencias o sin el plugin), queda una disolvencia.
+    void buildTransition(const core::VideoLayer& layer, FrameBundle& bundle);
+    // Instancia OpenFX de una aparición del clip (`slot`: la posición del efecto, o la del generador
+    // o la transición), creada o rehecha si cambia el plugin o el tamaño; nullptr si no se puede.
+    ofx::Effect* ofxInstance(std::uint64_t instance, size_t slot, const std::string& pluginId, ofx::Role role, int width, int height);
     // Aplica los efectos OpenFX de la capa; si ninguno se puede aplicar, devuelve el fotograma igual.
     std::shared_ptr<const media::VideoFrame> applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f);
 
@@ -169,9 +177,11 @@ private:
         std::shared_ptr<const MaskImage> image;
     };
     std::unordered_map<std::uint64_t, CachedMatte> m_matteCache; // por aparición del clip
-    // Instancias OpenFX por aparición del clip y posición del efecto (el plugin guarda estado).
+    // Instancias OpenFX por aparición del clip y posición del efecto (el plugin guarda estado); el
+    // generador y la transición van en las posiciones kGeneratorSlot y kTransitionSlot.
     struct OfxSlot {
         std::string pluginId;
+        ofx::Role role = ofx::Role::Filter;
         std::unique_ptr<ofx::Effect> effect;
         bool failed = false; // no se pudo crear: no se reintenta mientras no cambie el plugin
         uint64_t lastUse = 0;

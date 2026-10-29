@@ -132,20 +132,22 @@ struct TitleStyle {
     bool operator==(const TitleStyle&) const = default;
 };
 
-enum class TransitionType { None, Dissolve, DipToBlack, WipeLeft, WipeRight, PushLeft, PushRight, SlideLeft };
+// Ofx: la hace un plugin OpenFX (TransitionIn::ofx).
+enum class TransitionType { None, Dissolve, DipToBlack, WipeLeft, WipeRight, PushLeft, PushRight, SlideLeft, Ofx };
 
 // Transición desde el clip anterior de la misma pista. Solo tiene efecto si ambos clips son
 // contiguos; se centra en el corte y usa material de más allá de los bordes (o lo congela).
 struct TransitionIn {
     TransitionType type = TransitionType::None;
     FramePos duration = 0;
+    OfxEffect ofx; // TransitionType::Ofx: el plugin y sus parámetros (fijos: el progreso lo pone el anfitrión)
     bool active() const { return type != TransitionType::None && duration > 0; }
     bool operator==(const TransitionIn&) const = default;
 };
 
 struct Clip {
     Id id = kNoId;
-    Id mediaId = kNoId;    // kNoId en los clips generados (títulos) y en los compuestos
+    Id mediaId = kNoId;    // kNoId en los clips generados (títulos, generadores) y en los compuestos
     Id sequenceId = kNoId; // clip compuesto: la secuencia que contiene (sourceIn es su instante)
     // Clip multicámara (compuesto con angle ≥ 0): cada pista de video de su secuencia es un ángulo
     // y solo se ve `angle`. El audio es el del ángulo `audioAngle`: −1 = el del ángulo que se ve;
@@ -170,6 +172,8 @@ struct Clip {
     bool audioDetached = false; // el audio de este clip de video se separó a otra pista
     double denoise = 0.0;       // reducción de ruido del audio (0 = ninguna, 1 = máxima)
     std::optional<TitleStyle> title;
+    // Generador OpenFX: la imagen la crea el plugin (sin medio); sus parámetros, en fotogramas del clip.
+    std::optional<OfxEffect> generator;
     TransitionIn transitionIn;
     AnimatedGrade color;
     ChromaKey chromaKey;
@@ -183,7 +187,9 @@ struct Clip {
     bool isMulticam() const { return isCompound() && angle >= 0; }
     bool hasRamp() const { return speedRamp.isAnimated(); }
     double speedAt(FramePos rel) const { return hasRamp() ? speedRamp.at(rel) : speed; }
-    bool isGenerated() const { return title.has_value() || isCompound(); }
+    // Título o generador: la imagen se crea, sin medio ni secuencia.
+    bool isSynthetic() const { return title.has_value() || generator.has_value(); }
+    bool isGenerated() const { return isSynthetic() || isCompound(); }
     bool operator==(const Clip&) const = default;
 };
 

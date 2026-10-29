@@ -53,6 +53,9 @@ Id placeClip(Project& p, Id trackId, Id mediaId, FramePos start, TimeUs sourceIn
              PlaceMode mode = PlaceMode::Overwrite);
 Id placeTitle(Project& p, Id trackId, FramePos start, FramePos duration, const TitleStyle& style,
               PlaceMode mode = PlaceMode::Overwrite);
+// Clip generado por un plugin OpenFX (generador) con sus parámetros por defecto.
+Id placeGenerator(Project& p, Id trackId, FramePos start, FramePos duration, const std::string& pluginId,
+                  PlaceMode mode = PlaceMode::Overwrite);
 
 // Desplaza clips `delta` fotogramas y `trackOffset` pistas (dentro del mismo tipo).
 // Si algún clip quedaría antes de 0, el desplazamiento se limita para todos.
@@ -99,8 +102,9 @@ bool setReverse(Project& p, Id clipId, bool reverse);
 bool setFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 bool setAudioFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut);
 bool setDenoise(Project& p, Id clipId, double amount); // 0..1; solo clips con audio
-// Transición desde el clip anterior contiguo. TransitionType::None la quita.
-bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration);
+// Transición desde el clip anterior contiguo. TransitionType::None la quita; Ofx necesita el plugin
+// (si es el que ya tenía, conserva sus parámetros).
+bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration, const std::string& ofxPlugin = {});
 bool setTitleStyle(Project& p, Id clipId, const TitleStyle& style);
 
 // --- Efectos de imagen (solo clips de video) ---
@@ -130,7 +134,11 @@ bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn);
 // Mate de IA del clip (solo clips de video con medio). Un AiMatte vacío lo quita.
 bool setMatte(Project& p, Id clipId, const AiMatte& matte);
 
-// Efectos OpenFX (clips con imagen que no son compuestos). Devuelven si hubo cambio.
+// Efectos OpenFX de los clips de video. Devuelven si hubo cambio. En los parámetros, `index` es el
+// del efecto o kOfxGenerator (el del clip generador) o kOfxTransition (su transición de entrada;
+// sus parámetros no se animan).
+inline constexpr int kOfxGenerator = -1;
+inline constexpr int kOfxTransition = -2;
 int addOfxEffect(Project& p, Id clipId, const std::string& pluginId); // índice o −1
 bool removeOfxEffect(Project& p, Id clipId, int index);
 bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled);

@@ -173,6 +173,38 @@ Rectangle {
                         }
                     }
                 }
+                // Generadores OpenFX instalados (como los títulos: se arrastran o con doble clic).
+                Text {
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Layout.fillWidth: true
+                    visible: library.project.ofxGenerators.length > 0
+                    text: qsTr("Generadores OpenFX")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    font.bold: true
+                }
+                GridLayout {
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Layout.fillWidth: true
+                    visible: library.project.ofxGenerators.length > 0
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: library.project.ofxGenerators
+                        LibraryCard {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.label
+                            glyph: "✦"
+                            mimeKey: "application/x-movix-generator"
+                            mimeValue: modelData.id
+                            onActivated: library.project.addGenerator(modelData.id)
+                        }
+                    }
+                }
                 Item { Layout.fillHeight: true }
             }
 
@@ -203,7 +235,7 @@ Rectangle {
                             { type: "pushLeft", name: qsTr("Empujar ←"), glyph: "⇇" },
                             { type: "pushRight", name: qsTr("Empujar →"), glyph: "⇉" },
                             { type: "slideLeft", name: qsTr("Deslizar"), glyph: "⇐" }
-                        ]
+                        ].concat(library.project.ofxTransitions.map(p => ({ type: "ofx:" + p.id, name: p.label, glyph: "✦" })))
                         LibraryCard {
                             required property var modelData
                             Layout.fillWidth: true

@@ -1045,7 +1045,7 @@ std::optional<int> maskPathFromName(const QString& name)
     return ok && index >= 0 ? std::optional<int>(index) : std::nullopt;
 }
 
-const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft"};
+const char* const kTransitionNames[] = {"none", "dissolve", "dipToBlack", "wipeLeft", "wipeRight", "pushLeft", "pushRight", "slideLeft", "ofx"};
 
 TransitionType transitionFromName(const QString& name)
 {
@@ -1334,7 +1334,16 @@ void ProjectController::setDenoise(qint64 clipId, double amount)
 bool ProjectController::setTransition(qint64 clipId, const QString& type, double seconds)
 {
     const FramePos frames = project().settings.framesIn(fromSeconds(std::max(0.0, seconds)));
-    return apply(tr("Transición"), [&](Project& p) { return edit::setTransition(p, Id(clipId), transitionFromName(type), frames); },
+    // "ofx:<plugin>": transición OpenFX; "ofx" a secas, la que ya tiene el clip.
+    TransitionType kind = transitionFromName(type);
+    std::string plugin;
+    if (type.startsWith(QLatin1String("ofx:"))) {
+        kind = TransitionType::Ofx;
+        plugin = type.mid(4).toStdString();
+    } else if (const Clip* c = project().findClip(Id(clipId)); c && kind == TransitionType::Ofx) {
+        plugin = c->transitionIn.ofx.pluginId;
+    }
+    return apply(tr("Transición"), [&](Project& p) { return edit::setTransition(p, Id(clipId), kind, frames, plugin); },
                  QStringLiteral("transition:%1").arg(clipId));
 }
 
@@ -1557,19 +1566,25 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
     const Clip* c = project().findClip(Id(clipId));
     if (!c)
         return {};
-    const MediaItem* m = c->title ? nullptr : project().findMedia(c->mediaId);
+    const MediaItem* m = c->isGenerated() ? nullptr : project().findMedia(c->mediaId);
     const Track* t = project().trackOfClip(c->id);
     const auto& s = project().settings;
     const auto& clips = t->clips;
+    auto pluginLabel = [](const std::string& id, ofx::Role role) {
+        const auto info = ofx::Registry::instance().find(id, role);
+        return info ? QString::fromStdString(info->label) : QString::fromStdString(id);
+    };
     const auto idx = size_t(c - clips.data());
     const bool hasCut = idx > 0 && clips[idx - 1].end() == c->start;
     QVariantMap info{
         {"clipId", qint64(c->id)},
         {"mediaId", qint64(c->mediaId)},
         {"name", c->title          ? tr("Título")
+                 : c->generator    ? pluginLabel(c->generator->pluginId, ofx::Role::Generator)
                  : c->isCompound() ? QString::fromStdString(project().sequenceName(c->sequenceId))
                  : m               ? QString::fromStdString(m->name)
                                    : QString()},
+        {"isGenerator", c->generator.has_value()},
         {"isCompound", c->isCompound()},
         {"isMulticam", c->isMulticam()},
         {"track", t ? QString::fromStdString(t->name) : QString()},
@@ -1595,6 +1610,9 @@ QVariantMap ProjectController::clipInfo(qint64 clipId) const
         {"audioFadeOut", toSeconds(s.frameToTime(c->audioFadeOut))},
         {"hasCut", hasCut},
         {"transition", QLatin1String(kTransitionNames[int(c->transitionIn.type)])},
+        {"transitionPlugin", QString::fromStdString(c->transitionIn.ofx.pluginId)},
+        {"transitionLabel", c->transitionIn.type == TransitionType::Ofx ? pluginLabel(c->transitionIn.ofx.pluginId, ofx::Role::Transition)
+                                                                         : QString()},
         {"transitionSeconds", toSeconds(s.frameToTime(c->transitionIn.duration))},
         {"durationSeconds", toSeconds(s.frameToTime(c->duration))},
         {"blend", QLatin1String(movix::app::kBlendModeNames[int(c->blend)])},

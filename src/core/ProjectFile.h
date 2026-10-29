@@ -23,7 +23,8 @@ namespace movix::core {
 // Versión 8 (F6): efectos OpenFX por clip, velocidad variable, clips al revés, forma animada de las
 // máscaras de forma libre y composición en luz lineal.
 // Versión 9 (F6): parámetros de los efectos OpenFX con keyframes.
-inline constexpr int kProjectFormatVersion = 9;
+// Versión 10 (F6): generadores y transiciones OpenFX.
+inline constexpr int kProjectFormatVersion = 10;
 inline constexpr const char* kProjectExtension = "mxproj";
 
 struct LoadResult {
@@ -42,6 +43,10 @@ Transcript transcriptFromJson(const QJsonObject& o);
 // Estilo de un título en JSON (lo usan el archivo de proyecto y el intercambio OTIO).
 QJsonObject titleToJson(const TitleStyle& s);
 TitleStyle titleFromJson(const QJsonObject& o);
+
+// Efecto OpenFX (plugin, activo y parámetros) en JSON (archivo de proyecto e intercambio OTIO).
+QJsonObject ofxEffectToJson(const OfxEffect& e);
+OfxEffect ofxEffectFromJson(const QJsonObject& o);
 
 // Escritura atómica: o se guarda completo o el archivo anterior queda intacto.
 bool saveProjectFile(const Project& project, const QString& path, QString* error = nullptr);

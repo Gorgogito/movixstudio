@@ -21,6 +21,7 @@ namespace movix::core::otio {
 // editores; al importar, los clips de audio que coinciden con uno de video se vuelven a unir a él.
 inline constexpr const char* kOtioExtension = "otio";
 inline constexpr const char* kTitleGeneratorKind = "MovixStudioTitle";
+inline constexpr const char* kOfxGeneratorKind = "MovixStudioOpenFX"; // generador OpenFX (plugin y parámetros)
 
 // `name` es el nombre de la línea de tiempo (p. ej. el del archivo).
 QByteArray exportTimeline(const Project& project, const QString& name);

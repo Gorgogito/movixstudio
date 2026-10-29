@@ -199,6 +199,8 @@ bool Project::validate(std::string* why) const
                     || c.audioFadeIn + c.audioFadeOut > c.duration)
                     return fail("Fundidos más largos que el clip: " + cid);
                 if (c.transitionIn.active()) {
+                    if (c.transitionIn.type == TransitionType::Ofx && c.transitionIn.ofx.pluginId.empty())
+                        return fail("Transición OpenFX sin plugin: " + cid);
                     if (!prev || prev->end() != c.start)
                         return fail("Transición sin clip anterior contiguo: " + cid);
                     if (c.transitionIn.duration > std::min(prev->duration, c.duration))
@@ -208,9 +210,11 @@ bool Project::validate(std::string* why) const
                     return fail("Ángulo de multicámara inválido: " + cid);
                 prevEnd = c.end();
                 prev = &c;
-                if (c.title) {
-                    if (t.kind != TrackKind::Video || c.mediaId != kNoId || c.isCompound())
-                        return fail("Título fuera de una pista de video: " + cid);
+                if (c.isSynthetic()) {
+                    if (t.kind != TrackKind::Video || c.mediaId != kNoId || c.isCompound() || (c.title && c.generator))
+                        return fail("Título o generador fuera de una pista de video: " + cid);
+                    if (c.generator && c.generator->pluginId.empty())
+                        return fail("Generador sin plugin: " + cid);
                     continue;
                 }
                 if (c.isCompound()) {

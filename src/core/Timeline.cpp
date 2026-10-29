@@ -39,7 +39,7 @@ bool contributesVideo(const Project& p, const Clip& c)
 {
     if (!c.enabled)
         return false;
-    if (c.title || c.isCompound())
+    if (c.isGenerated())
         return true;
     const MediaItem* m = p.findMedia(c.mediaId);
     return m && m->hasVideo;
@@ -55,6 +55,8 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
     l.trackIndex = trackIndex;
     if (c.title) {
         l.title = &*c.title;
+    } else if (c.generator) {
+        l.generator = &*c.generator;
     } else if (c.isCompound()) {
         l.compound = true;
         const FramePos nestedFrame = p.settings.timeToFrame(std::max<TimeUs>(0, sourceTimeAt(p.settings, c, f)));
@@ -107,7 +109,7 @@ VideoLayer makeLayer(const Project& p, const Clip& c, int trackIndex, FramePos f
             lm.points = m.pathAt(rel);
         l.masks.push_back(std::move(lm));
     }
-    if (c.matte.active() && !c.isCompound() && !c.title)
+    if (c.matte.active() && !c.isGenerated())
         l.matte = &c.matte;
     if (!c.ofx.empty())
         l.ofx = &c.ofx;
@@ -272,6 +274,18 @@ std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks
             const double progress = (double(k) + 0.5) / double(incoming->transitionIn.duration);
             VideoLayer a = makeLayer(p, *outgoing, track, frame, outgoing != c, outer, depth);
             VideoLayer b = makeLayer(p, *incoming, track, frame, incoming != c, outer, depth);
+            if (incoming->transitionIn.type == TransitionType::Ofx) {
+                VideoLayer mix;
+                mix.clipId = incoming->id;
+                mix.instance = b.instance;
+                mix.trackIndex = track;
+                mix.transition = &incoming->transitionIn.ofx;
+                mix.transitionProgress = progress;
+                mix.transitionFrame = k;
+                mix.nested = {std::move(a), std::move(b)};
+                layers.push_back(std::move(mix));
+                continue;
+            }
             bool drawA = true, drawB = true;
             applyTransition(incoming->transitionIn.type, progress, a, b, drawA, drawB);
             if (drawA)
@@ -305,7 +319,7 @@ void collectAudio(const Project& p, std::span<const Track> vtracks, std::span<co
             return;
         for (size_t i = 0; i < t.clips.size(); ++i) {
             const Clip& c = t.clips[i];
-            if (!c.enabled || c.title || (videoTrack && c.audioDetached))
+            if (!c.enabled || c.isSynthetic() || (videoTrack && c.audioDetached))
                 continue;
             const MediaItem* m = c.isCompound() ? nullptr : p.findMedia(c.mediaId);
             if (!c.isCompound() && (!m || !m->hasAudio))

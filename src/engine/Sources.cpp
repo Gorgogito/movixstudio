@@ -11,6 +11,9 @@ namespace movix::engine {
 
 namespace {
 
+constexpr size_t kGeneratorSlot = size_t(-1);
+constexpr size_t kTransitionSlot = size_t(-2);
+
 template <typename Map>
 void evictLeastRecentlyUsed(Map& readers, size_t maxOpen)
 {
@@ -169,6 +172,8 @@ std::shared_ptr<const media::VideoFrame> VideoSources::frame(const core::VideoLa
 {
     if (layer.title)
         return title(*layer.title, canvasWidth, canvasHeight, layer.titleChars);
+    if (layer.generator)
+        return generated(layer, canvasWidth, canvasHeight);
     if (!layer.media)
         return nullptr;
     if (layer.media->isStill)
@@ -216,6 +221,10 @@ void VideoSources::buildLayers(const std::vector<core::VideoLayer>& layers, Fram
     for (const core::VideoLayer& layer : layers) {
         if (layer.opacity <= 0.0)
             continue; // invisible: no hace falta decodificar
+        if (layer.transition) {
+            buildTransition(layer, bundle);
+            continue;
+        }
         std::shared_ptr<const media::VideoFrame> f;
         std::shared_ptr<FrameBundle> nested;
         int layerW = bundle.canvasWidth, layerH = bundle.canvasHeight;
@@ -280,6 +289,119 @@ std::shared_ptr<const media::VideoFrame> VideoSources::flattenCompound(const Fra
     return frame;
 }
 
+ofx::Effect* VideoSources::ofxInstance(std::uint64_t instance, size_t index, const std::string& pluginId, ofx::Role role, int width, int height)
+{
+    OfxSlot& slot = m_ofx[{instance, index}];
+    slot.lastUse = m_tick;
+    if (slot.pluginId != pluginId || slot.role != role || (slot.effect && (slot.effect->width() != width || slot.effect->height() != height))) {
+        slot.effect.reset();
+        slot.failed = false;
+        slot.pluginId = pluginId;
+        slot.role = role;
+    }
+    if (!slot.effect && !slot.failed) {
+        std::string error;
+        slot.effect = ofx::Effect::create(pluginId, width, height, m_frameRate, &error, role);
+        slot.failed = !slot.effect;
+        if (slot.failed)
+            m_ofxError = error;
+    }
+    return slot.effect.get();
+}
+
+namespace {
+
+// Imagen RGBA sin premultiplicar: de 8 bits o, si `deep`, en coma flotante (RGBA16F) con la señal dada.
+std::shared_ptr<media::VideoFrame> rgbaFrame(int w, int h, bool deep, std::vector<uint8_t> rgba, const std::vector<float>& rgbaF,
+                                             media::ColorSpace space, media::Transfer transfer)
+{
+    auto frame = std::make_shared<media::VideoFrame>();
+    frame->format = deep ? media::PixelFormat::RGBA16F : media::PixelFormat::RGBA;
+    frame->width = w;
+    frame->height = h;
+    frame->fullRange = true;
+    frame->colorSpace = space;
+    frame->transfer = transfer;
+    if (deep)
+        media::floatToHalf(rgbaF, frame->rgba);
+    else
+        frame->rgba = std::move(rgba);
+    return frame;
+}
+
+} // namespace
+
+std::shared_ptr<const media::VideoFrame> VideoSources::generated(const core::VideoLayer& layer, int width, int height)
+{
+    ofx::Effect* effect = ofxInstance(layer.instance, kGeneratorSlot, layer.generator->pluginId, ofx::Role::Generator, width, height);
+    if (!effect)
+        return nullptr;
+    // Como los títulos, en SDR Rec.709 (el compositor lo lleva a la señal del proyecto); en coma
+    // flotante si el plugin la admite.
+    const bool deep = effect->plugin().floatImages;
+    std::vector<uint8_t> rgba(deep ? 0 : size_t(width) * size_t(height) * 4);
+    std::vector<float> rgbaF(deep ? size_t(width) * size_t(height) * 4 : 0);
+    std::string error;
+    const auto values = ofx::withDefaults(effect->plugin(), layer.generator->params);
+    if (deep ? !effect->generate(values, double(layer.clipFrame), rgbaF.data(), &error)
+             : !effect->generate(values, double(layer.clipFrame), rgba.data(), &error)) {
+        m_ofxError = error;
+        return nullptr;
+    }
+    return rgbaFrame(width, height, deep, std::move(rgba), rgbaF, media::ColorSpace::BT709, media::Transfer::SDR);
+}
+
+void VideoSources::buildTransition(const core::VideoLayer& layer, FrameBundle& bundle)
+{
+    std::vector<core::VideoLayer> sides = layer.nested;
+    if (sides.size() != 2)
+        return;
+    const int w = bundle.canvasWidth, h = bundle.canvasHeight;
+    ofx::Effect* effect = m_bundleRenderer ? ofxInstance(layer.instance, kTransitionSlot, layer.transition->pluginId, ofx::Role::Transition, w, h)
+                                           : nullptr;
+    if (effect) {
+        // Cada lado, con todo lo suyo (transformación, color, efectos...), en una imagen del lienzo.
+        const bool deep = bundle.colorMode != core::ColorMode::SDR;
+        std::shared_ptr<const media::VideoFrame> images[2];
+        for (int i = 0; i < 2; ++i) {
+            FrameBundle side = bundle;
+            side.layers.clear();
+            ++m_inMemory;
+            buildLayers({sides[size_t(i)]}, side);
+            --m_inMemory;
+            images[i] = m_bundleRenderer->render(side, deep);
+        }
+        if (images[0] && images[1]) {
+            std::vector<uint8_t> out;
+            std::vector<float> from, to, outF;
+            std::string error;
+            const auto values = ofx::withDefaults(effect->plugin(), layer.transition->params);
+            const double time = double(layer.transitionFrame);
+            bool ok = false;
+            if (deep) {
+                outF.resize(size_t(w) * size_t(h) * 4);
+                ok = media::frameToRgbaF(*images[0], from) && media::frameToRgbaF(*images[1], to)
+                     && effect->transition(values, time, layer.transitionProgress, from.data(), to.data(), outF.data(), &error);
+            } else {
+                out.resize(size_t(w) * size_t(h) * 4);
+                ok = effect->transition(values, time, layer.transitionProgress, images[0]->rgba.data(), images[1]->rgba.data(), out.data(),
+                                        &error);
+            }
+            if (ok) {
+                LayerFrame result{layer.clipId, layer.trackIndex};
+                result.frame = rgbaFrame(w, h, deep, std::move(out), outF, images[0]->colorSpace, images[0]->transfer);
+                result.rawSignal = true; // ya en la señal del proyecto
+                bundle.layers.push_back(std::move(result));
+                return;
+            }
+            m_ofxError = error;
+        }
+    }
+    // Sin el plugin: una disolvencia.
+    sides[1].opacity *= layer.transitionProgress;
+    buildLayers(sides, bundle);
+}
+
 std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f)
 {
     const bool any = std::any_of(layer.ofx->begin(), layer.ofx->end(), [](const core::OfxEffect& e) { return e.enabled; });
@@ -301,27 +423,14 @@ std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::Vide
         const core::OfxEffect& e = (*layer.ofx)[i];
         if (!e.enabled)
             continue;
-        OfxSlot& slot = m_ofx[{layer.instance, i}];
-        slot.lastUse = m_tick;
-        if (slot.pluginId != e.pluginId || (slot.effect && (slot.effect->width() != w || slot.effect->height() != h))) {
-            slot.effect.reset();
-            slot.failed = false;
-            slot.pluginId = e.pluginId;
-        }
-        if (!slot.effect && !slot.failed) {
-            std::string error;
-            slot.effect = ofx::Effect::create(e.pluginId, w, h, m_frameRate, &error);
-            slot.failed = !slot.effect;
-            if (slot.failed)
-                m_ofxError = error;
-        }
-        if (!slot.effect)
+        ofx::Effect* effect = ofxInstance(layer.instance, i, e.pluginId, ofx::Role::Filter, w, h);
+        if (!effect)
             continue;
         std::string error;
-        const auto values = ofx::withDefaults(slot.effect->plugin(), e.params);
+        const auto values = ofx::withDefaults(effect->plugin(), e.params);
         const double time = double(layer.clipFrame);
-        if (deep ? !slot.effect->render(values, time, rgbaF.data(), outF.data(), &error)
-                 : !slot.effect->render(values, time, rgba.data(), out.data(), &error)) {
+        if (deep ? !effect->render(values, time, rgbaF.data(), outF.data(), &error)
+                 : !effect->render(values, time, rgba.data(), out.data(), &error)) {
             m_ofxError = error;
             continue;
         }

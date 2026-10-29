@@ -42,8 +42,9 @@ struct VideoLayer {
     // del clip): un lector de medios por aparición.
     std::uint64_t instance = 0;
     Id mediaId = kNoId;
-    const MediaItem* media = nullptr;  // nullptr en títulos
+    const MediaItem* media = nullptr;  // nullptr en títulos y generadores
     const TitleStyle* title = nullptr; // solo en títulos
+    const OfxEffect* generator = nullptr; // solo en generadores OpenFX
     int titleChars = -1;               // máquina de escribir: caracteres visibles (−1 = todos)
     int trackIndex = 0;                // 0 = V1 (capa inferior)
     TimeUs sourceTime = 0;             // instante del medio que corresponde al fotograma
@@ -65,6 +66,12 @@ struct VideoLayer {
     // Clip compuesto: capas de su secuencia en el fotograma que corresponde (de abajo arriba).
     bool compound = false;
     std::vector<VideoLayer> nested;
+    // Transición OpenFX: en `nested`, la capa saliente y la entrante tal cual (sin transición). El
+    // plugin las mezcla con el progreso `transitionProgress` (0..1) en el fotograma
+    // `transitionFrame` de la transición.
+    const OfxEffect* transition = nullptr;
+    double transitionProgress = 0.0;
+    FramePos transitionFrame = 0;
 };
 
 inline constexpr int kMaxNesting = 8; // profundidad máxima de clips compuestos que se evalúa

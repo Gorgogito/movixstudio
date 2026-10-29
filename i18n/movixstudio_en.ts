@@ -1383,6 +1383,14 @@
         <source>Pegar el color copiado en todos</source>
         <translation>Paste the copied color into all</translation>
     </message>
+    <message>
+        <source>Generador</source>
+        <translation>Generator</translation>
+    </message>
+    <message>
+        <source>%1 (no instalada)</source>
+        <translation>%1 (not installed)</translation>
+    </message>
 </context>
 <context>
     <name>KeyframeButton</name>
@@ -1472,6 +1480,10 @@
     <message>
         <source>Arrastra un título a la línea de tiempo o haz doble clic para añadirlo en el cabezal. Guarda los tuyos como plantilla desde las propiedades de un título.</source>
         <translation>Drag a title onto the timeline or double-click to add it at the playhead. Save your own as templates from a title&apos;s properties.</translation>
+    </message>
+    <message>
+        <source>Generadores OpenFX</source>
+        <translation>OpenFX generators</translation>
     </message>
 </context>
 <context>
@@ -2209,6 +2221,10 @@ Do you want to recover it instead of opening “%2”?</translation>
         <source>Keyframe siguiente</source>
         <translation>Next keyframe</translation>
     </message>
+    <message>
+        <source>Generador OpenFX</source>
+        <translation>OpenFX generator</translation>
+    </message>
 </context>
 <context>
     <name>Otio</name>
@@ -2722,6 +2738,10 @@ Do you want to recover it instead of opening “%2”?</translation>
     <message>
         <source>Composición en luz lineal</source>
         <translation>Linear-light compositing</translation>
+    </message>
+    <message>
+        <source>Añadir «%1»</source>
+        <translation>Add “%1”</translation>
     </message>
 </context>
 <context>

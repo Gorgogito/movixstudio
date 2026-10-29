@@ -38,6 +38,10 @@ void forEachAnimated(Clip& c, const auto& fn)
         for (auto& [name, components] : e.params)
             for (Animated& a : components)
                 fn(a);
+    if (c.generator)
+        for (auto& [name, components] : c.generator->params)
+            for (Animated& a : components)
+                fn(a);
 }
 
 // Fotograma (relativo al clip) de cada keyframe del clip: propiedades y corrección de color.
@@ -478,8 +482,8 @@ std::optional<Clip> retimeForCompound(const Project& p, const Clip& comp, const 
     const double length = double(s.frameToTime(out.start + out.duration)) - newStart;
     const double s0 = sourceAt(0.0), s1 = sourceAt(length);
     out.reverse = s1 < s0;
-    if (piece.title)
-        out.reverse = false; // los títulos no tienen tramo que recorrer
+    if (piece.isSynthetic())
+        out.reverse = false; // los títulos y generadores no tienen tramo que recorrer
     else
         out.sourceIn = TimeUs(std::llround(std::min(s0, s1)));
     const double span = std::abs(s1 - s0);
@@ -531,6 +535,10 @@ std::optional<Clip> retimeForCompound(const Project& p, const Clip& comp, const 
     }
     for (OfxEffect& e : out.ofx)
         for (auto& [name, components] : e.params)
+            for (Animated& a : components)
+                remapKeys(a.keys, map, flip);
+    if (out.generator)
+        for (auto& [name, components] : out.generator->params)
             for (Animated& a : components)
                 remapKeys(a.keys, map, flip);
     remapKeys(out.color.keys, map, flip);
@@ -1009,7 +1017,7 @@ FramePos availableFrames(const Project& p, const MediaItem& media, TimeUs source
 
 FramePos maxClipFrames(const Project& p, const Clip& c)
 {
-    if (c.title)
+    if (c.isSynthetic())
         return p.settings.framesIn(kUnlimitedDuration);
     TimeUs total = 0; // medio (o secuencia) disponible
     if (c.isCompound()) {
@@ -1062,6 +1070,19 @@ Id placeTitle(Project& p, Id trackId, FramePos start, FramePos duration, const T
     return placePrepared(p, *t, std::move(c), mode);
 }
 
+Id placeGenerator(Project& p, Id trackId, FramePos start, FramePos duration, const std::string& pluginId, PlaceMode mode)
+{
+    Track* t = p.findTrack(trackId);
+    if (!t || t->locked || t->kind != TrackKind::Video || start < 0 || duration <= 0 || pluginId.empty())
+        return kNoId;
+    Clip c;
+    c.id = p.newId();
+    c.start = start;
+    c.duration = duration;
+    c.generator = OfxEffect{pluginId, true, {}};
+    return placePrepared(p, *t, std::move(c), mode);
+}
+
 int addMarkers(Project& p, const std::vector<FramePos>& frames, const std::string& label, std::uint32_t color)
 {
     int added = 0;
@@ -1091,7 +1112,7 @@ bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn)
 {
     Clip* c = p.findClip(clipId);
     const MediaItem* m = p.findMedia(mediaId);
-    if (!c || !m || c->title || c->isCompound() || (c->mediaId == mediaId && c->sourceIn == sourceIn))
+    if (!c || !m || c->isGenerated() || (c->mediaId == mediaId && c->sourceIn == sourceIn))
         return false;
     // Un fotograma de tolerancia: el medio procesado puede terminar justo al final del clip.
     if (availableFrames(p, *m, sourceIn, c->speed) + 1 < c->duration)
@@ -1106,7 +1127,7 @@ bool setMatte(Project& p, Id clipId, const AiMatte& matte)
 {
     auto loc = p.locateClip(clipId);
     Clip* c = loc.clip();
-    if (!c || loc.track->kind != TrackKind::Video || c->title || c->isCompound() || c->matte == matte)
+    if (!c || loc.track->kind != TrackKind::Video || c->isGenerated() || c->matte == matte)
         return false;
     c->matte = matte;
     return true;
@@ -1115,7 +1136,7 @@ bool setMatte(Project& p, Id clipId, const AiMatte& matte)
 bool setDenoise(Project& p, Id clipId, double amount)
 {
     Clip* c = p.findClip(clipId);
-    if (!c || c->title || c->isCompound())
+    if (!c || c->isGenerated())
         return false;
     const MediaItem* m = p.findMedia(c->mediaId);
     amount = std::clamp(amount, 0.0, 1.0);
@@ -1263,7 +1284,7 @@ std::optional<FramePos> trimClip(Project& p, Id clipId, Edge edge, FramePos posi
     const MediaItem* m = c.isGenerated() ? nullptr : p.findMedia(c.mediaId);
     if (!c.isGenerated() && !m)
         return std::nullopt;
-    const bool unlimited = c.title || (m && m->isStill);
+    const bool unlimited = c.isSynthetic() || (m && m->isStill);
     const auto& clips = loc.track->clips;
 
     if (edge == Edge::Start) {
@@ -1572,7 +1593,7 @@ bool setAudioFades(Project& p, Id clipId, FramePos fadeIn, FramePos fadeOut)
     return !(*c == before);
 }
 
-bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration)
+bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration, const std::string& ofxPlugin)
 {
     auto loc = p.locateClip(clipId);
     if (!loc.track || loc.track->locked)
@@ -1588,6 +1609,12 @@ bool setTransition(Project& p, Id clipId, TransitionType type, FramePos duration
             return false; // hace falta al menos un fotograma a cada lado del corte
         next.type = type;
         next.duration = std::clamp<FramePos>(duration, 2, longest);
+        if (type == TransitionType::Ofx) {
+            if (ofxPlugin.empty())
+                return false;
+            next.ofx = c.transitionIn.type == TransitionType::Ofx && c.transitionIn.ofx.pluginId == ofxPlugin ? c.transitionIn.ofx
+                                                                                                                : OfxEffect{ofxPlugin, true, {}};
+        }
     }
     if (c.transitionIn == next)
         return false;
@@ -1853,6 +1880,19 @@ Clip* ofxClip(Project& p, Id clipId)
         return nullptr;
     return loc.clip();
 }
+
+// Efecto cuyos parámetros se editan: uno del clip, su generador o su transición OpenFX.
+OfxEffect* ofxTarget(Project& p, Id clipId, int index)
+{
+    Clip* c = ofxClip(p, clipId);
+    if (!c)
+        return nullptr;
+    if (index == kOfxGenerator)
+        return c->generator ? &*c->generator : nullptr;
+    if (index == kOfxTransition)
+        return c->transitionIn.type == TransitionType::Ofx ? &c->transitionIn.ofx : nullptr;
+    return index >= 0 && index < int(c->ofx.size()) ? &c->ofx[size_t(index)] : nullptr;
+}
 } // namespace
 
 int addOfxEffect(Project& p, Id clipId, const std::string& pluginId)
@@ -1884,10 +1924,10 @@ bool setOfxEffectEnabled(Project& p, Id clipId, int index, bool enabled)
 
 bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std::vector<double> value, FramePos rel)
 {
-    Clip* c = ofxClip(p, clipId);
-    if (!c || index < 0 || index >= int(c->ofx.size()) || name.empty() || value.empty())
+    OfxEffect* e = ofxTarget(p, clipId, index);
+    if (!e || name.empty() || value.empty())
         return false;
-    std::vector<Animated>& components = c->ofx[size_t(index)].params[name];
+    std::vector<Animated>& components = e->params[name];
     const std::vector<Animated> before = components;
     components.resize(value.size());
     for (size_t i = 0; i < value.size(); ++i)
@@ -1898,10 +1938,10 @@ bool setOfxParam(Project& p, Id clipId, int index, const std::string& name, std:
 bool toggleOfxKey(Project& p, Id clipId, int index, const std::string& name, FramePos rel, const std::vector<double>& current,
                   Interpolation interp)
 {
-    Clip* c = ofxClip(p, clipId);
-    if (!c || index < 0 || index >= int(c->ofx.size()) || name.empty() || current.empty())
+    OfxEffect* e = ofxTarget(p, clipId, index);
+    if (!e || index == kOfxTransition || name.empty() || current.empty())
         return false;
-    std::vector<Animated>& components = c->ofx[size_t(index)].params[name];
+    std::vector<Animated>& components = e->params[name];
     if (!components.empty() && components[0].keyAt(rel)) {
         for (Animated& a : components)
             a.removeKey(rel);
@@ -1915,11 +1955,11 @@ bool toggleOfxKey(Project& p, Id clipId, int index, const std::string& name, Fra
 
 bool setOfxKeyInterpolation(Project& p, Id clipId, int index, const std::string& name, FramePos rel, Interpolation interp)
 {
-    Clip* c = ofxClip(p, clipId);
-    if (!c || index < 0 || index >= int(c->ofx.size()))
+    OfxEffect* e = ofxTarget(p, clipId, index);
+    if (!e)
         return false;
-    auto it = c->ofx[size_t(index)].params.find(name);
-    if (it == c->ofx[size_t(index)].params.end() || it->second.empty() || !it->second[0].keyAt(rel))
+    auto it = e->params.find(name);
+    if (it == e->params.end() || it->second.empty() || !it->second[0].keyAt(rel))
         return false;
     bool changed = false;
     for (Animated& a : it->second)
