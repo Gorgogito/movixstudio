@@ -421,6 +421,13 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       en la CPU; en fp16 da NaN. Opus-MT en q4f16 (`MatMulNBits`) empata en la GPU con la CPU
       (en haz, 2,4 s; la voraz, 2,9 s en la GPU y 2,2 s en la CPU), y en la CPU es un 35 % más
       rápido que el de 8 bits: queda como posible mejora de la CPU, no de la GPU
+- [x] Opus-MT en q4f16 (pesos de 4 bits, `MatMulNBits`) en lugar de la versión de 8 bits, en la
+      CPU: traducir es un 35–45 % más rápido en los dos sentidos (6 frases de español a inglés: 3,9 s
+      → 2,3 s en haz; 5 de inglés a español: 2,8 s → 1,5 s). Las traducciones son equivalentes,
+      con diferencias de estilo en ambas direcciones («Hey, how you doing?» por «¿Cómo estás?»,
+      «sin fallar» por «sin falta», pero «If I'd known you'd come» donde la de 8 bits decía «If I
+      knew»). Los archivos pesan más (78 + 82 MB por sentido en vez de 53 + 60): quien tuviera la
+      versión anterior la verá como no instalada y tendrá que descargarla de nuevo
 
 ### Limitaciones de OpenFX
 

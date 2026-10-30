@@ -62,8 +62,8 @@ ModelInfo opusMt(const char* id, const char* name, const char* description, cons
     target.name = QStringLiteral("target.spm");
     target.url = hf(repo, revision, target.name);
     m.files = {
-        file("encoder.onnx", hf(repo, revision, QStringLiteral("onnx/encoder_model_quantized.onnx")), encoderSha, 52899742),
-        file("decoder.onnx", hf(repo, revision, QStringLiteral("onnx/decoder_model_quantized.onnx")), decoderSha, 59842102),
+        file("encoder.onnx", hf(repo, revision, QStringLiteral("onnx/encoder_model_q4f16.onnx")), encoderSha, 77900833),
+        file("decoder.onnx", hf(repo, revision, QStringLiteral("onnx/decoder_model_q4f16.onnx")), decoderSha, 81759639),
         source,
         target,
         file("vocab.json", hf(repo, revision, QStringLiteral("vocab.json")),
@@ -145,13 +145,13 @@ const std::vector<ModelInfo>& modelCatalog()
         list.push_back(opusMt("opus-mt-es-en", "Opus-MT español → inglés",
                               QT_TRANSLATE_NOOP("ModelCatalog", "Traducción de español a inglés."), "Xenova/opus-mt-es-en",
                               "eadfd7c658a9d8929ac3b8e996b68a68e2c7d480",
-                              "c01e70f8455efc350831aa2af7ed187b16829241f0018ba07d1ba643a391bc18",
-                              "d518f1f0041b2831f0aeb5a087cf899742cd9d4b574f6b98ad9f816b8c06925b", true));
+                              "e0121c9448bbb91dce4e34c8e8f5eb64bcd14e4478bc67ead3c079a92ff2916a",
+                              "9f581b5beb212f59027d427bb3c634a270349ec3985a9e52e9735e3ad1c30775", true));
         list.push_back(opusMt("opus-mt-en-es", "Opus-MT inglés → español",
                               QT_TRANSLATE_NOOP("ModelCatalog", "Traducción de inglés a español."), "Xenova/opus-mt-en-es",
                               "4b002a4c7edd54a7ced58877258b87f7efd3f892",
-                              "03434edd1147e6c49e22066e9dc5888235e99cc35a6711d1c4ea5b06455d5da9",
-                              "2b45074cc819f1d901e40510d7bc0781d99327d16c7eca04518c4ee0c3d6ba10", false));
+                              "2d41f51f690a3dc9d1b4ae36b570dc801256cf4249290042bc375a75b0d424ca",
+                              "b3cc431f1aa3265f80570e8c29d9dd1aa508490d5d9eb8100e0d54d81adedcfc", false));
 
         ModelInfo demucs;
         demucs.id = QStringLiteral("htdemucs");
