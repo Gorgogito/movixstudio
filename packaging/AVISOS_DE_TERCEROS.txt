@@ -19,6 +19,7 @@ OpenColorIO                        2.6.0        BSD-3-Clause            opencolo
 OpenFX (cabeceras de la API)       1.4          BSD-3-Clause            openfx
 eSpeak NG                          1.52.0       GPL-3.0-or-later        espeak-ng
 SentencePiece                      0.2.1        Apache-2.0              sentencepiece
+misaki (reglas del léxico inglés)  fba1236      Apache-2.0              misaki
 Protocol Buffers                   6.33.4       BSD-3-Clause            protobuf
 Abseil                             20260107.1   Apache-2.0              abseil
 Cargador de Vulkan (Khronos)       1.4.357.0    Apache-2.0              vulkan-loader

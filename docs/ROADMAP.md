@@ -182,8 +182,8 @@ reproductor con sincronía A/V, visor en GPU, interfaz básica, i18n, pruebas, i
   Whisper con Vulkan y los modelos ONNX con WebGPU. Kokoro y Opus-MT siguen en la CPU porque en la
   GPU van más lentos; ver F6.)*
 - El inglés de Kokoro se fonetiza con eSpeak (el modelo original usa un léxico propio): suena algo
-  menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*). *(Búsqueda
-  en haz: resuelto en F6.)*
+  menos natural que el español. La traducción usa búsqueda voraz (sin *beam search*). *(Las dos
+  cosas, resueltas en F6: léxico de Kokoro y búsqueda en haz.)*
 - La detección de escenas no reconoce los fundidos lentos; la de ritmo supone un tempo constante.
   *(Fundidos y disolvencias, y tempo variable: resuelto en F6.)*
 
@@ -434,6 +434,15 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - [x] Teclado en la interfaz de los plugins sobre el visor: al hacer clic en ella toma el foco y las
       teclas van al plugin (con su símbolo de OFX y su texto) antes que a los atajos de la
       aplicación; las que no usa siguen siendo atajos. Cada pulsación es un paso de deshacer
+- [x] Voz en inglés de Kokoro con su léxico: adaptación a C++ del de misaki, el fonetizador con el
+      que se entrenó el modelo (90 000 palabras con sus fonemas, reglas de -s, -ed e -ing, siglas
+      letra a letra, «the», «to», «a» o «I» según el contexto). eSpeak solo fonetiza lo que no está
+      (números, nombres poco comunes), con las mismas equivalencias que misaki. Corrige lo que
+      eSpeak hacía mal con el modelo: «I» sin acento (Whisper no lo oía), «the» ante vocal, ɹ
+      dobles («editor», «victory»), palabras pegadas («in the»). Sin el etiquetador gramatical de
+      misaki: «read», «live» o «record» usan siempre su pronunciación habitual. El léxico (6 MB) se
+      descarga con el modelo; quien ya lo tenga solo baja esos dos archivos. En 8 frases leídas
+      por cada voz inglesa, Whisper entiende las 79 palabras (con eSpeak, 78)
 
 ### Limitaciones de OpenFX
 

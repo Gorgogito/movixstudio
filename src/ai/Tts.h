@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-// Texto a voz con Kokoro 82M (ONNX): el texto se pasa a fonemas IPA con eSpeak NG, los fonemas a
-// identificadores con el vocabulario del modelo, y el modelo genera la voz a 24 kHz con el estilo
-// de la voz elegida.
+// Texto a voz con Kokoro 82M (ONNX): el texto se pasa a fonemas IPA con eSpeak NG (en inglés, con el
+// léxico de Kokoro), los fonemas a identificadores con el vocabulario del modelo, y el modelo genera
+// la voz a 24 kHz con el estilo de la voz elegida.
 namespace movix::ai {
 
 inline constexpr int kTtsSampleRate = 24000;
@@ -22,9 +22,11 @@ std::vector<Voice> ttsVoices();
 
 // Fonemas IPA (con acentos de intensidad) del texto, en el formato que espera Kokoro: la puntuación
 // se conserva y los diptongos y africadas llevan sus símbolos propios. `espeakDataParent` es la
-// carpeta que contiene espeak-ng-data. Devuelve "" si no se pudo fonetizar.
+// carpeta que contiene espeak-ng-data. En inglés, si `lexiconFolder` tiene el léxico de Kokoro
+// (us_gold.json y us_silver.json, ver EnglishG2P.h), las palabras salen de él y eSpeak solo
+// fonetiza las que no están. Devuelve "" si no se pudo fonetizar.
 std::string phonemize(const std::string& espeakDataParent, const std::string& language, const std::string& text,
-                      std::string* error = nullptr);
+                      std::string* error = nullptr, const std::string& lexiconFolder = {});
 
 struct TtsOptions {
     std::string voice = "ef_dora";

@@ -56,6 +56,7 @@ include(InstallRequiredSystemLibraries)
 # --- Licencias -----------------------------------------------------------------------------------
 install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/packaging/AVISOS_DE_TERCEROS.txt" DESTINATION .)
 install(FILES "${PROJECT_SOURCE_DIR}/packaging/licenses/LGPL-3.0.txt" DESTINATION licenses/qt)
+install(FILES "${PROJECT_SOURCE_DIR}/packaging/licenses/misaki/LICENSE" DESTINATION licenses/misaki)
 install(FILES "${_ffmpeg_bin}/../LICENSE.txt" DESTINATION licenses/ffmpeg)
 install(FILES ${ONNXRUNTIME_LICENSE_FILES} DESTINATION licenses/onnxruntime)
 install(FILES ${ONNXRUNTIME_WEBGPU_LICENSE_FILES} DESTINATION licenses/onnxruntime-webgpu)

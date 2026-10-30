@@ -1,10 +1,12 @@
 #include "ai/Tts.h"
 
+#include "ai/EnglishG2P.h"
 #include "ai/Onnx.h"
 
 #include <espeak-ng/speak_lib.h>
 
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -64,6 +66,10 @@ void replaceAll(std::string& s, const std::string& from, const std::string& to)
 // Equivalencias de misaki (el fonetizador de Kokoro) para la salida de eSpeak con unión '^'.
 void espeakToMisaki(std::string& ps, const std::string& language)
 {
+    if (language.rfind("en", 0) == 0) { // las de su respaldo con eSpeak para el inglés
+        ps = englishFromEspeak(QString::fromStdString(ps)).toStdString();
+        return;
+    }
     static const std::pair<const char*, const char*> common[] = {
         {"a^\xC9\xAA", "I"},          // aɪ
         {"a^\xCA\x8A", "W"},          // aʊ
@@ -79,20 +85,6 @@ void espeakToMisaki(std::string& ps, const std::string& language)
     };
     for (const auto& [from, to] : common)
         replaceAll(ps, from, to);
-    if (language.rfind("en", 0) == 0) {
-        // Inglés por eSpeak (Kokoro usa un léxico; esto lo aproxima).
-        static const std::pair<const char*, const char*> english[] = {
-            {"\xC9\x9A", "\xC9\x99\xC9\xB9"}, // ɚ → əɹ
-            {"r", "\xC9\xB9"},                // r → ɹ
-            {"\xC9\x90", "\xC9\x99"},         // ɐ → ə
-            {"\xC9\xAC", "l"},                // ɬ → l
-            {"\xCA\xB2", ""},                 // ʲ
-        };
-        for (const auto& [from, to] : english)
-            replaceAll(ps, from, to);
-        if (language == "en-us")
-            replaceAll(ps, "\xCB\x90", ""); // ː (el inglés americano de Kokoro no marca vocales largas)
-    }
     replaceAll(ps, "^", "");
 }
 
@@ -111,6 +103,13 @@ std::string clausePhonemes(const std::string& text)
         }
     }
     return out;
+}
+
+// Léxico inglés de Kokoro (misaki), junto al modelo; se usa con g_espeakMutex tomado.
+EnglishLexicon& englishLexicon()
+{
+    static EnglishLexicon& lexicon = *new EnglishLexicon;
+    return lexicon;
 }
 
 struct KokoroModel {
@@ -194,7 +193,8 @@ std::vector<Voice> ttsVoices()
     return {{"ef_dora", "es"}, {"em_alex", "es"}, {"em_santa", "es"}, {"af_heart", "en-us"}, {"am_michael", "en-us"}};
 }
 
-std::string phonemize(const std::string& espeakDataParent, const std::string& language, const std::string& text, std::string* error)
+std::string phonemize(const std::string& espeakDataParent, const std::string& language, const std::string& text, std::string* error,
+                      const std::string& lexiconFolder)
 {
     std::lock_guard lock(g_espeakMutex);
     if (!initEspeak(espeakDataParent, error))
@@ -203,6 +203,14 @@ std::string phonemize(const std::string& espeakDataParent, const std::string& la
         if (error)
             *error = "eSpeak NG no tiene el idioma " + language;
         return {};
+    }
+    // Inglés: el léxico de Kokoro y eSpeak para lo que no esté en él.
+    if (language.rfind("en", 0) == 0 && !lexiconFolder.empty() && QFileInfo::exists(QString::fromStdString(lexiconFolder + "/us_gold.json"))
+        && englishLexicon().load(lexiconFolder, error)) {
+        const QString ps = englishLexicon().text(QString::fromStdString(text), [&](const QString& word) {
+            return englishFromEspeak(QString::fromStdString(clausePhonemes(word.toStdString())));
+        });
+        return ps.toStdString();
     }
     // Se fonetiza cada tramo entre signos de puntuación y los signos se conservan (Kokoro los usa
     // para la entonación y las pausas).
@@ -282,7 +290,7 @@ bool synthesize(const std::string& modelFolder, const std::string& espeakDataPar
                 *error = "cancelado";
             return false;
         }
-        const std::string phonemes = phonemize(espeakDataParent, voice->language, parts[p], error);
+        const std::string phonemes = phonemize(espeakDataParent, voice->language, parts[p], error, modelFolder);
         std::vector<int64_t> ids = tokenize(phonemes);
         if (ids.empty())
             continue;

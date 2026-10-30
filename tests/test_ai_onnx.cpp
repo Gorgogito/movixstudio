@@ -1,3 +1,4 @@
+#include "ai/EnglishG2P.h"
 #include "ai/Onnx.h"
 #include "ai/OnnxRewrite.h"
 #include "ai/Separation.h"
@@ -81,6 +82,131 @@ TEST_CASE("Fonemas con eSpeak NG en el formato de Kokoro", "[ai][tts]")
     CHECK_FALSE(error.empty());
 }
 
+TEST_CASE("Fonemas del inglés con el léxico de Kokoro", "[ai][tts]")
+{
+    const auto kokoro = models() / "kokoro-82m";
+    if (!std::filesystem::exists(kokoro / "us_gold.json"))
+        SKIP("Faltan los modelos de prueba");
+    ai::EnglishLexicon lexicon;
+    std::string error;
+    REQUIRE(lexicon.load(kokoro.string(), &error));
+    auto word = [&](const char* w, ai::EnglishLexicon::Context ctx = {}) {
+        return lexicon.word(QString::fromUtf8(w), ctx).value_or(QStringLiteral("∅")).toStdString();
+    };
+    const ai::EnglishLexicon::Context beforeVowel{true, false}, beforeConsonant{false, false};
+    CHECK(word("hello") == "həlˈO");
+    CHECK(word("Hello") == "həlˈO");
+    CHECK(word("read") == "ɹˈid"); // sin etiquetas, la pronunciación habitual
+    // Según lo que sigue: «my» acentuado al final, «the» y «to» ante vocal o consonante.
+    CHECK(word("my") == "mˈI");
+    CHECK(word("my", beforeConsonant) == "mI");
+    CHECK(word("the", beforeVowel) == "ði");
+    CHECK(word("the", beforeConsonant) == "ðə");
+    CHECK(word("to", beforeVowel) == "tʊ");
+    CHECK(word("to", beforeConsonant) == "tə");
+    // Formas que no están en el léxico, con las reglas de -s, -ed e -ing.
+    CHECK(word("videos") == "vˈɪdiOz");
+    CHECK(word("cities") == "sˈɪɾiz");
+    CHECK(word("waited") == "wˈAɾᵻd");
+    CHECK(word("aardvarks") == "ˈɑɹdvˌɑɹks");
+    CHECK(word("abeaming") == "əbˈimɪŋ");
+    // Siglas, letra a letra.
+    CHECK(word("FBI") == "ˌɛfbˌiˈI");
+    CHECK(word("U.S") == "jˌuˈɛs");
+    CHECK(word("zzqx") == "∅");
+
+    // Frases: puntuación conservada, contexto de la palabra siguiente y respaldo para lo demás.
+    auto fallback = [](const QString& w) { return QLatin1Char('<') + w + QLatin1Char('>'); };
+    CHECK(lexicon.text(QStringLiteral("Hello, my name is Joe."), fallback).toStdString() == "həlˈO, mI nˈAm ɪz ʤˈO.");
+    const std::string mixed = lexicon.text(QStringLiteral("I saw 3 zzqx in the city."), fallback).toStdString();
+    INFO(mixed);
+    CHECK(mixed.find("<3> <zzqx> ɪn ðə sˈɪTi.") != std::string::npos); // ɾ → T (Kokoro 1.0)
+    CHECK(mixed.rfind("ˌI ", 0) == 0);
+
+    // Con eSpeak de respaldo, desde phonemize.
+    const std::string en = ai::phonemize(espeakParent(), "en-us", "Hello, world. Zzqx!", &error, kokoro.string());
+    INFO(en);
+    CHECK(en.rfind("həlˈO, wˈɜɹld. ", 0) == 0);
+    CHECK(en.back() == '!');
+    CHECK(en.size() > std::string("həlˈO, wˈɜɹld. !").size()); // eSpeak fonetizó «Zzqx»
+}
+
+// Medición (no corre con las demás): frases en inglés leídas con eSpeak solo y con el léxico; cuántas
+// palabras reconoce Whisper en cada caso.
+TEST_CASE("Kokoro en inglés: eSpeak frente al léxico", "[.][tts-ingles]")
+{
+    const auto kokoro = models() / "kokoro-82m";
+    const auto whisper = models() / "ggml-base.bin";
+    if (!std::filesystem::exists(kokoro / "us_gold.json") || !std::filesystem::exists(whisper))
+        SKIP("Faltan los modelos de prueba");
+    // El mismo modelo sin el léxico.
+    QTemporaryDir bare;
+    for (const auto& entry : std::filesystem::directory_iterator(kokoro))
+        if (entry.path().extension() != ".json" || entry.path().filename() == "config.json")
+            std::filesystem::copy_file(entry.path(), std::filesystem::path(bare.path().toStdWString()) / entry.path().filename());
+    const std::vector<std::string> sentences = {
+        "The quick brown fox jumps over the lazy dog.",
+        "I read the book yesterday, and I will read another one tomorrow.",
+        "Our new video editor exports high quality clips in seconds.",
+        "She didn't know whether the weather would change by the afternoon.",
+        "Thousands of people gathered in the square to celebrate the victory.",
+        "Please subscribe to the channel and leave a comment below.",
+        "The colonel's yacht was anchored near the island.",
+        "Artificial intelligence runs entirely on your own computer.",
+    };
+    auto words = [](const std::string& s) {
+        std::vector<std::string> out;
+        std::string w;
+        for (char c : s + " ") {
+            if (std::isalpha(static_cast<unsigned char>(c)) || c == '\'') {
+                w += char(std::tolower(static_cast<unsigned char>(c)));
+            } else if (!w.empty()) {
+                out.push_back(w);
+                w.clear();
+            }
+        }
+        return out;
+    };
+    std::string error;
+    ai::TranscribeOptions to;
+    to.language = "en";
+    ai::TtsOptions options;
+    QTemporaryDir dir;
+    const std::string wav = dir.filePath("voz.wav").toStdString();
+    for (const char* voice : {"af_heart", "am_michael"}) {
+        options.voice = voice;
+        int total = 0, heardEspeak = 0, heardLexicon = 0;
+        for (const std::string& sentence : sentences) {
+            const auto reference = words(sentence);
+            total += int(reference.size());
+            for (int lexicon = 0; lexicon < 2; ++lexicon) {
+                const std::string folder = lexicon ? kokoro.string() : bare.path().toStdString();
+                std::vector<float> audio, pcm;
+                REQUIRE(ai::synthesize(folder, espeakParent(), sentence, options, audio, &error));
+                REQUIRE(ai::writeWav(wav, audio, ai::kTtsSampleRate, 1, &error));
+                REQUIRE(ai::loadSpeechAudio(wav, pcm, &error));
+                core::Transcript t;
+                REQUIRE(ai::transcribe(whisper.string(), pcm, to, t, &error));
+                std::string heard;
+                for (const auto& w : t.words)
+                    heard += w.text + " ";
+                // Palabras de la frase que Whisper oyó, en orden (subsecuencia común más larga).
+                const auto got = words(heard);
+                std::vector<std::vector<int>> lcs(reference.size() + 1, std::vector<int>(got.size() + 1, 0));
+                for (size_t i = 1; i <= reference.size(); ++i)
+                    for (size_t j = 1; j <= got.size(); ++j)
+                        lcs[i][j] = reference[i - 1] == got[j - 1] ? lcs[i - 1][j - 1] + 1 : std::max(lcs[i - 1][j], lcs[i][j - 1]);
+                const int ok = lcs[reference.size()][got.size()];
+                (lexicon ? heardLexicon : heardEspeak) += ok;
+                std::printf("[inglés] %s %s %d/%zu: %s\n           %s\n", voice, lexicon ? "léxico" : "eSpeak", ok, reference.size(),
+                            heard.c_str(), ai::phonemize(espeakParent(), "en-us", sentence, &error, folder).c_str());
+            }
+        }
+        std::printf("[inglés] %s: eSpeak %d/%d palabras, léxico %d/%d\n", voice, heardEspeak, total, heardLexicon, total);
+        CHECK(heardLexicon >= heardEspeak);
+    }
+}
+
 TEST_CASE("Kokoro sintetiza voz que Whisper entiende", "[ai][tts]")
 {
     const auto kokoro = models() / "kokoro-82m";
@@ -127,6 +253,22 @@ TEST_CASE("Kokoro sintetiza voz que Whisper entiende", "[ai][tts]")
     CHECK(heard.find("prueba") != std::string::npos);
     CHECK(heard.find("voz") != std::string::npos);
     CHECK(heard.find("editor") != std::string::npos);
+
+    // En inglés, con el léxico.
+    options.voice = "af_heart";
+    std::vector<float> english;
+    REQUIRE(ai::synthesize(kokoro.string(), espeakParent(), "The editor reads the videos and waited for the city lights.", options,
+                           english, &error));
+    REQUIRE(ai::writeWav(wav, english, ai::kTtsSampleRate, 1, &error));
+    REQUIRE(ai::loadSpeechAudio(wav, pcm, &error));
+    to.language = "en";
+    REQUIRE(ai::transcribe(whisper.string(), pcm, to, t, &error));
+    heard.clear();
+    for (const auto& w : t.words)
+        heard += lower(w.text) + " ";
+    INFO("Whisper oyó: " << heard);
+    for (const char* w : {"editor", "videos", "waited", "city", "lights"})
+        CHECK(heard.find(w) != std::string::npos);
 
     // Voz desconocida y cancelación.
     options.voice = "zz_nadie";

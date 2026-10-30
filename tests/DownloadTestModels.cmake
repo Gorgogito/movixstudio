@@ -9,6 +9,10 @@ set(MODELS
     "kokoro-82m/model.onnx|https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231/onnx/model_quantized.onnx|fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478"
     "kokoro-82m/config.json|https://huggingface.co/hexgrad/Kokoro-82M/resolve/f3ff3571791e39611d31c381e3a41a3af07b4987/config.json|5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f"
     "kokoro-82m/ef_dora.bin|https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231/voices/ef_dora.bin|f66ec66bd295acb18372e37008533a9a3228483ccd294e7538d5d9294ac9a532"
+    "kokoro-82m/af_heart.bin|https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231/voices/af_heart.bin|d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b"
+    # Léxico inglés de misaki (el fonetizador de Kokoro).
+    "kokoro-82m/us_gold.json|https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_gold.json|dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+    "kokoro-82m/us_silver.json|https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_silver.json|de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
     # Opus-MT español → inglés e inglés → español.
     "opus-mt-es-en/encoder.onnx|https://huggingface.co/Xenova/opus-mt-es-en/resolve/eadfd7c658a9d8929ac3b8e996b68a68e2c7d480/onnx/encoder_model_q4f16.onnx|e0121c9448bbb91dce4e34c8e8f5eb64bcd14e4478bc67ead3c079a92ff2916a"
     "opus-mt-es-en/decoder.onnx|https://huggingface.co/Xenova/opus-mt-es-en/resolve/eadfd7c658a9d8929ac3b8e996b68a68e2c7d480/onnx/decoder_model_q4f16.onnx|9f581b5beb212f59027d427bb3c634a270349ec3985a9e52e9735e3ad1c30775"

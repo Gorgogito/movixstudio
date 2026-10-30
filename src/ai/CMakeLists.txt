@@ -22,6 +22,7 @@ add_library(movix_ai STATIC
     Onnx.h Onnx.cpp
     OnnxRewrite.h OnnxRewrite.cpp
     Tts.h Tts.cpp
+    EnglishG2P.h EnglishG2P.cpp
     Translate.h Translate.cpp
     Separation.h Separation.cpp
     Vision.h Vision.cpp

@@ -35,6 +35,8 @@ ModelInfo whisper(const char* id, const char* name, const char* description, con
 constexpr const char* kKokoroOnnx = "onnx-community/Kokoro-82M-v1.0-ONNX";
 constexpr const char* kKokoroOnnxRev = "1939ad2a8e416c0acfeecc08a694d14ef25f2231";
 
+constexpr const char* kMisakiData = "https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/";
+
 ModelFile kokoroVoice(const char* voice, const char* sha256)
 {
     const QString name = QStringLiteral("%1.bin").arg(QLatin1String(voice));
@@ -139,6 +141,11 @@ const std::vector<ModelInfo>& modelCatalog()
             kokoroVoice("em_santa", "ad43b774e1ca24d05c6161297d8aeb770ac3d29bb95daf516727af5f7d543683"),
             kokoroVoice("af_heart", "d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b"),
             kokoroVoice("am_michael", "1d1f21dd8da39c30705cd4c75d039d265e9bc4a2a93ed09bc9e1b1225eb95ba1"),
+            // Léxico inglés de misaki, el fonetizador con el que se entrenó Kokoro (Apache-2.0).
+            file("us_gold.json", QLatin1String(kMisakiData) + QStringLiteral("us_gold.json"),
+                 "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f", 3000469),
+            file("us_silver.json", QLatin1String(kMisakiData) + QStringLiteral("us_silver.json"),
+                 "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475", 3099517),
         };
         list.push_back(kokoro);
 
