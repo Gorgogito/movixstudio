@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "movixstudio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Editor de video de escritorio libre y de código abierto",
   "license": "GPL-3.0-or-later",
   "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",

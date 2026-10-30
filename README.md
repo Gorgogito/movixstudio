@@ -3,10 +3,22 @@
 Editor de video de escritorio **libre y de código abierto** (GPLv3): sin suscripciones, sin marcas
 de agua y con herramientas de IA que se ejecutarán en el equipo del usuario, sin servicios de pago.
 
-> **Versión 0.2.0** — fase F6 (pulido y ecosistema) sobre la IA visual de F5 y la de audio y texto
+> **Versión 0.3.0** — fase F6 (pulido y ecosistema) sobre la IA visual de F5 y la de audio y texto
 > de F4, con aceleración por GPU 100 % libre (Vulkan/WebGPU). Descargas en
 > [Releases](https://github.com/Gorgogito/movixstudio/releases); consulta la
 > [hoja de ruta](docs/ROADMAP.md).
+
+**Novedades de la 0.3.0**
+- **OpenFX**: parámetros con keyframes, efectos en 10 bits y HDR, efectos sobre clips compuestos,
+  **generadores** (clips sin medio, en la biblioteca), **transiciones** de terceros y la interfaz
+  propia de cada plugin dibujada sobre el visor para ajustar con el ratón.
+- **Rendimiento**: la vista previa decodifica en la GPU sin copias (componer 1080p60 pasa de ~240 a
+  ~580 fps).
+- **Edición**: deshacer un compuesto a cualquier velocidad; las fusiones sobre un fondo
+  transparente siguen el estándar W3C.
+- **IA**: el reencuadre automático sigue al sujeto en los dos ejes, también a 16:9 y con
+  acercamiento opcional; los pulsos de la música admiten tempo variable; la traducción de
+  subtítulos usa búsqueda en haz (traducciones más naturales).
 
 **Novedades de la 0.2.0**
 - **Edición**: velocidad variable con rampas y clips al revés; curvas de interpolación de los
