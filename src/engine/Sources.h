@@ -130,7 +130,9 @@ private:
     void buildTransition(const core::VideoLayer& layer, FrameBundle& bundle);
     // Instancia OpenFX de una aparición del clip (`slot`: la posición del efecto, o la del generador
     // o la transición), creada o rehecha si cambia el plugin o el tamaño; nullptr si no se puede.
-    ofx::Effect* ofxInstance(std::uint64_t instance, size_t slot, const std::string& pluginId, ofx::Role role, int width, int height);
+    // `deep`: la imagen es de más de 8 bits o HDR (el plugin la recibe en coma flotante si la admite).
+    ofx::Effect* ofxInstance(std::uint64_t instance, size_t slot, const std::string& pluginId, ofx::Role role, int width, int height,
+                             bool deep);
     // Aplica los efectos OpenFX de la capa; si ninguno se puede aplicar, devuelve el fotograma igual.
     std::shared_ptr<const media::VideoFrame> applyOfx(const core::VideoLayer& layer, std::shared_ptr<const media::VideoFrame> f);
 
@@ -182,6 +184,7 @@ private:
     struct OfxSlot {
         std::string pluginId;
         ofx::Role role = ofx::Role::Filter;
+        bool deep = false;
         std::unique_ptr<ofx::Effect> effect;
         bool failed = false; // no se pudo crear: no se reintenta mientras no cambie el plugin
         uint64_t lastUse = 0;

@@ -45,7 +45,10 @@ struct PluginInfo {
     std::string binary;  // ruta del .ofx
     Role role = Role::Filter;
     std::string context; // contexto OFX: "Filter", "General", "Generator" o "Transition"
-    bool floatImages = false; // si no, 8 bits
+    bool floatImages = false; // admite imágenes en coma flotante
+    bool byteImages = true;   // admite imágenes de 8 bits
+    bool openGL = false;      // puede renderizar con OpenGL, en la GPU (si no hay, en la CPU)
+    bool needsOpenGL = false; // solo renderiza con OpenGL
     bool hasOverlay = false;  // tiene interfaz sobre el visor
     // En el orden en que los define el plugin (pueden cambiar con el papel). El de progreso de las
     // transiciones lo pone el anfitrión: va como `secret`.
@@ -74,18 +77,29 @@ using ParamValues = std::map<std::string, std::vector<core::Animated>>;
 // Valores de los parámetros con los que faltan rellenos por defecto.
 ParamValues withDefaults(const PluginInfo& plugin, const ParamValues& values);
 
+// Render con OpenGL de los plugins que lo admiten (activado por defecto). Si no hay OpenGL o el
+// plugin falla con él, renderizan en la CPU.
+void setOpenGLRender(bool enabled);
+bool openGLRender();
+
 // Instancia de un efecto: el plugin guarda en ella su estado entre fotogramas.
 class Effect {
 public:
+    // `preferFloat`: imágenes en coma flotante si el plugin las admite; si no, en 8 bits siempre que
+    // las admita (lo más rápido para video de 8 bits).
     static std::unique_ptr<Effect> create(const std::string& pluginId, int width, int height, double frameRate, std::string* error = nullptr,
-                                          Role role = Role::Filter);
+                                          Role role = Role::Filter, bool preferFloat = true);
     ~Effect();
     Effect(const Effect&) = delete;
     Effect& operator=(const Effect&) = delete;
 
     const PluginInfo& plugin() const;
+    // Si la instancia trabaja en coma flotante (si no, en 8 bits): las imágenes de su mismo tipo
+    // pasan sin copias ni conversiones.
+    bool floatImages() const;
     // Aplica el efecto a una imagen RGBA de 8 bits sin premultiplicar (filas de arriba abajo) del
-    // tamaño con que se creó. `time`: fotograma (dentro del clip).
+    // tamaño con que se creó. `time`: fotograma (dentro del clip). Si el tipo coincide con el de la
+    // instancia, el plugin lee `in` y escribe `out` directamente.
     bool render(const ParamValues& values, double time, const uint8_t* in, uint8_t* out, std::string* error = nullptr);
     // Igual con RGBA en coma flotante (0..1 en la señal de la imagen; 10 bits o HDR). Si el plugin
     // solo admite 8 bits, la imagen pasa por 8 bits.

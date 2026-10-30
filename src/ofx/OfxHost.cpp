@@ -8,6 +8,7 @@
 #include <ofxMemory.h>
 #include <ofxMessage.h>
 #include <ofxMultiThread.h>
+#include <ofxOpenGLRender.h>
 #include <ofxParam.h>
 #include <ofxProperty.h>
 
@@ -415,6 +416,8 @@ struct EffectObj : PropertySet {
     bool floatImages = false;
     std::vector<std::pair<std::string, void*>> images;
     int rowBytes = 0;
+    // Render por OpenGL en curso: la textura de cada clip (la de salida, ya enlazada como destino).
+    std::vector<std::pair<std::string, unsigned>> textures;
     double time = 0; // instante del render (el de paramGetValue)
     std::string lastMessage;
 
@@ -551,6 +554,55 @@ OfxStatus clipGetImage(OfxImageClipHandle clip, OfxTime time, const OfxRectD*, O
     *image = asHandle(img);
     return kOfxStatOK;
 }
+
+// ---- Render por OpenGL: las imágenes de los clips como texturas.
+
+OfxStatus clipLoadTexture(OfxImageClipHandle clip, OfxTime time, const char*, const OfxRectD*, OfxPropertySetHandle* textureHandle)
+{
+    if (!clip || !textureHandle)
+        return kOfxStatErrBadHandle;
+    ClipObj* c = reinterpret_cast<ClipObj*>(clip);
+    EffectObj* e = c->owner;
+    unsigned texture = 0;
+    for (const auto& [name, t] : e->textures)
+        if (name == c->name)
+            texture = t;
+    if (!texture)
+        return kOfxStatFailed;
+    auto* img = new ImageObj;
+    img->setS(kOfxPropType, {kOfxTypeImage});
+    img->setI(kOfxImageEffectPropOpenGLTextureIndex, {int(texture)});
+    img->setI(kOfxImageEffectPropOpenGLTextureTarget, {0x0DE1}); // GL_TEXTURE_2D
+    img->setS(kOfxImageEffectPropPixelDepth, {e->floatImages ? kOfxBitDepthFloat : kOfxBitDepthByte});
+    img->setS(kOfxImageEffectPropComponents, {kOfxImageComponentRGBA});
+    img->setS(kOfxImageEffectPropPreMultiplication, {kOfxImageUnPreMultiplied});
+    img->setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
+    img->setD(kOfxImagePropPixelAspectRatio, {1.0});
+    img->setI(kOfxImagePropBounds, {0, 0, e->width, e->height});
+    img->setI(kOfxImagePropRegionOfDefinition, {0, 0, e->width, e->height});
+    img->setI(kOfxImagePropRowBytes, {e->width * 4 * (e->floatImages ? 4 : 1)});
+    img->setS(kOfxImagePropField, {kOfxImageFieldNone});
+    char id[64];
+    std::snprintf(id, sizeof id, "movix-gl-%u-%g", texture, time);
+    img->setS(kOfxImagePropUniqueIdentifier, {id});
+    *textureHandle = asHandle(img);
+    return kOfxStatOK;
+}
+
+OfxStatus clipFreeTexture(OfxPropertySetHandle textureHandle)
+{
+    if (!textureHandle)
+        return kOfxStatErrBadHandle;
+    delete static_cast<ImageObj*>(asSet(textureHandle)); // las texturas son del anfitrión
+    return kOfxStatOK;
+}
+
+OfxStatus flushResources()
+{
+    return kOfxStatOK;
+}
+
+const OfxImageEffectOpenGLRenderSuiteV1 kOpenGLRenderSuite = {clipLoadTexture, clipFreeTexture, flushResources};
 
 OfxStatus clipReleaseImage(OfxPropertySetHandle image)
 {
@@ -1153,6 +1205,8 @@ const void* fetchSuite(OfxPropertySetHandle, const char* name, int version)
         return &kPropertySuite;
     if (n == kOfxImageEffectSuite && version == 1)
         return &kImageEffectSuite;
+    if (n == kOfxOpenGLRenderSuite && version == 1)
+        return &kOpenGLRenderSuite;
     if (n == kOfxParameterSuite && version == 1)
         return &kParameterSuite;
     if (n == kOfxMemorySuite && version == 1)
@@ -1180,6 +1234,7 @@ PropertySet& hostProps()
         h.setS(kOfxPropVersionLabel, {MOVIX_VERSION});
         h.setI(kOfxImageEffectHostPropIsBackground, {0});
         h.setI(kOfxImageEffectPropSupportsOverlays, {1});
+        h.setS(kOfxImageEffectPropOpenGLRenderSupported, {"true"});
         h.setI(kOfxImageEffectPropSupportsMultiResolution, {0});
         h.setI(kOfxImageEffectPropSupportsTiles, {0});
         h.setI(kOfxImageEffectPropTemporalClipAccess, {0});
@@ -1376,7 +1431,11 @@ bool describeRole(OfxPlugin* api, const std::shared_ptr<EffectObj>& descriptor, 
     info->context = std::string(context).substr(std::strlen("OfxImageEffectContext"));
     const auto depths = c.strs(kOfxImageEffectPropSupportedPixelDepths);
     info->floatImages = std::find(depths.begin(), depths.end(), kOfxBitDepthFloat) != depths.end();
-    if (!info->floatImages && std::find(depths.begin(), depths.end(), kOfxBitDepthByte) == depths.end() && !depths.empty())
+    info->byteImages = depths.empty() || std::find(depths.begin(), depths.end(), kOfxBitDepthByte) != depths.end();
+    const std::string gl = c.str(kOfxImageEffectPropOpenGLRenderSupported);
+    info->openGL = gl == "true" || gl == "needed";
+    info->needsOpenGL = gl == "needed";
+    if (!info->floatImages && !info->byteImages)
         return fail("no admite imágenes de 8 bits ni en coma flotante");
     for (const auto& param : c.params.list) {
         ParamDef def = describeParam(*param);
@@ -1595,6 +1654,8 @@ void applyValues(EffectObj& e, const ParamValues& values)
     }
 }
 
+class GlCanvas;
+
 struct Effect::Impl {
     LoadedPlugin* plugin = nullptr;
     std::unique_ptr<EffectObj> obj;
@@ -1603,13 +1664,39 @@ struct Effect::Impl {
     std::vector<float> outF;
     std::vector<uint8_t> outB;
     bool created = false;
+    GlCanvas* gl = nullptr; // contexto OpenGL del que el plugin sabe (kOfxActionOpenGLContextAttached)
+    std::vector<uint8_t> readback;
 
-    ~Impl()
-    {
-        if (created && plugin)
-            callAction(*plugin, kOfxActionDestroyInstance, obj.get());
-    }
+    ~Impl();
 };
+
+namespace {
+std::atomic<bool> g_openGLRender{true};
+
+// Render por OpenGL (más abajo, junto al contexto): 1 si salió, 0 si hay que hacerlo en la CPU,
+// −1 si el plugin falló.
+int renderWithOpenGL(Effect::Impl& d, const std::vector<const void*>& inputs, void* out, bool floatIO, double time, std::string* error);
+// Si hay un contexto OpenGL en este hilo, el plugin deja de usarlo (al destruir la instancia).
+void detachOpenGL(Effect::Impl& d);
+} // namespace
+
+void setOpenGLRender(bool enabled)
+{
+    g_openGLRender = enabled;
+}
+
+bool openGLRender()
+{
+    return g_openGLRender;
+}
+
+Effect::Impl::~Impl()
+{
+    if (created && plugin) {
+        detachOpenGL(*this);
+        callAction(*plugin, kOfxActionDestroyInstance, obj.get());
+    }
+}
 
 Effect::Effect(std::unique_ptr<Impl> impl) : d(std::move(impl)) {}
 
@@ -1639,7 +1726,8 @@ ParamValues Effect::values() const
     return out;
 }
 
-std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, int height, double frameRate, std::string* error, Role role)
+std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, int height, double frameRate, std::string* error, Role role,
+                                       bool preferFloat)
 {
     Registry::instance().ensureScanned();
     RegistryState& s = state();
@@ -1666,7 +1754,7 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
     e.params.owner = &e;
     e.width = width;
     e.height = height;
-    e.floatImages = plugin->info->floatImages;
+    e.floatImages = plugin->info->floatImages && (preferFloat || !plugin->info->byteImages);
     e.setS(kOfxPropType, {kOfxTypeImageEffectInstance});
     e.setS(kOfxImageEffectPropContext, {plugin->context});
     e.setP(kOfxPropInstanceData, nullptr);
@@ -1722,6 +1810,11 @@ std::unique_ptr<Effect> Effect::create(const std::string& pluginId, int width, i
     return std::unique_ptr<Effect>(new Effect(std::move(impl)));
 }
 
+bool Effect::floatImages() const
+{
+    return d->obj->floatImages;
+}
+
 bool Effect::render(const ParamValues& values, double time, const uint8_t* in, uint8_t* out, std::string* error)
 {
     return renderImpl(values, time, {in}, out, false, error);
@@ -1763,6 +1856,48 @@ bool Effect::transition(const ParamValues& values, double time, double progress,
     return renderImpl(withProgress(values, progress), time, {from, to}, out, true, error);
 }
 
+namespace {
+uint8_t toByte(float v)
+{
+    return uint8_t(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
+}
+
+// Las acciones de un render de la imagen entera en `time` (con las imágenes o texturas ya puestas).
+OfxStatus renderActions(LoadedPlugin& plugin, EffectObj& e, double time, bool openGL)
+{
+    std::unique_lock renderLock(*plugin.renderMutex, std::defer_lock);
+    if (plugin.unsafe)
+        renderLock.lock();
+    PropertySet seq;
+    seq.setD(kOfxImageEffectPropFrameRange, {time, time});
+    seq.setD(kOfxImageEffectPropFrameStep, {1.0});
+    seq.setI(kOfxPropIsInteractive, {0});
+    seq.setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
+    seq.setI(kOfxImageEffectPropSequentialRenderStatus, {0});
+    seq.setI(kOfxImageEffectPropInteractiveRenderStatus, {0});
+    seq.setI(kOfxImageEffectPropOpenGLEnabled, {openGL ? 1 : 0});
+    callAction(plugin, kOfxImageEffectActionBeginSequenceRender, &e, &seq);
+    PropertySet args;
+    args.setD(kOfxPropTime, {time});
+    args.setS(kOfxImageEffectPropFieldToRender, {kOfxImageFieldNone});
+    args.setI(kOfxImageEffectPropRenderWindow, {0, 0, e.width, e.height});
+    args.setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
+    args.setI(kOfxImageEffectPropSequentialRenderStatus, {0});
+    args.setI(kOfxImageEffectPropInteractiveRenderStatus, {0});
+    args.setI(kOfxImageEffectPropRenderQualityDraft, {0});
+    args.setI(kOfxImageEffectPropOpenGLEnabled, {openGL ? 1 : 0});
+    const OfxStatus st = callAction(plugin, kOfxImageEffectActionRender, &e, &args);
+    callAction(plugin, kOfxImageEffectActionEndSequenceRender, &e, &seq);
+    return st;
+}
+
+std::string renderError(const LoadedPlugin& plugin, const EffectObj& e, OfxStatus st)
+{
+    return st == kOfxStatErrFatal ? "El efecto " + plugin.info->label + " falló al renderizar."
+                                  : "El efecto " + plugin.info->label + " no pudo renderizar." + (e.lastMessage.empty() ? "" : " " + e.lastMessage);
+}
+} // namespace
+
 bool Effect::renderImpl(const ParamValues& values, double time, std::vector<const void*> inputs, void* out, bool floatIO, std::string* error)
 {
     EffectObj& e = *d->obj;
@@ -1777,86 +1912,71 @@ bool Effect::renderImpl(const ParamValues& values, double time, std::vector<cons
     e.time = time;
     applyValues(e, values);
 
+    // En la GPU si el plugin sabe; si no sale (sin OpenGL o falla con él), en la CPU.
+    if (plugin.info->openGL && (g_openGLRender || plugin.info->needsOpenGL)) {
+        const int gl = renderWithOpenGL(*d, inputs, out, floatIO, time, error);
+        if (gl != 0)
+            return gl > 0;
+        if (plugin.info->needsOpenGL) {
+            if (error)
+                *error = "El efecto " + plugin.info->label + " necesita OpenGL y no está disponible.";
+            return false;
+        }
+    }
+
     // Imágenes de abajo arriba (como espera OFX): el puntero a la fila de abajo y un paso negativo.
-    // Si la profundidad del plugin no es la de las imágenes, se convierte a la suya.
-    const size_t pixels = size_t(w) * size_t(h);
-    const size_t values4 = pixels * 4;
-    // El plugin no debería escribir las entradas, pero por si acaso trabaja sobre copias.
+    // Si la profundidad del plugin es la de las imágenes, lee y escribe las del llamador; si no, se
+    // convierten a la suya.
+    const size_t values4 = size_t(w) * size_t(h) * 4;
+    const bool direct = e.floatImages == floatIO;
     e.images.clear();
     d->inF.resize(inputs.size());
     d->inB.resize(inputs.size());
-    if (e.floatImages) {
-        const int stride = w * 4 * int(sizeof(float));
-        for (size_t k = 0; k < inputs.size(); ++k) {
+    const int stride = w * 4 * int(e.floatImages ? sizeof(float) : 1);
+    auto bottomRow = [&](const void* top) { return static_cast<uint8_t*>(const_cast<void*>(top)) + ptrdiff_t(h - 1) * stride; };
+    for (size_t k = 0; k < inputs.size(); ++k) {
+        const void* image = inputs[k];
+        if (!direct && e.floatImages) {
             std::vector<float>& copy = d->inF[k];
             copy.resize(values4);
-            if (floatIO)
-                std::copy_n(static_cast<const float*>(inputs[k]), values4, copy.begin());
-            else
-                for (size_t i = 0; i < values4; ++i)
-                    copy[i] = float(static_cast<const uint8_t*>(inputs[k])[i]) / 255.0f;
-            e.images.emplace_back(names[k], reinterpret_cast<uint8_t*>(copy.data()) + ptrdiff_t(h - 1) * stride);
-        }
-        d->outF.assign(values4, 0.0f);
-        e.rowBytes = -stride;
-        e.images.emplace_back(kOfxImageEffectOutputClipName, reinterpret_cast<uint8_t*>(d->outF.data()) + ptrdiff_t(h - 1) * stride);
-    } else {
-        const int stride = w * 4;
-        for (size_t k = 0; k < inputs.size(); ++k) {
+            for (size_t i = 0; i < values4; ++i)
+                copy[i] = float(static_cast<const uint8_t*>(inputs[k])[i]) / 255.0f;
+            image = copy.data();
+        } else if (!direct) {
             std::vector<uint8_t>& copy = d->inB[k];
-            if (floatIO) {
-                copy.resize(values4);
-                for (size_t i = 0; i < values4; ++i)
-                    copy[i] = uint8_t(std::clamp(std::lround(static_cast<const float*>(inputs[k])[i] * 255.0f), 0L, 255L));
-            } else {
-                const auto* in8 = static_cast<const uint8_t*>(inputs[k]);
-                copy.assign(in8, in8 + values4);
-            }
-            e.images.emplace_back(names[k], copy.data() + ptrdiff_t(h - 1) * stride);
+            copy.resize(values4);
+            for (size_t i = 0; i < values4; ++i)
+                copy[i] = toByte(static_cast<const float*>(inputs[k])[i]);
+            image = copy.data();
         }
-        d->outB.assign(values4, 0);
-        e.rowBytes = -stride;
-        e.images.emplace_back(kOfxImageEffectOutputClipName, d->outB.data() + ptrdiff_t(h - 1) * stride);
+        e.images.emplace_back(names[k], bottomRow(image));
     }
+    void* target = out;
+    if (!direct && e.floatImages) {
+        d->outF.assign(values4, 0.0f);
+        target = d->outF.data();
+    } else if (!direct) {
+        d->outB.assign(values4, 0);
+        target = d->outB.data();
+    }
+    e.rowBytes = -stride;
+    e.images.emplace_back(kOfxImageEffectOutputClipName, bottomRow(target));
 
-    std::unique_lock renderLock(*plugin.renderMutex, std::defer_lock);
-    if (plugin.unsafe)
-        renderLock.lock();
-    PropertySet seq;
-    seq.setD(kOfxImageEffectPropFrameRange, {time, time});
-    seq.setD(kOfxImageEffectPropFrameStep, {1.0});
-    seq.setI(kOfxPropIsInteractive, {0});
-    seq.setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
-    seq.setI(kOfxImageEffectPropSequentialRenderStatus, {0});
-    seq.setI(kOfxImageEffectPropInteractiveRenderStatus, {0});
-    callAction(plugin, kOfxImageEffectActionBeginSequenceRender, &e, &seq);
-    PropertySet args;
-    args.setD(kOfxPropTime, {time});
-    args.setS(kOfxImageEffectPropFieldToRender, {kOfxImageFieldNone});
-    args.setI(kOfxImageEffectPropRenderWindow, {0, 0, w, h});
-    args.setD(kOfxImageEffectPropRenderScale, {1.0, 1.0});
-    args.setI(kOfxImageEffectPropSequentialRenderStatus, {0});
-    args.setI(kOfxImageEffectPropInteractiveRenderStatus, {0});
-    args.setI(kOfxImageEffectPropRenderQualityDraft, {0});
-    const OfxStatus st = callAction(plugin, kOfxImageEffectActionRender, &e, &args);
-    callAction(plugin, kOfxImageEffectActionEndSequenceRender, &e, &seq);
+    const OfxStatus st = renderActions(plugin, e, time, false);
     e.images.clear();
     if (!ok(st)) {
         if (error)
-            *error = st == kOfxStatErrFatal ? "El efecto " + plugin.info->label + " falló al renderizar."
-                                             : "El efecto " + plugin.info->label + " no pudo renderizar." + (e.lastMessage.empty() ? "" : " " + e.lastMessage);
+            *error = renderError(plugin, e, st);
         return false;
     }
-    if (e.floatImages && floatIO)
-        std::copy(d->outF.begin(), d->outF.end(), static_cast<float*>(out));
-    else if (e.floatImages)
+    if (direct)
+        return true;
+    if (e.floatImages)
         for (size_t i = 0; i < values4; ++i)
-            static_cast<uint8_t*>(out)[i] = uint8_t(std::clamp(std::lround(d->outF[i] * 255.0f), 0L, 255L));
-    else if (floatIO)
+            static_cast<uint8_t*>(out)[i] = toByte(d->outF[i]);
+    else
         for (size_t i = 0; i < values4; ++i)
             static_cast<float*>(out)[i] = float(d->outB[i]) / 255.0f;
-    else
-        std::copy(d->outB.begin(), d->outB.end(), static_cast<uint8_t*>(out));
     return true;
 }
 
@@ -1922,6 +2042,8 @@ public:
                 deleteFramebuffers(1, &m_fbo);
             if (m_texture)
                 glDeleteTextures(1, &m_texture);
+            for (const Texture& t : m_inputs)
+                glDeleteTextures(1, &t.id);
             doneCurrent();
         }
         if (m_context)
@@ -1949,17 +2071,18 @@ public:
 #endif
     }
 
-    // Activa el contexto con un framebuffer de w × h; el de la ventana deja de usarse.
-    bool bind(int w, int h)
+    // Activa el contexto con un framebuffer de w × h (en coma flotante si `floatTarget`); el de la
+    // ventana deja de usarse.
+    bool bind(int w, int h, bool floatTarget = false)
     {
         if (!makeCurrent())
             return false;
         constexpr GLenum kFramebuffer = 0x8D40, kColorAttachment0 = 0x8CE0, kComplete = 0x8CD5;
-        if (!m_fbo || m_width != w || m_height != h) {
+        if (!m_fbo || m_width != w || m_height != h || m_float != floatTarget) {
             if (!m_texture)
                 glGenTextures(1, &m_texture);
             glBindTexture(GL_TEXTURE_2D, m_texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, floatTarget ? kRgba32f : GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glBindTexture(GL_TEXTURE_2D, 0);
             if (!m_fbo)
@@ -1970,9 +2093,34 @@ public:
                 return false;
             m_width = w;
             m_height = h;
+            m_float = floatTarget;
         }
         bindFramebuffer(kFramebuffer, m_fbo);
         return true;
+    }
+
+    // La textura del framebuffer (el destino del render).
+    GLuint texture() const { return m_texture; }
+    void bindTarget() { bindFramebuffer(0x8D40, m_fbo); }
+
+    // Textura de entrada `index` de w × h, con el contenido sin definir (se reutiliza entre renders).
+    GLuint inputTexture(size_t index, int w, int h, bool floatTexture)
+    {
+        if (m_inputs.size() <= index)
+            m_inputs.resize(index + 1);
+        Texture& t = m_inputs[index];
+        if (!t.id)
+            glGenTextures(1, &t.id);
+        glBindTexture(GL_TEXTURE_2D, t.id);
+        if (t.width != w || t.height != h || t.isFloat != floatTexture) {
+            glTexImage2D(GL_TEXTURE_2D, 0, floatTexture ? kRgba32f : GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            t.width = w;
+            t.height = h;
+            t.isFloat = floatTexture;
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        return t.id;
     }
 
     void release()
@@ -1987,14 +2135,116 @@ private:
     HDC m_dc = nullptr;
     HGLRC m_context = nullptr;
 #endif
+    static constexpr GLint kRgba32f = 0x8814;
+    struct Texture {
+        GLuint id = 0;
+        int width = 0, height = 0;
+        bool isFloat = false;
+    };
     GLuint m_fbo = 0, m_texture = 0;
     int m_width = 0, m_height = 0;
+    bool m_float = false;
+    std::vector<Texture> m_inputs;
     void(APIENTRY* genFramebuffers)(GLsizei, GLuint*) = nullptr;
     void(APIENTRY* deleteFramebuffers)(GLsizei, const GLuint*) = nullptr;
     void(APIENTRY* bindFramebuffer)(GLenum, GLuint) = nullptr;
     void(APIENTRY* framebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint) = nullptr;
     GLenum(APIENTRY* checkFramebufferStatus)(GLenum) = nullptr;
 };
+
+namespace {
+
+// Contexto OpenGL de cada hilo para los plugins que renderizan con OpenGL (un contexto solo puede
+// estar activo en un hilo). Nulo si no hay OpenGL con framebuffers.
+std::unique_ptr<GlCanvas>& threadCanvasSlot()
+{
+    thread_local std::unique_ptr<GlCanvas> canvas;
+    return canvas;
+}
+
+GlCanvas* threadCanvas()
+{
+    thread_local bool tried = false;
+    if (!tried) {
+        tried = true;
+        auto canvas = std::make_unique<GlCanvas>();
+        if (canvas->create())
+            threadCanvasSlot() = std::move(canvas);
+    }
+    return threadCanvasSlot().get();
+}
+
+int renderWithOpenGL(Effect::Impl& d, const std::vector<const void*>& inputs, void* out, bool floatIO, double time, std::string* error)
+{
+    EffectObj& e = *d.obj;
+    LoadedPlugin& plugin = *d.plugin;
+    GlCanvas* gl = threadCanvas();
+    const int w = e.width, h = e.height;
+    if (!gl || !gl->bind(w, h, e.floatImages))
+        return 0;
+    glPushAttrib(GL_ALL_ATTRIB_BITS); // lo que el plugin cambie no pasa al siguiente
+    // Las texturas van de abajo arriba, como las imágenes de OFX: las filas se suben al revés. OpenGL
+    // convierte entre 8 bits y coma flotante si la instancia trabaja en el otro tipo.
+    const GLenum type = floatIO ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    const size_t rowBytes = size_t(w) * 4 * (floatIO ? sizeof(float) : 1);
+    const auto names = inputClips(plugin.info->role);
+    e.textures.clear();
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (size_t k = 0; k < inputs.size() && k < names.size(); ++k) {
+        const GLuint texture = gl->inputTexture(k, w, h, e.floatImages);
+        for (int y = 0; y < h; ++y)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, w, 1, GL_RGBA, type, static_cast<const uint8_t*>(inputs[k]) + size_t(h - 1 - y) * rowBytes);
+        e.textures.emplace_back(names[k], texture);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+    e.textures.emplace_back(kOfxImageEffectOutputClipName, gl->texture());
+    glViewport(0, 0, w, h);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (d.gl != gl) {
+        callAction(plugin, kOfxActionOpenGLContextAttached, &e);
+        d.gl = gl;
+    }
+    const OfxStatus st = renderActions(plugin, e, time, true);
+    e.textures.clear();
+    glPopAttrib();
+    if (st == kOfxStatGLRenderFailed || st == kOfxStatGLOutOfMemory || st == kOfxStatErrMemory) {
+        gl->release(); // se repite en la CPU
+        return 0;
+    }
+    if (!ok(st)) {
+        gl->release();
+        if (error)
+            *error = renderError(plugin, e, st);
+        return -1;
+    }
+    gl->bindTarget(); // por si el plugin dejó enlazado otro framebuffer
+    while (glGetError() != GL_NO_ERROR) {
+    } // los errores del plugin no cuentan como de la lectura
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    d.readback.resize(rowBytes * size_t(h));
+    glReadPixels(0, 0, w, h, GL_RGBA, type, d.readback.data());
+    const bool failed = glGetError() != GL_NO_ERROR;
+    gl->release();
+    if (failed)
+        return 0;
+    for (int y = 0; y < h; ++y)
+        std::memcpy(static_cast<uint8_t*>(out) + size_t(h - 1 - y) * rowBytes, d.readback.data() + size_t(y) * rowBytes, rowBytes);
+    return 1;
+}
+
+void detachOpenGL(Effect::Impl& d)
+{
+    // Solo si el contexto es el de este hilo (el de otro hilo no se puede activar aquí).
+    GlCanvas* gl = threadCanvasSlot().get();
+    if (!d.gl || d.gl != gl || !gl->makeCurrent())
+        return;
+    callAction(*d.plugin, kOfxActionOpenGLContextDetached, d.obj.get());
+    gl->doneCurrent();
+    d.gl = nullptr;
+}
+
+} // namespace
 
 struct Overlay::Impl {
     Effect* effect = nullptr;

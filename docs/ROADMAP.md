@@ -443,12 +443,25 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       misaki: «read», «live» o «record» usan siempre su pronunciación habitual. El léxico (6 MB) se
       descarga con el modelo; quien ya lo tenga solo baja esos dos archivos. En 8 frases leídas
       por cada voz inglesa, Whisper entiende las 79 palabras (con eSpeak, 78)
+- [x] OpenFX en la GPU: el anfitrión ofrece la *suite* de render por OpenGL de OFX 1.4. Los plugins
+      que la admiten reciben sus imágenes como texturas en un contexto OpenGL propio de cada hilo y
+      dibujan el resultado en la GPU (en 8 bits o en coma flotante, RGBA32F); si no hay OpenGL o el
+      plugin falla con él, renderizan en la CPU. Verificado con un plugin propio escrito sobre la
+      API en C: 1080p en 5,5 ms con OpenGL, contando subir la imagen y leer el resultado
+- [x] Menos trabajo del anfitrión en cada efecto, para todos los plugins: el video de 8 bits pasa al
+      plugin en 8 bits si lo admite (antes, en coma flotante siempre que pudiera, con dos
+      conversiones por fotograma) y el plugin lee y escribe las imágenes del motor sin copias. Con
+      un efecto en un clip 1080p, el anfitrión pasa de ~14 ms a ~4 ms por fotograma, más los ~4 ms
+      de convertir NV12 a RGBA
 
 ### Limitaciones de OpenFX
 
 - Sin los contextos de retoque, cambio de velocidad, lectura o escritura. La interfaz sobre el
   visor solo funciona en Windows (OpenGL por WGL).
-- Se renderiza en la CPU: los clips con efectos no usan la copia cero.
+- Los clips con efectos no usan la copia cero: la imagen baja a la memoria para el plugin y vuelve a
+  subir al visor (Direct3D), también con los que renderizan con OpenGL. Entre dos efectos con
+  OpenGL seguidos la imagen también pasa por la memoria. Las *suites* de CUDA, OpenCL y Metal de
+  OFX 1.5 (las de muchos plugins comerciales) no están.
 
 ### Pendiente de comprobar
 

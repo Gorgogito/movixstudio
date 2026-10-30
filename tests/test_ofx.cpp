@@ -16,11 +16,13 @@
 
 #include <QCoreApplication>
 #include <QKeyEvent>
+#include <QLibrary>
 #include <QString>
 #include <QTemporaryDir>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 
 using namespace movix;
@@ -31,6 +33,24 @@ namespace {
 const std::string kGain = "io.github.gorgogito.movixstudio.test.Gain";
 const std::string kRect = "io.github.gorgogito.movixstudio.test.Rectangle";
 const std::string kWipe = "io.github.gorgogito.movixstudio.test.Wipe";
+const std::string kGlGain = "io.github.gorgogito.movixstudio.test.GlGain";
+
+// Contadores del plugin de OpenGL: la misma DLL que carga el anfitrión.
+struct GlCounters {
+    QLibrary library{QStringLiteral(MOVIX_TEST_OFX_DIR "/MovixTestGl.ofx.bundle/Contents/Win64/MovixTestGl.ofx")};
+    int (*gl)() = nullptr;
+    int (*cpu)() = nullptr;
+    int (*attached)() = nullptr;
+    bool load()
+    {
+        if (!library.load())
+            return false;
+        gl = reinterpret_cast<int (*)()>(library.resolve("MovixTestGlRenders"));
+        cpu = reinterpret_cast<int (*)()>(library.resolve("MovixTestCpuRenders"));
+        attached = reinterpret_cast<int (*)()>(library.resolve("MovixTestGlAttached"));
+        return gl && cpu && attached;
+    }
+};
 
 void useTestPlugins()
 {
@@ -1007,4 +1027,160 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         CHECK(project.project().findClip(Id(second))->transitionIn.ofx.params.contains("mix"));
     }
     qunsetenv("MOVIX_OFX_DIR");
+}
+
+TEST_CASE("OpenFX: los plugins que saben renderizan con OpenGL, en la GPU", "[ofx][opengl]")
+{
+    useTestPlugins();
+    const auto info = ofx::Registry::instance().find(kGlGain);
+    REQUIRE(info);
+    CHECK(info->openGL);
+    CHECK_FALSE(info->needsOpenGL);
+    GlCounters counters;
+    REQUIRE(counters.load());
+    constexpr int W = 64, H = 48;
+    const auto in = testImage(W, H);
+    const auto values = ofx::withDefaults(*info, {{"gain", {0.5}}});
+    std::string error;
+    // Arriba (en la imagen, filas de arriba abajo) igual; abajo, a la mitad.
+    auto checkHalves = [&](const std::vector<uint8_t>& out) {
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                for (int c = 0; c < 4; ++c) {
+                    const size_t i = (size_t(y) * W + size_t(x)) * 4 + size_t(c);
+                    const int expected = y < H / 2 || c == 3 ? in[i] : int(in[i] * 0.5 + 0.5);
+                    if (std::abs(int(out[i]) - expected) > 1) {
+                        FAIL_CHECK("(" << x << ", " << y << ") canal " << c << ": " << int(out[i]) << " en vez de " << expected);
+                        return;
+                    }
+                }
+    };
+
+    auto effect = ofx::Effect::create(kGlGain, W, H, 25.0, &error, ofx::Role::Filter, false);
+    REQUIRE(effect);
+    CHECK_FALSE(effect->floatImages());
+    std::vector<uint8_t> out(in.size());
+    const int gl0 = counters.gl(), cpu0 = counters.cpu();
+    REQUIRE(effect->render(values, 0, in.data(), out.data(), &error));
+    checkHalves(out);
+    if (counters.gl() == gl0) {
+        CHECK(counters.cpu() == cpu0 + 1); // sin OpenGL en este equipo: en la CPU
+        SKIP("Sin OpenGL");
+    }
+    CHECK(counters.cpu() == cpu0);
+    CHECK(counters.attached() >= 1);
+
+    // En coma flotante (textura RGBA32F), sin pasar por 8 bits.
+    auto deep = ofx::Effect::create(kGlGain, W, H, 25.0, &error, ofx::Role::Filter, true);
+    REQUIRE(deep);
+    CHECK(deep->floatImages());
+    std::vector<float> inF(in.size()), outF(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+        inF[i] = in[i] / 255.0f + 0.001f;
+    REQUIRE(deep->render(values, 0, inF.data(), outF.data(), &error));
+    CHECK(outF[0] == Catch::Approx(inF[0]).margin(1e-6));
+    const size_t bottom = (size_t(H - 1) * W + 5) * 4;
+    CHECK(outF[bottom] == Catch::Approx(inF[bottom] * 0.5f).margin(1e-6));
+
+    // Desactivado: el mismo plugin en la CPU, con el mismo resultado.
+    ofx::setOpenGLRender(false);
+    std::vector<uint8_t> cpuOut(in.size());
+    REQUIRE(effect->render(values, 0, in.data(), cpuOut.data(), &error));
+    ofx::setOpenGLRender(true);
+    CHECK(counters.cpu() == cpu0 + 1);
+    checkHalves(cpuOut);
+
+    // En el motor: el primer fotograma (blanco) de un clip, con la mitad de abajo a la mitad.
+    Project p = Project::createDefault();
+    auto item = engine::probeMediaItem(test::mediaPath("sync_720p30.mp4"));
+    REQUIRE(item);
+    p.settings.width = 1280;
+    p.settings.height = 720;
+    const Id clip = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *item), 0, 0, 30);
+    REQUIRE(edit::addOfxEffect(p, clip, kGlGain) == 0);
+    REQUIRE(edit::setOfxParam(p, clip, 0, "gain", {0.5}));
+    const int engineGl = counters.gl();
+    {
+        engine::VideoSources sources(false);
+        const auto bundle = sources.build(p, 0);
+        REQUIRE(bundle.layers.size() == 1);
+        const auto& f = bundle.layers[0].frame;
+        REQUIRE(f->format == media::PixelFormat::RGBA);
+        auto at = [&](int x, int y) { return int(f->rgba[(size_t(y) * size_t(f->width) + size_t(x)) * 4]); };
+        CHECK(at(640, 100) > 240);
+        CHECK(std::abs(at(640, 620) - 128) <= 3);
+        CHECK(counters.gl() == engineGl + 1);
+    }
+
+    // Al destruir una instancia en su hilo, el plugin deja el contexto.
+    const int attached = counters.attached();
+    effect.reset();
+    CHECK(counters.attached() == attached - 1);
+}
+
+// Medición (no corre con las demás): dónde se va el tiempo de un fotograma 1080p con un efecto.
+TEST_CASE("OpenFX: coste de un efecto en 1080p", "[.][ofx-perf]")
+{
+    useTestPlugins();
+    Project p = Project::createDefault();
+    auto item = engine::probeMediaItem(test::mediaPath("count_1080p60.mp4"));
+    REQUIRE(item);
+    p.settings.frameRate = {60, 1};
+    const Id clip = edit::placeClip(p, p.videoTracks[0].id, edit::addMedia(p, *item), 0, 0, 180);
+    REQUIRE(clip != kNoId);
+    render::OffscreenRenderer renderer;
+    REQUIRE(renderer.init(1920, 1080));
+    using clock = std::chrono::steady_clock;
+    auto ms = [](clock::time_point t0, int n) { return std::chrono::duration<double, std::milli>(clock::now() - t0).count() / n; };
+    auto measure = [&](bool render) {
+        engine::VideoSources sources(true);
+        std::vector<uint8_t> px;
+        const auto t0 = clock::now();
+        for (FramePos f = 0; f < 120; ++f) {
+            const auto bundle = sources.build(p, f);
+            if (render)
+                REQUIRE(renderer.render(bundle, px));
+        }
+        return ms(t0, 120);
+    };
+    const double plain = measure(false), plainRender = measure(true);
+    REQUIRE(edit::addOfxEffect(p, clip, kGain) == 0);
+    const double effect = measure(false), effectRender = measure(true);
+    std::printf("[ofx-perf] por fotograma: sin efecto %.2f ms (+ componer %.2f), con efecto %.2f ms (+ componer %.2f)\n", plain,
+                plainRender - plain, effect, effectRender - effect);
+
+    // Por partes: NV12 → RGBA en la CPU y el plugin.
+    edit::removeOfxEffect(p, clip, 0);
+    engine::VideoSources sources(true);
+    const auto frame = sources.build(p, 30).layers.at(0).frame;
+    std::vector<uint8_t> rgba;
+    auto t0 = clock::now();
+    for (int i = 0; i < 60; ++i)
+        REQUIRE(media::frameToRgba(*frame, frame->width, frame->height, rgba));
+    const double convert = ms(t0, 60);
+    std::string error;
+    auto gain = ofx::Effect::create(kGain, 1920, 1080, 60.0, &error, ofx::Role::Filter, false); // en 8 bits, como el motor
+    REQUIRE(gain);
+    const auto values = ofx::withDefaults(gain->plugin(), {});
+    std::vector<uint8_t> out(rgba.size());
+    t0 = clock::now();
+    for (int i = 0; i < 60; ++i)
+        REQUIRE(gain->render(values, i, rgba.data(), out.data(), &error));
+    std::printf("[ofx-perf] NV12 → RGBA %.2f ms, plugin %.2f ms (formato %d)\n", convert, ms(t0, 60), int(frame->format));
+
+    // Un plugin que renderiza con OpenGL frente al mismo en la CPU.
+    auto glGain = ofx::Effect::create(kGlGain, 1920, 1080, 60.0, &error, ofx::Role::Filter, false);
+    REQUIRE(glGain);
+    const auto glValues = ofx::withDefaults(glGain->plugin(), {{"gain", {0.5}}});
+    double glMs = 0, cpuMs = 0;
+    for (const bool useGl : {true, false}) {
+        ofx::setOpenGLRender(useGl);
+        REQUIRE(glGain->render(glValues, 0, rgba.data(), out.data(), &error)); // calentar
+        t0 = clock::now();
+        for (int i = 0; i < 60; ++i)
+            REQUIRE(glGain->render(glValues, i, rgba.data(), out.data(), &error));
+        (useGl ? glMs : cpuMs) = ms(t0, 60);
+    }
+    ofx::setOpenGLRender(true);
+    std::printf("[ofx-perf] plugin con OpenGL: %.2f ms en la GPU (subir, dibujar y leer), %.2f ms en la CPU\n", glMs, cpuMs);
 }

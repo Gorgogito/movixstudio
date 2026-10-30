@@ -78,8 +78,13 @@ target_link_libraries(MovixTestGain PRIVATE unofficial::openfx::OfxSupport openg
 target_compile_definitions(MovixTestGain PRIVATE _HAS_AUTO_PTR_ETC=1) # la biblioteca de apoyo de OFX usa std::auto_ptr
 set_target_properties(MovixTestGain PROPERTIES PREFIX "" SUFFIX ".ofx"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ofx/MovixTestGain.ofx.bundle/Contents/Win64")
+# Otro escrito sobre la API en C que renderiza con OpenGL.
+add_library(MovixTestGl MODULE ofx/MovixTestGl.cpp)
+target_link_libraries(MovixTestGl PRIVATE unofficial::openfx::OpenFx opengl32)
+set_target_properties(MovixTestGl PROPERTIES PREFIX "" SUFFIX ".ofx"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ofx/MovixTestGl.ofx.bundle/Contents/Win64")
 target_compile_definitions(movix_tests PRIVATE MOVIX_TEST_OFX_DIR="${CMAKE_CURRENT_BINARY_DIR}/ofx")
-add_dependencies(movix_tests MovixTestGain)
+add_dependencies(movix_tests MovixTestGain MovixTestGl)
 
 # Las DLL de FFmpeg junto al ejecutable de pruebas.
 add_custom_command(TARGET movix_tests POST_BUILD

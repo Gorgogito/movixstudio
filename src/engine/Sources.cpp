@@ -289,19 +289,23 @@ std::shared_ptr<const media::VideoFrame> VideoSources::flattenCompound(const Fra
     return frame;
 }
 
-ofx::Effect* VideoSources::ofxInstance(std::uint64_t instance, size_t index, const std::string& pluginId, ofx::Role role, int width, int height)
+ofx::Effect* VideoSources::ofxInstance(std::uint64_t instance, size_t index, const std::string& pluginId, ofx::Role role, int width, int height,
+                                       bool deep)
 {
     OfxSlot& slot = m_ofx[{instance, index}];
     slot.lastUse = m_tick;
-    if (slot.pluginId != pluginId || slot.role != role || (slot.effect && (slot.effect->width() != width || slot.effect->height() != height))) {
+    if (slot.pluginId != pluginId || slot.role != role || slot.deep != deep
+        || (slot.effect && (slot.effect->width() != width || slot.effect->height() != height))) {
         slot.effect.reset();
         slot.failed = false;
         slot.pluginId = pluginId;
         slot.role = role;
+        slot.deep = deep;
     }
     if (!slot.effect && !slot.failed) {
         std::string error;
-        slot.effect = ofx::Effect::create(pluginId, width, height, m_frameRate, &error, role);
+        // En 8 bits si la imagen lo es y el plugin lo admite: sin conversiones.
+        slot.effect = ofx::Effect::create(pluginId, width, height, m_frameRate, &error, role, deep);
         slot.failed = !slot.effect;
         if (slot.failed)
             m_ofxError = error;
@@ -333,12 +337,12 @@ std::shared_ptr<media::VideoFrame> rgbaFrame(int w, int h, bool deep, std::vecto
 
 std::shared_ptr<const media::VideoFrame> VideoSources::generated(const core::VideoLayer& layer, int width, int height)
 {
-    ofx::Effect* effect = ofxInstance(layer.instance, kGeneratorSlot, layer.generator->pluginId, ofx::Role::Generator, width, height);
-    if (!effect)
-        return nullptr;
     // Como los títulos, en SDR Rec.709 (el compositor lo lleva a la señal del proyecto); en coma
     // flotante si el plugin la admite.
-    const bool deep = effect->plugin().floatImages;
+    ofx::Effect* effect = ofxInstance(layer.instance, kGeneratorSlot, layer.generator->pluginId, ofx::Role::Generator, width, height, true);
+    if (!effect)
+        return nullptr;
+    const bool deep = effect->floatImages();
     std::vector<uint8_t> rgba(deep ? 0 : size_t(width) * size_t(height) * 4);
     std::vector<float> rgbaF(deep ? size_t(width) * size_t(height) * 4 : 0);
     std::string error;
@@ -357,11 +361,12 @@ void VideoSources::buildTransition(const core::VideoLayer& layer, FrameBundle& b
     if (sides.size() != 2)
         return;
     const int w = bundle.canvasWidth, h = bundle.canvasHeight;
-    ofx::Effect* effect = m_bundleRenderer ? ofxInstance(layer.instance, kTransitionSlot, layer.transition->pluginId, ofx::Role::Transition, w, h)
-                                           : nullptr;
+    const bool deep = bundle.colorMode != core::ColorMode::SDR;
+    ofx::Effect* effect = m_bundleRenderer
+                              ? ofxInstance(layer.instance, kTransitionSlot, layer.transition->pluginId, ofx::Role::Transition, w, h, deep)
+                              : nullptr;
     if (effect) {
         // Cada lado, con todo lo suyo (transformación, color, efectos...), en una imagen del lienzo.
-        const bool deep = bundle.colorMode != core::ColorMode::SDR;
         std::shared_ptr<const media::VideoFrame> images[2];
         for (int i = 0; i < 2; ++i) {
             FrameBundle side = bundle;
@@ -423,7 +428,7 @@ std::shared_ptr<const media::VideoFrame> VideoSources::applyOfx(const core::Vide
         const core::OfxEffect& e = (*layer.ofx)[i];
         if (!e.enabled)
             continue;
-        ofx::Effect* effect = ofxInstance(layer.instance, i, e.pluginId, ofx::Role::Filter, w, h);
+        ofx::Effect* effect = ofxInstance(layer.instance, i, e.pluginId, ofx::Role::Filter, w, h, deep);
         if (!effect)
             continue;
         std::string error;
