@@ -476,6 +476,7 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
 - Actualizar FFmpeg cuando la rama 9.0 incorpore las correcciones de `arnndn` de la rama principal
   (5474b1e05a: lee entradas de las GRU sin inicializar; 279f225d98: modelos con capas que no
   encajan). Con el modelo que usamos no se observa efecto (salida idéntica en cientos de pasadas).
+  Comprobado de nuevo el 30-10-2026: la rama 9.0 aún no las tiene.
 
 ### Corregido: cierres y salida errática de la reducción de ruido
 
