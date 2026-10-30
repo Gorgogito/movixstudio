@@ -126,5 +126,7 @@ struct TransitionSpan {
     FramePos after = 0;
 };
 TransitionSpan transitionSpan(const TransitionIn& t);
+// Primer fotograma de la transición de entrada del clip (el 0 de los keyframes de una OpenFX).
+FramePos transitionStart(const Clip& c);
 
 } // namespace movix::core

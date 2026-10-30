@@ -1178,11 +1178,18 @@ QVariantList ProjectController::keyframeFrames(qint64 clipId) const
         for (const Mask& m : c->masks)
             for (const PathKey& k : m.pathKeys)
                 frames.insert(c->start + k.frame);
-        for (const OfxEffect& e : c->ofx)
+        const auto addOfx = [&](const OfxEffect& e, FramePos origin) {
             for (const auto& [name, components] : e.params)
                 for (const Animated& a : components)
                     for (const Keyframe& k : a.keys)
-                        frames.insert(c->start + k.frame);
+                        frames.insert(origin + k.frame);
+        };
+        for (const OfxEffect& e : c->ofx)
+            addOfx(e, c->start);
+        if (c->generator)
+            addOfx(*c->generator, c->start);
+        if (c->transitionIn.type == TransitionType::Ofx)
+            addOfx(c->transitionIn.ofx, transitionStart(*c));
     }
     QVariantList out;
     for (qint64 f : frames)

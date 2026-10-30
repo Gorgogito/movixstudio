@@ -1939,7 +1939,7 @@ bool toggleOfxKey(Project& p, Id clipId, int index, const std::string& name, Fra
                   Interpolation interp)
 {
     OfxEffect* e = ofxTarget(p, clipId, index);
-    if (!e || index == kOfxTransition || name.empty() || current.empty())
+    if (!e || name.empty() || current.empty())
         return false;
     std::vector<Animated>& components = e->params[name];
     if (!components.empty() && components[0].keyAt(rel)) {

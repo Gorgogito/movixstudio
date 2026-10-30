@@ -239,6 +239,11 @@ TransitionSpan transitionSpan(const TransitionIn& t)
     return {t.duration / 2, t.duration - t.duration / 2};
 }
 
+FramePos transitionStart(const Clip& c)
+{
+    return c.start - transitionSpan(c.transitionIn).before;
+}
+
 namespace {
 
 std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks, FramePos frame, std::uint64_t outer, int depth)
@@ -269,8 +274,7 @@ std::vector<VideoLayer> layersOf(const Project& p, std::span<const Track> tracks
         }
 
         if (outgoing && incoming && contributesVideo(p, *outgoing) && contributesVideo(p, *incoming)) {
-            const TransitionSpan span = transitionSpan(incoming->transitionIn);
-            const FramePos k = frame - (incoming->start - span.before); // 0..duration-1
+            const FramePos k = frame - transitionStart(*incoming); // 0..duration-1
             const double progress = (double(k) + 0.5) / double(incoming->transitionIn.duration);
             VideoLayer a = makeLayer(p, *outgoing, track, frame, outgoing != c, outer, depth);
             VideoLayer b = makeLayer(p, *incoming, track, frame, incoming != c, outer, depth);

@@ -428,12 +428,17 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       «sin fallar» por «sin falta», pero «If I'd known you'd come» donde la de 8 bits decía «If I
       knew»). Los archivos pesan más (78 + 82 MB por sentido en vez de 53 + 60): quien tuviera la
       versión anterior la verá como no instalada y tendrá que descargarla de nuevo
+- [x] Keyframes en los parámetros de las transiciones OpenFX: cuentan desde el primer fotograma de
+      la transición (en el inspector, con el cabezal dentro de ella), se recorren con ‹ › y viajan
+      en el proyecto y en OpenTimelineIO como los de los efectos
+- [x] Teclado en la interfaz de los plugins sobre el visor: al hacer clic en ella toma el foco y las
+      teclas van al plugin (con su símbolo de OFX y su texto) antes que a los atajos de la
+      aplicación; las que no usa siguen siendo atajos. Cada pulsación es un paso de deshacer
 
 ### Limitaciones de OpenFX
 
-- Sin los contextos de retoque, cambio de velocidad, lectura o escritura. Los parámetros de las
-  transiciones no se animan. La interfaz sobre el visor no recibe el teclado y solo funciona en
-  Windows (OpenGL por WGL).
+- Sin los contextos de retoque, cambio de velocidad, lectura o escritura. La interfaz sobre el
+  visor solo funciona en Windows (OpenGL por WGL).
 - Se renderiza en la CPU: los clips con efectos no usan la copia cero.
 
 ### Pendiente de comprobar

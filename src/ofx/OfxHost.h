@@ -133,6 +133,10 @@ public:
     // Evento del ratón en (x, y), píxeles de la vista con origen arriba a la izquierda. Devuelve si el
     // plugin lo usó; `values` recibe los valores de los parámetros después (los que cambió, incluidos).
     bool pen(Pen kind, double x, double y, double time, int viewWidth, int viewHeight, ParamValues& values);
+    enum class Key { Down, Up, Repeat };
+    // Tecla pulsada con el visor enfocado: `qtKey` es un Qt::Key y `text`, lo que escribe (UTF-8).
+    // Devuelve si el plugin la usó; `values`, como en pen().
+    bool key(Key kind, int qtKey, const std::string& text, double time, int viewWidth, int viewHeight, ParamValues& values);
     // El plugin pidió redibujar desde la última vez que se preguntó.
     bool takeRedraw();
 

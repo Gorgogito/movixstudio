@@ -2,6 +2,7 @@
 #include "ProjectController.h"
 
 #include "core/Edits.h"
+#include "core/Timeline.h"
 #include "ofx/OfxHost.h"
 
 #include <QDesktopServices>
@@ -74,6 +75,15 @@ QString interpolationName(Interpolation i)
 FramePos clipRel(const Clip& c, FramePos playhead)
 {
     return std::clamp<FramePos>(playhead - c.start, 0, std::max<FramePos>(0, c.duration - 1));
+}
+
+// El de los keyframes del efecto `index`: el del clip o, en su transición de entrada, el de la
+// transición (0 en su primer fotograma).
+FramePos effectRel(const Clip& c, int index, FramePos playhead)
+{
+    if (index != edit::kOfxTransition)
+        return clipRel(c, playhead);
+    return std::clamp<FramePos>(playhead - transitionStart(c), 0, std::max<FramePos>(0, c.transitionIn.duration - 1));
 }
 
 // Efecto al que se refiere `index` (uno del clip, el generador o la transición) y su papel.
@@ -182,9 +192,7 @@ QVariantList ProjectController::ofxEffects(qint64 clipId, const QString& kind) c
         if (!found)
             continue;
         const OfxEffect& e = *found;
-        // Los parámetros de la transición son fijos (el progreso lo pone el anfitrión).
-        const bool fixed = role == ofx::Role::Transition;
-        const FramePos rel = fixed ? 0 : clipRel(*c, m_player->positionFrame());
+        const FramePos rel = effectRel(*c, i, m_player->positionFrame());
         const auto info = ofx::Registry::instance().find(e.pluginId, role);
         QVariantList params;
         if (info) {
@@ -215,7 +223,7 @@ QVariantList ProjectController::ofxEffects(qint64 clipId, const QString& kind) c
                                           {"min", lo},
                                           {"max", hi},
                                           {"options", options},
-                                          {"animates", d.animates && !fixed},
+                                          {"animates", d.animates},
                                           {"animated", first.isAnimated()},
                                           {"keyHere", here != nullptr},
                                           {"interp", here ? interpolationName(here->interp) : QString()},
@@ -265,7 +273,7 @@ void ProjectController::setOfxParam(qint64 clipId, int index, const QString& nam
     std::vector<double> v;
     for (const QVariant& x : value)
         v.push_back(x.toDouble());
-    const FramePos rel = index == edit::kOfxTransition ? 0 : clipRel(*c, m_player->positionFrame());
+    const FramePos rel = effectRel(*c, index, m_player->positionFrame());
     // Arrastrar un deslizador es un solo paso de deshacer.
     apply(tr("Ajustar efecto"), [&](Project& p) { return edit::setOfxParam(p, Id(clipId), index, name.toStdString(), v, rel); },
           QStringLiteral("ofx:%1:%2:%3").arg(clipId).arg(index).arg(name));
@@ -276,7 +284,7 @@ void ProjectController::toggleOfxKeyframe(qint64 clipId, int index, const QStrin
     const Clip* c = project().findClip(Id(clipId));
     ofx::Role role = ofx::Role::Filter;
     const OfxEffect* e = c ? effectAt(*c, index, role) : nullptr;
-    if (!e || role == ofx::Role::Transition)
+    if (!e)
         return;
     const auto info = ofx::Registry::instance().find(e->pluginId, role);
     if (!info)
@@ -286,7 +294,7 @@ void ProjectController::toggleOfxKeyframe(qint64 clipId, int index, const QStrin
     const auto it = values.find(name.toStdString());
     if (def == info->params.end() || it == values.end())
         return;
-    const FramePos rel = clipRel(*c, m_player->positionFrame());
+    const FramePos rel = effectRel(*c, index, m_player->positionFrame());
     // Casillas y listas no tienen valores intermedios: saltan al llegar al keyframe siguiente.
     const bool step = def->type == ofx::ParamType::Bool || def->type == ofx::ParamType::Choice;
     apply(tr("Keyframe"), [&](Project& p) {
@@ -303,7 +311,7 @@ void ProjectController::setOfxKeyInterpolation(qint64 clipId, int index, const Q
     const Interpolation mode = interp == QLatin1String("hold") ? Interpolation::Hold
                              : interp == QLatin1String("smooth") ? Interpolation::Smooth
                                                                  : Interpolation::Linear;
-    const FramePos rel = clipRel(*c, m_player->positionFrame());
+    const FramePos rel = effectRel(*c, index, m_player->positionFrame());
     apply(tr("Interpolación del keyframe"),
           [&](Project& p) { return edit::setOfxKeyInterpolation(p, Id(clipId), index, name.toStdString(), rel, mode); });
 }
@@ -343,8 +351,8 @@ QSize ProjectController::ofxImageSize(qint64 clipId) const
     return {project().settings.width, project().settings.height};
 }
 
-FramePos ProjectController::ofxFrame(qint64 clipId) const
+FramePos ProjectController::ofxFrame(qint64 clipId, int index) const
 {
     const Clip* c = project().findClip(Id(clipId));
-    return c ? clipRel(*c, m_player->positionFrame()) : 0;
+    return c ? effectRel(*c, index, m_player->positionFrame()) : 0;
 }

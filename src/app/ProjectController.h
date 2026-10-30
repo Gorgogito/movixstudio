@@ -330,7 +330,7 @@ public:
     // y el fotograma del clip en el cabezal.
     const movix::core::OfxEffect* ofxEffectAt(qint64 clipId, int index, movix::ofx::Role* role) const;
     QSize ofxImageSize(qint64 clipId) const;
-    movix::core::FramePos ofxFrame(qint64 clipId) const;
+    movix::core::FramePos ofxFrame(qint64 clipId, int index) const;
 
     // --- Selección ---
     Q_INVOKABLE void select(qint64 clipId, bool additive);

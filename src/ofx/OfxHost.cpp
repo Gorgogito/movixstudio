@@ -3,6 +3,7 @@
 #include <ofxCore.h>
 #include <ofxImageEffect.h>
 #include <ofxInteract.h>
+#include <ofxKeySyms.h>
 #include <ofxOld.h> // kOfxInteractPropViewportSize: retirada en 1.4, la leen plugins anteriores
 #include <ofxMemory.h>
 #include <ofxMessage.h>
@@ -2141,6 +2142,53 @@ bool Overlay::pen(Pen kind, double x, double y, double time, int viewWidth, int 
     a.setI(kOfxInteractPropPenViewportPosition, {int(std::lround(x)), int(std::lround(viewHeight - y))});
     a.setD(kOfxInteractPropPenPressure, {kind == Pen::Up ? 0.0 : 1.0});
     const char* action = kind == Pen::Down ? kOfxInteractActionPenDown : kind == Pen::Up ? kOfxInteractActionPenUp : kOfxInteractActionPenMotion;
+    d->gl.makeCurrent();
+    const OfxStatus st = d->call(action, &d->instance, &a);
+    d->gl.doneCurrent();
+    values = d->effect->values();
+    return st == kOfxStatOK;
+}
+
+namespace {
+
+// Símbolo de OFX (los de X11) de una tecla de Qt; los imprimibles coinciden con su carácter.
+int keySym(int qtKey, const std::string& text)
+{
+    static const std::map<int, int> special = {
+        {Qt::Key_Left, kOfxKey_Left},         {Qt::Key_Right, kOfxKey_Right},     {Qt::Key_Up, kOfxKey_Up},
+        {Qt::Key_Down, kOfxKey_Down},         {Qt::Key_Home, kOfxKey_Home},       {Qt::Key_End, kOfxKey_End},
+        {Qt::Key_PageUp, kOfxKey_Page_Up},    {Qt::Key_PageDown, kOfxKey_Page_Down},
+        {Qt::Key_Return, kOfxKey_Return},     {Qt::Key_Enter, kOfxKey_KP_Enter},  {Qt::Key_Escape, kOfxKey_Escape},
+        {Qt::Key_Tab, kOfxKey_Tab},           {Qt::Key_Backspace, kOfxKey_BackSpace},
+        {Qt::Key_Delete, kOfxKey_Delete},     {Qt::Key_Insert, kOfxKey_Insert},   {Qt::Key_Shift, kOfxKey_Shift_L},
+        {Qt::Key_Control, kOfxKey_Control_L}, {Qt::Key_Alt, kOfxKey_Alt_L},       {Qt::Key_Meta, kOfxKey_Super_L},
+        {Qt::Key_Space, kOfxKey_space},
+    };
+    if (const auto it = special.find(qtKey); it != special.end())
+        return it->second;
+    if (qtKey >= Qt::Key_F1 && qtKey <= Qt::Key_F12)
+        return kOfxKey_F1 + (qtKey - Qt::Key_F1);
+    // Imprimibles: el carácter que escribe (minúscula o mayúscula según la tecla de mayúsculas).
+    const QString s = QString::fromStdString(text);
+    if (s.size() == 1 && s[0].unicode() >= 0x20 && s[0].unicode() <= 0xff)
+        return s[0].unicode();
+    return qtKey >= 0x20 && qtKey <= 0xff ? QChar(qtKey).toLower().unicode() : 0;
+}
+
+} // namespace
+
+bool Overlay::key(Key kind, int qtKey, const std::string& text, double time, int viewWidth, int viewHeight, ParamValues& values)
+{
+    const int sym = keySym(qtKey, text); // kOfxKey_Unknown (0) con texto: un carácter sin símbolo
+    if (sym == kOfxKey_Unknown && text.empty())
+        return false;
+    EffectObj& e = *d->effect->d->obj;
+    e.time = time;
+    applyValues(e, values);
+    PropertySet a = d->args(time, viewWidth, viewHeight);
+    a.setI(kOfxPropKeySym, {sym});
+    a.setS(kOfxPropKeyString, {text});
+    const char* action = kind == Key::Down ? kOfxInteractActionKeyDown : kind == Key::Up ? kOfxInteractActionKeyUp : kOfxInteractActionKeyRepeat;
     d->gl.makeCurrent();
     const OfxStatus st = d->call(action, &d->instance, &a);
     d->gl.doneCurrent();

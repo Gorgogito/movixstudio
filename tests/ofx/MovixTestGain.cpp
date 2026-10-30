@@ -164,6 +164,26 @@ public:
         return was;
     }
 
+    // Las flechas mueven el centro una décima; «c» lo devuelve al medio.
+    bool keyDown(const OFX::KeyArgs& args) override
+    {
+        double cx = 0.5, cy = 0.5;
+        center_->getValueAtTime(args.time, cx, cy);
+        const double step = 0.1;
+        switch (args.keySymbol) {
+        case kOfxKey_Left: cx -= step; break;
+        case kOfxKey_Right: cx += step; break;
+        case kOfxKey_Up: cy += step; break;
+        case kOfxKey_Down: cy -= step; break;
+        default:
+            if (args.keyString != "c")
+                return false;
+            cx = cy = 0.5;
+        }
+        center_->setValue(cx, cy);
+        return true;
+    }
+
 private:
     OFX::Double2DParam* center_ = nullptr;
     OFX::DoubleParam* size_ = nullptr;

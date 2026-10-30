@@ -14,6 +14,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <QCoreApplication>
+#include <QKeyEvent>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -300,12 +302,19 @@ TEST_CASE("OpenFX: clips generadores y transiciones en la línea de tiempo", "[o
     CHECK(at(img, 170, 90) == std::array<int, 3>{0, 0, 255});
     CHECK(at(img, 182, 90) == std::array<int, 3>{255, 0, 0});
     CHECK(sources.build(p, 130).layers.back().frame);
-    // Sus parámetros (fijos): mezcla en vez de barrido.
+    // Sus parámetros: mezcla en vez de barrido.
     REQUIRE(edit::setOfxParam(p, blue, edit::kOfxTransition, "mix", {1}));
-    CHECK_FALSE(edit::toggleOfxKey(p, blue, edit::kOfxTransition, "mix", 3, {1}));
     const auto mixed = at(picture(130), 60, 90);
     CHECK(std::abs(mixed[0] - 115) <= 2);
     CHECK(std::abs(mixed[2] - 140) <= 2);
+    // Con keyframes en fotogramas de la transición (empieza en 125): barrido hasta el 3, mezcla desde el 5.
+    REQUIRE(transitionStart(*p.findClip(blue)) == 125);
+    REQUIRE(edit::toggleOfxKey(p, blue, edit::kOfxTransition, "mix", 3, {0}, Interpolation::Hold));
+    REQUIRE(edit::toggleOfxKey(p, blue, edit::kOfxTransition, "mix", 5, {1}, Interpolation::Hold));
+    img = picture(128); // progreso 0,35: el azul ha entrado hasta x ≈ 112
+    CHECK(at(img, 60, 90) == std::array<int, 3>{0, 0, 255});
+    CHECK(at(img, 200, 90) == std::array<int, 3>{255, 0, 0});
+    CHECK(at(picture(130), 60, 90) == mixed);
     // Cambiar la duración conserva el plugin y sus parámetros.
     REQUIRE(edit::setTransition(p, blue, TransitionType::Ofx, 8, kWipe));
     CHECK(p.findClip(blue)->transitionIn.ofx.params.contains("mix"));
@@ -924,6 +933,24 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
             CHECK(center[1].toDouble() == Catch::Approx(0.5));
             project.undo();
             CHECK(genParam("center")["value"].toList()[0].toDouble() == Catch::Approx(0.5));
+            // Teclado: las flechas mueven el centro, una pulsación por paso de deshacer. La tecla que
+            // usa al decidir sobre los atajos de la aplicación no le llega dos veces.
+            REQUIRE(item.key(ofx::Overlay::Key::Down, Qt::Key_Right, {}));
+            CHECK(genParam("center")["value"].toList()[0].toDouble() == Catch::Approx(0.6));
+            QKeyEvent override(QEvent::ShortcutOverride, Qt::Key_Up, Qt::NoModifier);
+            QCoreApplication::sendEvent(&item, &override);
+            CHECK(override.isAccepted());
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+            QCoreApplication::sendEvent(&item, &press);
+            CHECK(press.isAccepted());
+            CHECK(genParam("center")["value"].toList()[1].toDouble() == Catch::Approx(0.6));
+            QKeyEvent other(QEvent::ShortcutOverride, Qt::Key_X, Qt::NoModifier, QStringLiteral("x"));
+            QCoreApplication::sendEvent(&item, &other);
+            CHECK_FALSE(other.isAccepted()); // la que no usa queda para los atajos
+            REQUIRE(item.key(ofx::Overlay::Key::Down, Qt::Key_C, QStringLiteral("c")));
+            CHECK(genParam("center")["value"].toList() == QVariantList{0.5, 0.5});
+            project.undo();
+            CHECK(genParam("center")["value"].toList()[1].toDouble() == Catch::Approx(0.6));
         }
         project.toggleOfxOverlay(gen, edit::kOfxGenerator);
         CHECK(project.ofxOverlay().isEmpty());
@@ -942,10 +969,27 @@ TEST_CASE("OpenFX desde la aplicación", "[ofx][app]")
         const QVariantList tparams = transition[0].toMap()["params"].toList();
         REQUIRE(tparams.size() == 1); // el progreso no se muestra
         CHECK(tparams[0].toMap()["name"].toString() == "mix");
-        CHECK_FALSE(tparams[0].toMap()["animates"].toBool());
+        CHECK(tparams[0].toMap()["animates"].toBool());
         project.setOfxParam(second, edit::kOfxTransition, "mix", {1});
         project.endInteraction();
-        CHECK(project.ofxEffects(second, "transition")[0].toMap()["params"].toList()[0].toMap()["value"].toList() == QVariantList{1.0});
+        auto mixState = [&] { return project.ofxEffects(second, "transition")[0].toMap()["params"].toList()[0].toMap(); };
+        CHECK(mixState()["value"].toList() == QVariantList{1.0});
+        // Keyframes en el fotograma de la transición bajo el cabezal (el 0 es su primer fotograma).
+        const FramePos tStart = transitionStart(*project.project().findClip(Id(second)));
+        project.player()->seekFrame(tStart + 2);
+        project.toggleOfxKeyframe(second, edit::kOfxTransition, "mix");
+        CHECK(mixState()["keyHere"].toBool());
+        CHECK(project.project().findClip(Id(second))->transitionIn.ofx.params.at("mix")[0].keyAt(2));
+        CHECK(project.keyframeFrames(second).contains(QVariant(qint64(tStart + 2))));
+        project.player()->seekFrame(tStart + 6);
+        CHECK_FALSE(mixState()["keyHere"].toBool());
+        CHECK(mixState()["hasPrev"].toBool());
+        project.setOfxParam(second, edit::kOfxTransition, "mix", {0});
+        project.endInteraction();
+        CHECK(mixState()["keyHere"].toBool()); // animado: el valor crea su keyframe
+        project.jumpToKeyframe(second, false);
+        CHECK(project.player()->positionFrame() == tStart + 2);
+        CHECK(mixState()["value"].toList() == QVariantList{1.0});
         // Lo que hace la línea de tiempo al soltar: un generador en una pista y un fotograma, y una
         // transición OpenFX en el corte más cercano.
         const qint64 track = qint64(project.project().trackOfClip(Id(gen))->id);

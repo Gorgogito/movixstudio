@@ -135,8 +135,8 @@ bool replaceClipMedia(Project& p, Id clipId, Id mediaId, TimeUs sourceIn);
 bool setMatte(Project& p, Id clipId, const AiMatte& matte);
 
 // Efectos OpenFX de los clips de video. Devuelven si hubo cambio. En los parámetros, `index` es el
-// del efecto o kOfxGenerator (el del clip generador) o kOfxTransition (su transición de entrada;
-// sus parámetros no se animan).
+// del efecto o kOfxGenerator (el del clip generador) o kOfxTransition (su transición de entrada,
+// cuyos keyframes cuentan desde el primer fotograma de la transición).
 inline constexpr int kOfxGenerator = -1;
 inline constexpr int kOfxTransition = -2;
 int addOfxEffect(Project& p, Id clipId, const std::string& pluginId); // índice o −1
