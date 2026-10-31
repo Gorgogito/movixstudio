@@ -2,6 +2,7 @@
 #include "TestMedia.h"
 #include "core/Edits.h"
 #include "core/Otio.h"
+#include "engine/MediaImport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -156,7 +157,7 @@ TEST_CASE("OTIO: exportar e importar conserva la línea de tiempo", "[core][otio
         const QJsonObject second = v1Items[2].toObject();
         CHECK(second["effects"].toArray()[0].toObject()["OTIO_SCHEMA"].toString() == "LinearTimeWarp.1");
         const QJsonObject ref = second["media_references"].toObject()["DEFAULT_MEDIA"].toObject();
-        CHECK(ref["target_url"].toString() == "file:///C:/medios/entrevista.mp4");
+        CHECK(ref["target_url"].toString() == "C:/medios/entrevista.mp4"); // sin file://, como Kdenlive y Resolve
         const QJsonArray linked = tracks[4].toObject()["children"].toArray();
         CHECK(linked.size() == 3); // los dos primeros clips con su transición (el tercero tiene el audio separado)
     }
@@ -356,6 +357,47 @@ TEST_CASE("OTIO: archivo escrito por la biblioteca oficial", "[core][otio]")
     CHECK(describe(*again.project, again.project->audioTracks) == describe(p, p.audioTracks));
 }
 
+TEST_CASE("OTIO: archivos de DaVinci Resolve y Kdenlive", "[core][otio]")
+{
+    // tests/data/otio/resolve.otio y kdenlive.otio: un montaje exportado por MovixStudio, abierto en
+    // DaVinci Resolve 21.1 y Kdenlive 26.08 y vuelto a exportar por ellos (con las rutas de los
+    // medios hechas relativas). Resolve conserva la disolvencia y el nombre del marcador; Kdenlive
+    // pierde la transición y guarda el texto del marcador en el comentario. El título es propio de
+    // MovixStudio y ninguno de los dos lo trae.
+    FakeProbe probe;
+    probe.add(fakeMedia(QStringLiteral(MOVIX_TEST_DATA_DIR "/otio/medios/scenes_720p30.mp4"), 10, true, false)); // sin audio
+    probe.add(fakeMedia(QStringLiteral(MOVIX_TEST_DATA_DIR "/otio/medios/sync_720p30.mp4"), 10, true, true));
+    probe.add(fakeMedia(QStringLiteral(MOVIX_TEST_DATA_DIR "/otio/medios/tone_44k_mono.wav"), 10, false, true));
+    const std::string transition = " tr" + std::to_string(int(TransitionType::Dissolve)) + "/15";
+
+    for (const char* editor : {"resolve", "kdenlive"}) {
+        DYNAMIC_SECTION(editor)
+        {
+            const bool resolve = std::string(editor) == "resolve";
+            const auto result = otio::importFile(QStringLiteral(MOVIX_TEST_DATA_DIR "/otio/%1.otio").arg(QLatin1String(editor)), probe.probe());
+            REQUIRE(result.project);
+            INFO(result.warnings.join(QLatin1Char('\n')).toStdString());
+            CHECK(result.missingMedia.isEmpty());
+            // Solo el aviso del título (Resolve lo deja como clip sin medio; los efectos que pone
+            // desactivados en cada clip no cuentan).
+            CHECK(result.warnings.size() == (resolve ? 1 : 0));
+            const Project& p = *result.project;
+            CHECK(p.settings.frameRate == Rational{30, 1});
+            const auto video = describe(p, p.videoTracks);
+            REQUIRE(video.size() >= 4);
+            CHECK(video[1] == "  0+90 in1000 x1.000000 scenes_720p30.mp4");
+            CHECK(video[2] == "  90+90 in0 x1.000000 sync_720p30.mp4" + (resolve ? transition : std::string()));
+            CHECK(video[3] == "  210+30 in5000 x1.000000 scenes_720p30.mp4");
+            const auto audio = describe(p, p.audioTracks);
+            CHECK(std::count(audio.begin(), audio.end(), "  0+90 in0 x1.000000 tone_44k_mono.wav") == 1);
+            CHECK(audio.size() == 3); // A1 con el tono y A2; el audio del clip va con él
+            REQUIRE(p.markers.size() == 1);
+            CHECK(p.markers[0].frame == 45);
+            CHECK(p.markers[0].label == (resolve ? "Marca de prueba" : "Marker"));
+        }
+    }
+}
+
 TEST_CASE("OTIO: archivos que no son líneas de tiempo", "[core][otio]")
 {
     CHECK_FALSE(otio::importTimeline("no es json", QStringLiteral("x.otio"), {}).project);
@@ -399,4 +441,68 @@ TEST_CASE("OTIO: exportar e importar desde la aplicación", "[otio][app]")
     CHECK(describe(after, after.audioTracks) == describe(before, before.audioTracks));
     CHECK(project.isModified()); // sin archivo de proyecto todavía
     CHECK(project.fileUrl().isEmpty());
+}
+
+// Para probar a mano con otros editores (no corre con las demás). MOVIX_OTIO_OUT: carpeta donde se
+// copian los medios de prueba y se escribe movix.otio con un montaje que los usa.
+TEST_CASE("OTIO: montaje de prueba para otros editores", "[.][otio-fuera]")
+{
+    const QString out = qEnvironmentVariable("MOVIX_OTIO_OUT");
+    if (out.isEmpty())
+        SKIP("Sin MOVIX_OTIO_OUT");
+    QDir().mkpath(out + "/medios");
+    auto media = [&](Project& p, const char* name) {
+        const QString path = out + "/medios/" + QString::fromLatin1(name);
+        if (!QFileInfo::exists(path)) // si ya está, puede tenerlo abierto el otro editor
+            REQUIRE(QFile::copy(QString::fromStdString(test::mediaPath(name)), path));
+        auto item = engine::probeMediaItem(path.toStdString());
+        REQUIRE(item);
+        return edit::addMedia(p, *item);
+    };
+    Project p = Project::createDefault();
+    p.settings.width = 1280;
+    p.settings.height = 720;
+    p.settings.frameRate = {30, 1};
+    const Id scenes = media(p, "scenes_720p30.mp4"), sync = media(p, "sync_720p30.mp4"), tone = media(p, "tone_44k_mono.wav");
+    const Id v1 = p.videoTracks[0].id, v2 = p.videoTracks[1].id, a1 = p.audioTracks[0].id;
+    REQUIRE(edit::placeClip(p, v1, scenes, 0, 1 * kUsPerSecond, 90) != kNoId);
+    const Id second = edit::placeClip(p, v1, sync, 90, 0, 90);
+    REQUIRE(edit::setTransition(p, second, TransitionType::Dissolve, 15));
+    REQUIRE(edit::placeClip(p, v1, scenes, 210, 5 * kUsPerSecond, 60) != kNoId); // tras un hueco de 1 s
+    TitleStyle style;
+    style.text = "MovixStudio";
+    REQUIRE(edit::placeTitle(p, v2, 30, 60, style) != kNoId);
+    REQUIRE(edit::placeClip(p, a1, tone, 0, 0, 150) != kNoId);
+    REQUIRE(edit::addMarkers(p, {45}, "Marca de prueba") == 1);
+    QFile file(out + "/movix.otio");
+    REQUIRE(file.open(QIODevice::WriteOnly));
+    file.write(otio::exportTimeline(p, QStringLiteral("Prueba MovixStudio")));
+    for (const auto& line : describe(p, p.videoTracks))
+        std::printf("[otio] %s\n", line.c_str());
+    for (const auto& line : describe(p, p.audioTracks))
+        std::printf("[otio] %s\n", line.c_str());
+}
+
+// MOVIX_OTIO_IN: un .otio de otro editor; muestra lo que entra.
+TEST_CASE("OTIO: leer un archivo de otro editor", "[.][otio-dentro]")
+{
+    const QString in = qEnvironmentVariable("MOVIX_OTIO_IN");
+    if (in.isEmpty())
+        SKIP("Sin MOVIX_OTIO_IN");
+    QFile file(in);
+    REQUIRE(file.open(QIODevice::ReadOnly));
+    const auto result = otio::importTimeline(file.readAll(), in, [](const std::string& path) { return engine::probeMediaItem(path); });
+    INFO(result.error.toStdString());
+    REQUIRE(result.project);
+    const Project& p = *result.project;
+    std::printf("[otio] %dx%d a %.3f fps, %zu medios, %zu marcadores\n", p.settings.width, p.settings.height, p.settings.frameRate.value(),
+                p.media.size(), p.markers.size());
+    for (const auto& m : result.missingMedia)
+        std::printf("[otio] falta el medio: %s\n", m.toStdString().c_str());
+    for (const auto& w : result.warnings)
+        std::printf("[otio] aviso: %s\n", w.toStdString().c_str());
+    for (const auto& line : describe(p, p.videoTracks))
+        std::printf("[otio] %s\n", line.c_str());
+    for (const auto& line : describe(p, p.audioTracks))
+        std::printf("[otio] %s\n", line.c_str());
 }

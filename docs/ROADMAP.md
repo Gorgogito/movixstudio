@@ -443,6 +443,15 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
       misaki: «read», «live» o «record» usan siempre su pronunciación habitual. El léxico (6 MB) se
       descarga con el modelo; quien ya lo tenga solo baja esos dos archivos. En 8 frases leídas
       por cada voz inglesa, Whisper entiende las 79 palabras (con eSpeak, 78)
+- [x] OpenTimelineIO con DaVinci Resolve 21.1 y Kdenlive 26.08 (30-10-2026), con medios reales:
+      un montaje con corte, disolvencia, hueco, título, audio y marcador, abierto en los dos y vuelto
+      a exportar por ellos. Resolve conserva todo menos el título (propio de MovixStudio: queda como
+      clip sin medio); Kdenlive pierde además la disolvencia (su OTIO no tiene transiciones). Lo
+      que exportan se importa entero en MovixStudio. Corregido en el camino: Kdenlive no encontraba
+      los medios porque exportábamos URL `file:///` (ahora rutas absolutas, como escriben los dos) y
+      mostraba los marcadores sin nombre (lee el comentario: ahora va en los dos campos); los
+      efectos desactivados que Resolve pone en cada clip ya no dan aviso. Sus archivos quedan como
+      pruebas (`tests/data/otio/resolve.otio` y `kdenlive.otio`)
 - [x] OpenFX en la GPU: el anfitrión ofrece la *suite* de render por OpenGL de OFX 1.4. Los plugins
       que la admiten reciben sus imágenes como texturas en un contexto OpenGL propio de cada hilo y
       dibujan el resultado en la GPU (en 8 bits o en coma flotante, RGBA32F); si no hay OpenGL o el
@@ -472,7 +481,6 @@ Orden acordado: instalador y actualizaciones → OpenTimelineIO → multicámara
   archivos que el MSI, sin restos), y la desinstalación y reinstalación ese mismo día (quita la
   entrada, la carpeta, los accesos directos y la asociación; conserva los ajustes y los datos del
   usuario).
-- Abrir en DaVinci Resolve / Kdenlive un `.otio` exportado (y al revés) con proyectos reales.
 - Actualizar FFmpeg cuando la rama 9.0 incorpore las correcciones de `arnndn` de la rama principal
   (5474b1e05a: lee entradas de las GRU sin inicializar; 279f225d98: modelos con capas que no
   encajan). Con el modelo que usamos no se observa efecto (salida idéntica en cientos de pasadas).

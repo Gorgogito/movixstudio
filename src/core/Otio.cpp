@@ -170,7 +170,7 @@ private:
                 {"metadata", QJsonObject{{kMeta, QJsonObject{{"color", argb(m.color)}}}}},
                 {"color", QLatin1String(nearestMarkerColor(m.color))},
                 {"marked_range", frames(m.frame, 0)},
-                {"comment", QString()},
+                {"comment", QString::fromStdString(m.label)}, // Kdenlive muestra el comentario, no el nombre
             });
         }
         return QJsonObject{
@@ -327,7 +327,8 @@ private:
                 {"metadata", QJsonObject{}},
                 {"available_range", m->isStill ? QJsonValue() : QJsonValue(timeRange(0, toValue(m->duration), m_rate))},
                 {"available_image_bounds", QJsonValue()},
-                {"target_url", QUrl::fromLocalFile(QDir::fromNativeSeparators(QString::fromStdString(m->path))).toString(QUrl::FullyEncoded)},
+                // Ruta absoluta tal cual (con barras normales): Kdenlive no entiende las URL file://.
+                {"target_url", QDir::fromNativeSeparators(QString::fromStdString(m->path))},
             };
         }
         return QJsonObject{
@@ -786,7 +787,11 @@ private:
             } else if (schema == QLatin1String("FreezeFrame")) {
                 warn(QCoreApplication::translate("Otio", "Los clips congelados se importan a velocidad normal."));
             } else {
-                const QString effect = e["effect_name"].toString(e["name"].toString(schema));
+                // Resolve pone en cada clip sus efectos (zoom dinámico...), casi siempre desactivados.
+                const QJsonObject resolve = e["metadata"].toObject()["Resolve_OTIO"].toObject();
+                if (resolve["Enabled"] == QJsonValue(false))
+                    continue;
+                const QString effect = resolve["Effect Name"].toString(e["effect_name"].toString(e["name"].toString(schema)));
                 warn(QCoreApplication::translate("Otio", "No se importó el efecto «%1».").arg(effect));
             }
         }
